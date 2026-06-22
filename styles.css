@@ -546,6 +546,44 @@ body.toolbar-collapsed .toolbar-collapse-btn svg { transform: rotate(180deg); }
 .canvas-history button:hover:not(:disabled) { background: var(--gray-100); color: var(--indra-primary); }
 .canvas-history button:active:not(:disabled) { transform: scale(0.92); }
 .canvas-history button:disabled { color: var(--gray-300); cursor: default; }
+.canvas-history button.active { background: var(--gray-150); color: var(--indra-primary); }
+
+/* Panel de atajos de teclado */
+.shortcuts-panel {
+  position: absolute;
+  top: 50px;
+  left: 14px;
+  z-index: 61;
+  width: 320px;
+  max-width: calc(100% - 28px);
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: legendIn var(--duration-fast) var(--ease-out);
+}
+.shortcuts-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--gray-150);
+  background: var(--gray-50); font-size: var(--font-sm); color: var(--gray-900);
+}
+.shortcuts-close {
+  background: none; border: none; cursor: pointer; font-size: 13px; color: var(--gray-500);
+  width: 22px; height: 22px; border-radius: var(--radius-sm);
+}
+.shortcuts-close:hover { background: var(--gray-150); color: var(--gray-900); }
+.shortcuts-body { padding: 10px 14px; }
+.sc-row { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--gray-800); margin-bottom: 8px; }
+.sc-row span { margin-left: auto; color: var(--gray-600); }
+.sc-row kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 21px; padding: 0 6px;
+  font-family: var(--font-stack); font-size: 11px; font-weight: 600;
+  color: var(--gray-800); background: var(--gray-100);
+  border: 1px solid var(--gray-200); border-bottom-width: 2px; border-radius: 5px;
+}
+.shortcuts-note { font-size: 10.5px; color: var(--gray-500); font-style: italic; line-height: 1.4; margin-top: 4px; border-top: 1px solid var(--gray-100); padding-top: 8px; }
 
 #canvas {
   display: block;

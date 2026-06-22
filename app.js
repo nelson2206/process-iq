@@ -2324,6 +2324,25 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       else if ((e.ctrlKey || e.metaKey) && ((e.key === 'z' || e.key === 'Z') && e.shiftKey || e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
     });
     updateUndoRedoUi();
+
+    // Panel de atajos de teclado
+    const panel = $('#shortcutsPanel');
+    const setShortcuts = (show) => {
+      if (!panel) return;
+      panel.hidden = !show;
+      const b = $('#btnShortcuts');
+      if (b) b.classList.toggle('active', show);
+    };
+    const sbtn = $('#btnShortcuts');
+    if (sbtn) sbtn.addEventListener('click', () => setShortcuts(panel.hidden));
+    const sclose = $('#btnShortcutsClose');
+    if (sclose) sclose.addEventListener('click', () => setShortcuts(false));
+    document.addEventListener('keydown', (e) => {
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+      if (typing) return;
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setShortcuts(panel && panel.hidden); }
+      else if (e.key === 'Escape' && panel && !panel.hidden) { setShortcuts(false); }
+    });
   }
 
   function loadFromStorage() {

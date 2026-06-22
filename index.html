@@ -221,6 +221,29 @@
         <button id="btnRedo" title="Rehacer (Ctrl/⌘ Y · Ctrl/⌘ Shift Z)" aria-label="Rehacer el cambio deshecho" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4"/></svg>
         </button>
+        <button id="btnShortcuts" title="Atajos de teclado (tecla ?)" aria-label="Ver atajos de teclado">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+        </button>
+      </div>
+      <div id="shortcutsPanel" class="shortcuts-panel" hidden>
+        <div class="shortcuts-head">
+          <strong>Atajos de teclado</strong>
+          <button id="btnShortcutsClose" class="shortcuts-close" title="Cerrar" aria-label="Cerrar atajos">✕</button>
+        </div>
+        <div class="shortcuts-body">
+          <div class="sc-row"><kbd>Ctrl/⌘</kbd><kbd>Z</kbd><span>Deshacer</span></div>
+          <div class="sc-row"><kbd>Ctrl/⌘</kbd><kbd>Y</kbd><span>Rehacer</span></div>
+          <div class="sc-row"><kbd>Ctrl/⌘</kbd><kbd>+</kbd><span>Acercar zoom</span></div>
+          <div class="sc-row"><kbd>Ctrl/⌘</kbd><kbd>−</kbd><span>Alejar zoom</span></div>
+          <div class="sc-row"><kbd>Ctrl/⌘</kbd><kbd>0</kbd><span>Zoom 100%</span></div>
+          <div class="sc-row"><kbd>Ctrl/⌘</kbd><kbd>rueda</kbd><span>Zoom hacia el cursor</span></div>
+          <div class="sc-row"><kbd>F</kbd><span>Ajustar a la pantalla</span></div>
+          <div class="sc-row"><kbd>C</kbd><span>Modo conectar</span></div>
+          <div class="sc-row"><kbd>Supr</kbd> / <kbd>Del</kbd><span>Eliminar selección</span></div>
+          <div class="sc-row"><kbd>Esc</kbd><span>Deseleccionar / salir de modo</span></div>
+          <div class="sc-row"><kbd>?</kbd><span>Mostrar/ocultar estos atajos</span></div>
+          <div class="shortcuts-note">Doble-clic en un nodo edita su etiqueta · arrastra shapes desde la barra izquierda</div>
+        </div>
       </div>
       <button id="btnPresent" class="btn-present" title="Modo presentación (oculta paneles, maximiza el diagrama)">⛶ Presentar</button>
       <button id="btnLegend" class="btn-legend" title="Mostrar/ocultar la leyenda de nomenclatura BPMN">⌕ Leyenda BPMN</button>

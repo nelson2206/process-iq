@@ -4643,19 +4643,44 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     const meta = state.meta;
     const esc = s => String(s || '').replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;' }[c]));
 
-    // Map ProcessIQ shape -> BPMN element (sin namespace; lo agregamos al construir el XML)
-    const bpmnType = (t) => {
-      switch (t) {
-        case 'start':    return 'startEvent';
-        case 'end':      return 'endEvent';
-        case 'decision': return 'exclusiveGateway';
-        case 'document':
-        case 'data':     return 'dataStoreReference'; // válido a nivel process
-        case 'system':   return 'serviceTask';
-        case 'task':
-        default:         return 'task';
+    // Map ProcessIQ node -> elemento BPMN (respeta gateway/evento/tipo de tarea)
+    const bpmnType = (n) => {
+      const t = n.type;
+      if (t === 'start') return 'startEvent';
+      if (t === 'end') return 'endEvent';
+      if (t === 'intermediate') return n.throw ? 'intermediateThrowEvent' : 'intermediateCatchEvent';
+      if (t === 'decision') {
+        return n.gatewayType === 'parallel' ? 'parallelGateway'
+             : n.gatewayType === 'inclusive' ? 'inclusiveGateway'
+             : 'exclusiveGateway';
       }
+      if (t === 'document' || t === 'data') return 'dataStoreReference';
+      // Tareas: mapea el tipo de ejecución a subtipo BPMN
+      const ex = n.executionType;
+      if (t === 'system' || ex === 'automatic' || ex === 'system') return 'serviceTask';
+      if (ex === 'manual') return 'manualTask';
+      if (ex === 'email' || ex === 'send') return 'sendTask';
+      if (ex === 'receive') return 'receiveTask';
+      if (ex === 'ia' || ex === 'script') return 'scriptTask';
+      if (ex === 'user') return 'userTask';
+      return 'task';
     };
+    // Definición de evento BPMN (timer/message/error/signal/terminate) para start/end/intermediate
+    const eventDef = (n) => {
+      if (n.type === 'end' && n.terminate) return '      <bpmn:terminateEventDefinition />\n';
+      const ev = n.eventType;
+      if (!ev || ev === 'none') return '';
+      const map = { message: 'messageEventDefinition', timer: 'timerEventDefinition', error: 'errorEventDefinition', signal: 'signalEventDefinition' };
+      return map[ev] ? `      <bpmn:${map[ev]} />\n` : '';
+    };
+    // Loop characteristics para marcadores de actividad
+    const loopChars = (n) => {
+      if (n.marker === 'loop') return '      <bpmn:standardLoopCharacteristics />\n';
+      if (n.marker === 'multiinstance') return '      <bpmn:multiInstanceLoopCharacteristics isSequential="false" />\n';
+      if (n.marker === 'multiinstance-seq') return '      <bpmn:multiInstanceLoopCharacteristics isSequential="true" />\n';
+      return '';
+    };
+    const isEventType = t => t === 'start' || t === 'end' || t === 'intermediate';
 
     // Construye relaciones in/out por nodo para incoming/outgoing (mejora compliance BPMN)
     const incoming = {}, outgoing = {};
@@ -4667,7 +4692,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     // ============ FLOW ELEMENTS ============
     let processBody = '';
     state.nodes.forEach(n => {
-      const t = bpmnType(n.type);
+      const t = bpmnType(n);
       const ins = (incoming[n.id] || []).map(id => `      <bpmn:incoming>${id}</bpmn:incoming>`).join('\n');
       const outs = (outgoing[n.id] || []).map(id => `      <bpmn:outgoing>${id}</bpmn:outgoing>`).join('\n');
 
@@ -4687,7 +4712,19 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       processBody += docs;
       if (ins)  processBody += ins  + '\n';
       if (outs) processBody += outs + '\n';
+      if (isEventType(n.type)) processBody += eventDef(n);   // timer/message/error/signal/terminate
+      else processBody += loopChars(n);                       // loop / multi-instancia (en tareas)
       processBody += `    </bpmn:${t}>\n`;
+    });
+    // Eventos de borde (boundary) como elementos BPMN adjuntos a su tarea
+    state.nodes.forEach(n => {
+      if (!n.boundary) return;
+      const bt = typeof n.boundary === 'string' ? n.boundary : (n.boundary.type || 'timer');
+      const interrupting = (typeof n.boundary === 'object') ? n.boundary.interrupting !== false : true;
+      const defMap = { timer: 'timerEventDefinition', error: 'errorEventDefinition', message: 'messageEventDefinition' };
+      processBody += `    <bpmn:boundaryEvent id="${n.id}_be" name="${esc(bt)}" attachedToRef="${n.id}" cancelActivity="${interrupting}">\n` +
+                     `      <bpmn:${defMap[bt] || 'timerEventDefinition'} />\n` +
+                     `    </bpmn:boundaryEvent>\n`;
     });
 
     state.edges.forEach(e => {
@@ -4697,10 +4734,15 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     // ============ BPMN DI (visual interchange) ============
     let diShapes = '';
     state.nodes.forEach(n => {
-      const isEvent = n.type === 'start' || n.type === 'end';
-      diShapes += `      <bpmndi:BPMNShape id="${n.id}_di" bpmnElement="${n.id}"${isEvent ? '' : ''}>\n` +
+      diShapes += `      <bpmndi:BPMNShape id="${n.id}_di" bpmnElement="${n.id}">\n` +
                   `        <dc:Bounds x="${Math.round(n.x)}" y="${Math.round(n.y)}" width="${Math.round(n.w)}" height="${Math.round(n.h)}" />\n` +
                   `      </bpmndi:BPMNShape>\n`;
+      // DI del evento de borde: sobre la esquina inferior-izquierda de la tarea (coincide con el canvas)
+      if (n.boundary) {
+        diShapes += `      <bpmndi:BPMNShape id="${n.id}_be_di" bpmnElement="${n.id}_be">\n` +
+                    `        <dc:Bounds x="${Math.round(n.x - 2)}" y="${Math.round(n.y + n.h - 18)}" width="22" height="22" />\n` +
+                    `      </bpmndi:BPMNShape>\n`;
+      }
     });
     let diEdges = '';
     state.edges.forEach(e => {

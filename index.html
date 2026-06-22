@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ProcessIQ — Minsait Business Consulting</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=1.5.2" />
+</head>
+<body>
+
+  <!-- ============== HEADER ============== -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark">M</div>
+      <div class="brand-text">
+        <div class="brand-title">ProcessIQ</div>
+        <div class="brand-sub">Minsait · BC Perú</div>
+      </div>
+    </div>
+
+    <div class="process-meta-inline">
+      <input id="processName" type="text" placeholder="Nombre del proceso (ej. Gestión de Reclamos)" />
+      <select id="processIndustry">
+        <option value="">— Industria —</option>
+      </select>
+      <select id="processMacro">
+        <option value="">— Macroproceso —</option>
+      </select>
+    </div>
+
+    <div class="header-actions">
+      <!-- Grupo 1: vista As-Is / To-Be -->
+      <div class="view-toggle" title="Cambia entre vista As-Is y To-Be">
+        <button id="btnViewAsIs" class="view-btn active" data-view="asis">As-Is</button>
+        <button id="btnViewToBe" class="view-btn" data-view="tobe">To-Be</button>
+      </div>
+      <!-- Grupo 2: acciones de reingeniería To-Be -->
+      <button id="btnCloneToBe" class="btn btn-ghost btn-icon" title="Clonar As-Is → To-Be (para empezar a reingenierar)" aria-label="Clonar As-Is a To-Be">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      </button>
+      <button id="btnTransformToBe" class="btn btn-ghost btn-mini" title="Genera el To-Be aplicando reingeniería por nivel (Operativo/Táctico/Estratégico)">
+        <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/><path d="M13 3l2.4 6.1L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"/></svg></span>
+        To-Be IA
+      </button>
+      <span class="header-sep" aria-hidden="true"></span>
+      <!-- Grupo 3: documento -->
+      <button id="btnNew" class="btn btn-ghost" title="Nuevo proceso">
+        <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
+        Nuevo
+      </button>
+      <button id="btnIngest" class="btn btn-primary" title="Ingestar desde audio, notas o event log">
+        <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+        Ingestar
+      </button>
+      <button id="btnImport" class="btn btn-ghost btn-icon" title="Importar proyecto JSON" aria-label="Importar proyecto JSON">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </button>
+      <div class="export-menu">
+        <button id="btnExportMenu" class="btn btn-ghost" title="Exportar">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></svg></span>
+          Exportar
+          <svg class="chevron" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="export-dropdown" id="exportDropdown" hidden>
+          <button data-export="json">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            JSON · proyecto
+          </button>
+          <button data-export="svg">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+            SVG · vectorial
+          </button>
+          <button data-export="png">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+            PNG · imagen
+          </button>
+          <button data-export="bpmn">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><rect x="14" y="3" width="7" height="6" rx="1"/><rect x="14" y="15" width="7" height="6" rx="1"/><path d="M9 6h5M9 18h5M14 12v6M14 6v6"/></svg>
+            BPMN 2.0 · Bizagi/Camunda
+          </button>
+          <button data-export="pptx">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="20" x2="22" y2="20"/><path d="m7 12 3-3 3 3 5-5"/></svg>
+            PPTX · entregable Minsait
+          </button>
+          <button data-export="word">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+            Word · informe del proceso
+          </button>
+        </div>
+      </div>
+      <input id="fileImport" type="file" accept=".json" hidden />
+    </div>
+  </header>
+
+  <!-- ============== MAIN ============== -->
+  <main class="app-main">
+
+    <!-- ====== TOOLBAR LEFT ====== -->
+    <aside class="toolbar-left">
+      <div class="toolbar-section-title toolbar-head">
+        <span>Shapes</span>
+        <button id="btnToggleToolbar" class="toolbar-collapse-btn" title="Comprimir/expandir la barra de shapes" aria-label="Comprimir barra de shapes">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
+      <button class="shape-btn" draggable="true" data-shape="start" title="Inicio">
+        <span class="shape-preview shape-start"></span>
+        <span class="shape-label">Inicio</span>
+      </button>
+      <button class="shape-btn" draggable="true" data-shape="task" title="Actividad">
+        <span class="shape-preview shape-task"></span>
+        <span class="shape-label">Actividad</span>
+      </button>
+      <button class="shape-btn" draggable="true" data-shape="decision" title="Decisión / gateway">
+        <span class="shape-preview shape-decision"></span>
+        <span class="shape-label">Decisión</span>
+      </button>
+      <button class="shape-btn" draggable="true" data-shape="document" title="Documento">
+        <span class="shape-preview shape-document"></span>
+        <span class="shape-label">Documento</span>
+      </button>
+      <button class="shape-btn" draggable="true" data-shape="data" title="Data">
+        <span class="shape-preview shape-data"></span>
+        <span class="shape-label">Data</span>
+      </button>
+      <button class="shape-btn" draggable="true" data-shape="system" title="Sistema">
+        <span class="shape-preview shape-system"></span>
+        <span class="shape-label">Sistema</span>
+      </button>
+      <button class="shape-btn" draggable="true" data-shape="end" title="Fin">
+        <span class="shape-preview shape-end"></span>
+        <span class="shape-label">Fin</span>
+      </button>
+
+      <div class="toolbar-section-title">Conexión</div>
+      <button id="btnConnect" class="shape-btn shape-btn-action" title="Modo conexión (C)">
+        <span class="shape-preview">↘</span>
+        <span class="shape-label">Conectar</span>
+      </button>
+      <button id="btnDelete" class="shape-btn shape-btn-action" title="Eliminar selección (Supr)">
+        <span class="shape-preview">✕</span>
+        <span class="shape-label">Eliminar</span>
+      </button>
+
+      <div class="toolbar-section-title">Layout</div>
+      <button id="btnAutoLayout" class="shape-btn shape-btn-action" title="Auto-layout">
+        <span class="shape-preview">⇲</span>
+        <span class="shape-label">Auto-layout</span>
+      </button>
+    </aside>
+
+    <!-- ====== CANVAS ====== -->
+    <section class="canvas-wrapper" id="canvasArea">
+      <!-- Capa con scroll: solo el lienzo se desplaza; barra de estado y botones quedan anclados -->
+      <div class="canvas-scroll" id="canvasWrapper">
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5"
+                  markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8 5 L 0 8.5 Z" fill="#6B6B6B"/>
+          </marker>
+          <marker id="arrow-open" viewBox="0 0 10 10" refX="8" refY="5"
+                  markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8 5 L 0 8.5" fill="none" stroke="#888888" stroke-width="1.2"/>
+          </marker>
+          <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="0.6" cy="0.6" r="0.6" fill="#D6D6D6"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid)" id="gridBg"/>
+        <g id="swimlanesLayer"></g>
+        <g id="edgesLayer"></g>
+        <g id="nodesLayer"></g>
+        <g id="laneHeadersLayer"></g>
+      </svg>
+      <div class="canvas-hint" id="canvasHint">
+        <div class="onboard-card">
+          <div class="onboard-title">Empieza tu levantamiento</div>
+          <div class="onboard-sub">Tres formas de crear el flujograma del proceso</div>
+          <div class="onboard-steps">
+            <button class="onboard-step" id="onbIngest">
+              <span class="onboard-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+              <span class="onboard-step-t">Ingestar fuente</span>
+              <span class="onboard-step-d">Audio de entrevista, notas, documento o event log CSV</span>
+            </button>
+            <button class="onboard-step" id="onbDemo">
+              <span class="onboard-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/><path d="M13 3l2.4 6.1L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"/></svg></span>
+              <span class="onboard-step-t">Cargar ejemplo</span>
+              <span class="onboard-step-d">Proceso demo completo (pains, KPIs, simulación) para explorar</span>
+            </button>
+            <button class="onboard-step" id="onbDraw">
+              <span class="onboard-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.6 7.6"/><circle cx="11" cy="11" r="2"/></svg></span>
+              <span class="onboard-step-t">Dibujar manual</span>
+              <span class="onboard-step-d">Arrastra shapes de la barra izquierda o usa el copiloto IA</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      </div><!-- /.canvas-scroll -->
+      <div class="canvas-history" id="canvasHistory">
+        <button id="btnUndo" title="Deshacer (Ctrl/⌘ Z)" aria-label="Deshacer el último cambio" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-4"/></svg>
+        </button>
+        <button id="btnRedo" title="Rehacer (Ctrl/⌘ Y · Ctrl/⌘ Shift Z)" aria-label="Rehacer el cambio deshecho" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4"/></svg>
+        </button>
+      </div>
+      <button id="btnPresent" class="btn-present" title="Modo presentación (oculta paneles, maximiza el diagrama)">⛶ Presentar</button>
+      <button id="btnLegend" class="btn-legend" title="Mostrar/ocultar la leyenda de nomenclatura BPMN">⌕ Leyenda BPMN</button>
+      <button id="btnTogglePanel" class="btn-toggle-panel" title="Ocultar/mostrar el panel derecho (Props, Pains, KPIs…)">⇥ Ocultar panel</button>
+      <div id="bpmnLegend" class="bpmn-legend" hidden>
+        <div class="bpmn-legend-head">
+          <strong>Nomenclatura BPMN 2.0</strong>
+          <button id="btnLegendClose" class="bpmn-legend-close" title="Cerrar" aria-label="Cerrar leyenda">✕</button>
+        </div>
+        <div class="bpmn-legend-body">
+          <div class="legend-col">
+            <h5>Formas y flujos</h5>
+            <div class="legend-row"><span class="lg-shape lg-task"></span>Actividad / tarea</div>
+            <div class="legend-row"><span class="lg-shape lg-system"></span>Tarea de sistema</div>
+            <div class="legend-row"><span class="lg-shape lg-diamond"></span>Decisión / gateway</div>
+            <div class="legend-row"><span class="lg-shape lg-doc"></span>Documento</div>
+            <div class="legend-row"><span class="lg-shape lg-data"></span>Datos / registro</div>
+            <div class="legend-row"><span class="lg-flow lg-seq"></span>Flujo de secuencia</div>
+            <div class="legend-row"><span class="lg-flow lg-msg"></span>Flujo de mensaje (entre carriles)</div>
+          </div>
+          <div class="legend-col">
+            <h5>Eventos (círculos)</h5>
+            <div class="legend-row"><span class="lg-ev lg-start">✉</span>Inicio (mensaje)</div>
+            <div class="legend-row"><span class="lg-ev lg-inter">⏱</span>Intermedio · doble anillo (timer)</div>
+            <div class="legend-row"><span class="lg-ev lg-end">⚡</span>Fin (error)</div>
+            <div class="legend-row"><span class="lg-ev lg-inter">▲</span>Señal (broadcast 1→N)</div>
+            <div class="legend-row"><span class="lg-ev lg-end lg-term">●</span>Terminación (corta la instancia)</div>
+            <div class="legend-row"><span class="lg-ev lg-boundary">⏱</span>De borde (SLA/excepción sobre tarea)</div>
+            <div class="legend-note">Contorno = catch (recibe) · Relleno = throw (lanza) · Punteado = no interrumpe</div>
+          </div>
+          <div class="legend-col">
+            <h5>Gateways y marcadores</h5>
+            <div class="legend-row"><span class="lg-gw">✕</span>Exclusivo XOR (un camino)</div>
+            <div class="legend-row"><span class="lg-gw">＋</span>Paralelo AND (fork/join)</div>
+            <div class="legend-row"><span class="lg-gw">○</span>Inclusivo OR (uno o varios)</div>
+            <div class="legend-row"><span class="lg-mk">⊞</span>Marcador: subproceso</div>
+            <div class="legend-row"><span class="lg-mk">↻</span>Marcador: loop (cíclica)</div>
+            <div class="legend-row"><span class="lg-mk">‖‖</span>Marcador: multi-instancia</div>
+            <div class="legend-note">Las tareas llevan chip de color + código [USR-01].</div>
+          </div>
+        </div>
+      </div>
+      <div class="canvas-statusbar">
+        <span id="statusNodes">0 nodos</span>
+        <span id="statusEdges">0 conexiones</span>
+        <span id="statusMode">Modo edición</span>
+        <span id="statusSaved"><span class="dot"></span>Guardado</span>
+        <div class="zoom-controls" id="zoomControls" title="Zoom · Ctrl/⌘ + rueda del mouse para acercar sobre el cursor · tecla F para ajustar">
+          <button id="btnZoomOut" title="Alejar (Ctrl/⌘ −)" aria-label="Alejar zoom">−</button>
+          <button id="btnZoomLevel" title="Restablecer a 100% (Ctrl/⌘ 0)" aria-label="Nivel de zoom; clic para restablecer a 100%">100%</button>
+          <button id="btnZoomIn" title="Acercar (Ctrl/⌘ +)" aria-label="Acercar zoom">＋</button>
+          <button id="btnZoomFit" title="Ajustar todo el proceso a la pantalla (tecla F)" aria-label="Ajustar todo el proceso a la pantalla">⤢ Ajustar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====== RIGHT PANEL (TABS) ====== -->
+    <aside class="panel-right">
+      <nav class="tabs">
+        <button class="tab active" data-tab="properties" title="Propiedades del nodo">Props</button>
+        <button class="tab" data-tab="pains" title="Pain points">Pains</button>
+        <button class="tab" data-tab="kpis" title="Librería de KPIs">KPIs</button>
+        <button class="tab" data-tab="sim" title="Simulador FTE y lead time">Sim</button>
+        <button class="tab" data-tab="validations" title="Validaciones MBB · linter">Lint <span id="lintBadge" class="lint-badge" hidden>0</span></button>
+        <button class="tab" data-tab="copilot" title="Copiloto IA">IA</button>
+      </nav>
+
+      <!-- TAB: PROPIEDADES -->
+      <section class="tab-panel active" data-panel="properties">
+        <div id="propsEmpty" class="empty-state">
+          Selecciona un nodo para ver sus propiedades.
+        </div>
+        <div id="propsForm" hidden>
+          <div class="props-grid-2">
+            <label>Tipo de bloque BPMN
+              <select id="propNodeType">
+                <option value="start">● Inicio</option>
+                <option value="intermediate">◎ Evento intermedio</option>
+                <option value="task">▭ Actividad</option>
+                <option value="system">▭ Sistema</option>
+                <option value="decision">◇ Decisión / Gateway</option>
+                <option value="document">▤ Documento</option>
+                <option value="data">▱ Data</option>
+                <option value="end">◉ Fin</option>
+              </select>
+            </label>
+            <label>Código actividad
+              <input type="text" id="propActivityCode" placeholder="USR-27" />
+            </label>
+          </div>
+          <label id="propGatewayWrap" hidden>Tipo de gateway BPMN
+            <select id="propGatewayType">
+              <option value="exclusive">✕ Exclusivo (XOR — un solo camino)</option>
+              <option value="parallel">＋ Paralelo (AND — todos los caminos)</option>
+              <option value="inclusive">○ Inclusivo (OR — uno o varios)</option>
+            </select>
+          </label>
+          <label id="propEventWrap" hidden>Tipo de evento BPMN
+            <select id="propEventType">
+              <option value="none">— Simple (ninguno)</option>
+              <option value="message">✉ Mensaje</option>
+              <option value="timer">⏱ Temporizador (espera)</option>
+              <option value="error">⚡ Error</option>
+              <option value="signal">▲ Señal</option>
+            </select>
+          </label>
+          <label id="propTerminateWrap" hidden class="prop-check">
+            <input type="checkbox" id="propTerminate" />
+            <span>Evento de terminación ⬤ <span style="text-transform:none;color:var(--gray-500);font-weight:400">— corta toda la instancia</span></span>
+          </label>
+          <label>Etiqueta · <span style="text-transform:none;color:var(--gray-500);font-weight:400">verbo + objeto</span>
+            <input type="text" id="propLabel" placeholder="Ej. Validar identidad del cliente" />
+            <div id="propLabelHint" class="field-hint" hidden></div>
+          </label>
+          <label>Tipo de tarea (marcador BPMN)
+            <select id="propExecType">
+              <option value="">— Selecciona —</option>
+            </select>
+            <div id="propExecHint" class="field-hint" hidden></div>
+          </label>
+          <label id="propMarkerWrap">Marcador de actividad BPMN
+            <select id="propMarker">
+              <option value="none">— Tarea simple</option>
+              <option value="subprocess">⊞ Subproceso (colapsado)</option>
+              <option value="loop">↻ Loop (cíclica)</option>
+              <option value="multiinstance">‖ Multi-instancia (paralela)</option>
+              <option value="multiinstance-seq">≡ Multi-instancia (secuencial)</option>
+            </select>
+          </label>
+          <label id="propBoundaryWrap">Evento de borde BPMN <span style="text-transform:none;color:var(--gray-500);font-weight:400">— excepción/SLA sobre la tarea</span>
+            <select id="propBoundary">
+              <option value="none">— Ninguno</option>
+              <option value="timer|true">⏱ Timer — interrumpe</option>
+              <option value="timer|false">⏱ Timer — no interrumpe (punteado)</option>
+              <option value="error|true">⚡ Error — interrumpe</option>
+              <option value="message|false">✉ Mensaje — no interrumpe (punteado)</option>
+            </select>
+          </label>
+          <label>Responsable / Rol
+            <input type="text" id="propOwner" placeholder="Ej. Analista back office" />
+          </label>
+          <label>Sistema soporte
+            <input type="text" id="propSystem" placeholder="Ej. SAP, Salesforce" />
+          </label>
+          <div class="props-grid-2">
+            <label>Tiempo (min)
+              <input type="number" id="propTime" min="0" step="1" />
+            </label>
+            <label>Volumen / mes
+              <input type="number" id="propVolume" min="0" step="1" />
+            </label>
+          </div>
+          <div class="props-grid-2">
+            <label>Valor añadido
+              <select id="propVA">
+                <option value="">—</option>
+                <option value="VA">VA — Valor Añadido</option>
+                <option value="BVA">BVA — Business Value Added</option>
+                <option value="NVA">NVA — No Value Added</option>
+              </select>
+            </label>
+            <label>SLA
+              <input type="text" id="propSla" placeholder="Ej. ≤ 2h" />
+            </label>
+          </div>
+          <label>Documentos entrada
+            <input type="text" id="propDocsIn" placeholder="Ej. DNI, comprobante de ingresos" />
+          </label>
+          <label>Documentos salida
+            <input type="text" id="propDocsOut" placeholder="Ej. Contrato firmado, voucher" />
+          </label>
+          <label>Reglas / criterios de decisión
+            <textarea id="propRules" rows="2" placeholder="Lógica condicional, criterios de aprobación, umbrales…"></textarea>
+          </label>
+          <label>Notas / comentarios adicionales
+            <textarea id="propNotes" rows="3"></textarea>
+          </label>
+        </div>
+      </section>
+
+      <!-- TAB: PAINS -->
+      <section class="tab-panel" data-panel="pains">
+        <div id="painsHeader" class="panel-section">
+          <h3>Pain points</h3>
+          <p class="panel-hint">Selecciona un nodo y captura sus dolores.</p>
+        </div>
+        <div id="painsList"></div>
+        <div id="painsAdd" hidden>
+          <select id="painCategory"></select>
+          <input type="text" id="painDescription" placeholder="Describe el pain..." />
+          <div class="pain-meta-row">
+            <label>Severidad
+              <select id="painSeverity">
+                <option value="1">1 — baja</option>
+                <option value="2">2</option>
+                <option value="3" selected>3 — media</option>
+                <option value="4">4</option>
+                <option value="5">5 — crítica</option>
+              </select>
+            </label>
+            <label>Frecuencia
+              <select id="painFrequency">
+                <option value="1">1 — rara</option>
+                <option value="2">2</option>
+                <option value="3" selected>3 — media</option>
+                <option value="4">4</option>
+                <option value="5">5 — constante</option>
+              </select>
+            </label>
+          </div>
+          <button id="btnAddPain" class="btn btn-primary btn-block">+ Agregar pain</button>
+        </div>
+      </section>
+
+      <!-- TAB: KPIs -->
+      <section class="tab-panel" data-panel="kpis">
+        <div class="panel-section">
+          <h3>Librería de KPIs</h3>
+          <input type="text" id="kpiSearch" placeholder="Buscar KPI..." class="search-input" />
+          <select id="kpiFilterIndustry" class="filter-select">
+            <option value="">Todas las industrias</option>
+          </select>
+        </div>
+        <div id="kpiList" class="kpi-list"></div>
+      </section>
+
+      <!-- TAB: SIMULADOR -->
+      <section class="tab-panel" data-panel="sim">
+        <div class="panel-section">
+          <h3>Simulador de carga</h3>
+          <p class="panel-hint">Calcula FTE, lead time y costo a partir de los <strong>tiempos</strong> y <strong>volúmenes</strong> capturados en cada actividad. Completa "Tiempo (min)" y "Volumen mensual" en la pestaña Props para alimentar la simulación.</p>
+        </div>
+
+        <div class="sim-params">
+          <label>Costo FTE mensual (PEN)
+            <input type="number" id="simCostFte" value="5000" min="0" step="500" />
+          </label>
+          <label>Horas hábiles/mes
+            <input type="number" id="simHours" value="160" min="1" step="1" />
+          </label>
+          <label>% reducción esperada to-be
+            <input type="number" id="simReduction" value="35" min="0" max="100" step="5" />
+          </label>
+        </div>
+
+        <div class="sim-actions">
+          <button id="btnSimWizard" class="btn btn-ghost btn-block">⚡ Capturar tiempos rápido (wizard)</button>
+          <button id="btnSimRun" class="btn btn-primary btn-block">▶ Ejecutar simulación</button>
+        </div>
+
+        <div id="simResults" class="sim-results" hidden></div>
+      </section>
+
+      <!-- TAB: VALIDACIONES (linter) -->
+      <section class="tab-panel" data-panel="validations">
+        <div class="panel-section">
+          <h3>Validaciones · Playbook MBB</h3>
+          <p class="panel-hint">Linter automático que verifica naming, layout, gateways, metadata y antipatrones. Severidad: <span class="sev-tag sev-critical">crítico</span> bloquea export · <span class="sev-tag sev-high">alto</span> · <span class="sev-tag sev-medium">medio</span> · <span class="sev-tag sev-low">bajo</span>.</p>
+        </div>
+        <div id="lintScore" class="lint-score"></div>
+        <div id="lintList"></div>
+      </section>
+
+      <!-- TAB: COPILOTO -->
+      <section class="tab-panel" data-panel="copilot">
+        <div class="panel-section">
+          <h3>Copiloto IA</h3>
+          <p class="panel-hint">Asistente para acelerar el levantamiento y diagnóstico.</p>
+        </div>
+        <div class="copilot-quick">
+          <button class="copilot-action" data-action="generate"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/><path d="M13 3l2.4 6.1L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"/></svg></span>Generar proceso desde descripción</button>
+          <button class="copilot-action" data-action="detect-pains"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>Detectar pains en el diagrama</button>
+          <button class="copilot-action" data-action="suggest-kpis"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V9M17 16v-7"/></svg></span>Sugerir KPIs aplicables</button>
+          <button class="copilot-action" data-action="propose-tobe"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v6h-6"/></svg></span>Proponer reingeniería to-be</button>
+          <button class="copilot-action" data-action="raci"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg></span>Generar matriz RACI</button>
+          <button class="copilot-action" data-action="sipoc"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg></span>Generar SIPOC</button>
+          <button class="copilot-action" data-action="impact-effort"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18M12 3v18"/></svg></span>Matriz impacto-esfuerzo</button>
+          <button class="copilot-action" data-action="whatif"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span>Comparador de escenarios (What-If)</button>
+          <button class="copilot-action" data-action="automation"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg></span>Oportunidades de automatización</button>
+          <button class="copilot-action" data-action="bottleneck"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>Cuello de botella / ruta crítica</button>
+          <button class="copilot-action" data-action="variants"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg></span>Análisis de variantes (event log)</button>
+          <button class="copilot-action" data-action="value-map"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>Mapa de valor Lean (VA/NVA)</button>
+          <button class="copilot-action" data-action="backlog"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>Backlog de iniciativas</button>
+          <button class="copilot-action" data-action="exec-summary"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg></span>Resumen ejecutivo</button>
+        </div>
+        <div id="copilotMessages" class="copilot-messages"></div>
+        <div class="copilot-input">
+          <textarea id="copilotPrompt" rows="2" placeholder="Comandos: 'agregar Validar score después de Registrar', 'eliminar Aprobar', 'renombrar X a Y', 'conectar X con Y', 'marcar X como automático'…"></textarea>
+          <button id="btnCopilotSend" class="btn btn-primary">Enviar</button>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <!-- ============== MODAL GENÉRICO ============== -->
+  <div id="modal" class="modal" hidden>
+    <div class="modal-card">
+      <h3 id="modalTitle"></h3>
+      <div id="modalBody"></div>
+      <div class="modal-actions">
+        <button id="modalCancel" class="btn btn-ghost">Cancelar</button>
+        <button id="modalOk" class="btn btn-primary">Aceptar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== MODAL DE INGESTA ============== -->
+  <div id="ingestModal" class="modal" hidden>
+    <div class="modal-card modal-card-lg">
+      <div class="modal-head">
+        <h3>📥 Ingestar fuentes — construir proceso automáticamente</h3>
+        <button id="ingestClose" class="modal-close" title="Cerrar">✕</button>
+      </div>
+      <p class="modal-sub">
+        ProcessIQ puede levantar el flujograma a partir de <strong>audio de entrevista</strong>,
+        <strong>notas/documentación del cliente</strong>, o <strong>event logs</strong> de sus sistemas.
+      </p>
+
+      <nav class="ingest-tabs">
+        <button class="itab active" data-itab="audio">🎤 Audio / Transcripción</button>
+        <button class="itab" data-itab="notes">📝 Notas / Documentación</button>
+        <button class="itab" data-itab="eventlog">🗄 Event Log (Process Mining)</button>
+      </nav>
+
+      <!-- TAB AUDIO -->
+      <section class="ipanel active" data-ipanel="audio">
+        <p class="panel-hint">
+          Graba la entrevista en vivo (requiere micrófono y Chrome/Edge) o pega una transcripción existente.
+          ProcessIQ analizará el texto y construirá el flujograma as-is.
+        </p>
+        <div class="audio-controls">
+          <button id="btnRecStart" class="btn btn-primary">🔴 Grabar</button>
+          <button id="btnRecStop" class="btn btn-ghost" disabled>⏹ Detener</button>
+          <span id="recStatus" class="rec-status">listo</span>
+        </div>
+        <textarea id="audioTranscript" rows="10" placeholder="La transcripción aparecerá aquí. También puedes pegar texto directamente."></textarea>
+        <div class="ingest-actions">
+          <button id="btnIngestAudio" class="btn btn-primary">Generar proceso desde transcripción →</button>
+        </div>
+      </section>
+
+      <!-- TAB NOTES -->
+      <section class="ipanel" data-ipanel="notes">
+        <p class="panel-hint">
+          Pega notas de levantamiento, manuales de procedimiento, descripciones del cliente o cualquier texto que
+          describa el proceso paso a paso. Una oración = una posible actividad.
+        </p>
+        <div class="notes-toolbar">
+          <button id="btnLoadDoc" class="btn btn-ghost btn-mini" title="Carga un archivo de texto (.txt, .md, .csv)">📄 Cargar documento</button>
+          <button id="btnLoadSample" class="btn btn-ghost btn-mini" title="Carga un proceso de ejemplo para demo">✨ Cargar ejemplo</button>
+          <input id="docFileInput" type="file" accept=".txt,.md,.csv,.text" hidden />
+          <span id="docFileName" class="muted-inline"></span>
+        </div>
+        <textarea id="notesInput" rows="13" placeholder="Ejemplo:
+1. El cliente solicita el servicio a través del portal web.
+2. El asesor comercial valida los datos y registra la solicitud en Salesforce.
+3. Si el monto supera 50,000 USD se requiere aprobación del gerente comercial.
+4. Operaciones recibe la solicitud aprobada y procede a la activación en el core.
+5. Se notifica al cliente y se cierra el caso.
+
+Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
+        <div class="ingest-actions">
+          <button id="btnIngestNotes" class="btn btn-primary">Generar proceso desde notas →</button>
+        </div>
+      </section>
+
+      <!-- TAB EVENT LOG -->
+      <section class="ipanel" data-ipanel="eventlog">
+        <p class="panel-hint">
+          Sube un <strong>event log</strong> en CSV con columnas mínimas: <code>case_id, activity, timestamp</code>
+          (opcional: <code>resource</code>). ProcessIQ ejecutará un <em>process discovery</em> ligero —
+          identifica actividades únicas y transiciones más frecuentes (estilo alpha miner).
+        </p>
+        <div class="csv-controls">
+          <input type="file" id="csvFile" accept=".csv,.tsv,.txt" />
+          <button id="btnCsvSample" class="btn btn-ghost">📋 Usar muestra</button>
+        </div>
+        <div id="csvPreview" class="csv-preview" hidden></div>
+        <div id="csvMapping" class="csv-mapping" hidden>
+          <label>Columna case_id <select id="mapCase"></select></label>
+          <label>Columna activity <select id="mapAct"></select></label>
+          <label>Columna timestamp <select id="mapTs"></select></label>
+          <label>Columna resource (opcional) <select id="mapRes"></select></label>
+        </div>
+        <div class="ingest-actions">
+          <button id="btnIngestCsv" class="btn btn-primary" disabled>Descubrir proceso →</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+  <script src="kpi-library.js?v=1.5.2"></script>
+  <script src="app.js?v=1.5.2"></script>
+</body>
+</html>

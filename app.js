@@ -4731,8 +4731,42 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       processBody += `    <bpmn:sequenceFlow id="${e.id}" sourceRef="${e.from}" targetRef="${e.to}"${e.label ? ` name="${esc(e.label)}"` : ''} />\n`;
     });
 
+    // ============ SWIMLANES (laneSet por responsable) ============
+    const laneList = (state._lanes && state._lanes.list) ? state._lanes.list : [];
+    const laneOf = (state._lanes && state._lanes.laneOf) ? state._lanes.laneOf : {};
+    if (laneList.length > 0) {
+      let laneSetXml = '    <bpmn:laneSet id="LaneSet_1">\n';
+      laneList.forEach((laneName, li) => {
+        const refs = [];
+        state.nodes.forEach(n => {
+          if ((laneOf[n.id] || '') === laneName) {
+            refs.push(`        <bpmn:flowNodeRef>${n.id}</bpmn:flowNodeRef>`);
+            if (n.boundary) refs.push(`        <bpmn:flowNodeRef>${n.id}_be</bpmn:flowNodeRef>`);
+          }
+        });
+        laneSetXml += `      <bpmn:lane id="Lane_${li + 1}" name="${esc(laneName)}">\n` +
+                      (refs.length ? refs.join('\n') + '\n' : '') +
+                      `      </bpmn:lane>\n`;
+      });
+      laneSetXml += '    </bpmn:laneSet>\n';
+      processBody = laneSetXml + processBody;   // laneSet va antes de los flowElements (esquema BPMN)
+    }
+
     // ============ BPMN DI (visual interchange) ============
     let diShapes = '';
+    // DI de los carriles (bandas horizontales detrás de los nodos)
+    if (laneList.length > 0) {
+      const allMaxX = Math.max(...state.nodes.map(n => n.x + n.w), 0);
+      laneList.forEach((laneName, li) => {
+        const ms = state.nodes.filter(n => (laneOf[n.id] || '') === laneName);
+        if (!ms.length) return;
+        const y0 = Math.min(...ms.map(n => n.y)) - 18;
+        const y1 = Math.max(...ms.map(n => n.y + n.h)) + 18;
+        diShapes += `      <bpmndi:BPMNShape id="Lane_${li + 1}_di" bpmnElement="Lane_${li + 1}" isHorizontal="true">\n` +
+                    `        <dc:Bounds x="0" y="${Math.round(y0)}" width="${Math.round(allMaxX + 40)}" height="${Math.round(y1 - y0)}" />\n` +
+                    `      </bpmndi:BPMNShape>\n`;
+      });
+    }
     state.nodes.forEach(n => {
       diShapes += `      <bpmndi:BPMNShape id="${n.id}_di" bpmnElement="${n.id}">\n` +
                   `        <dc:Bounds x="${Math.round(n.x)}" y="${Math.round(n.y)}" width="${Math.round(n.w)}" height="${Math.round(n.h)}" />\n` +

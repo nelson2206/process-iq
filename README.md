@@ -1,4 +1,7 @@
 # ProcessIQ
+
+**🌐 App en vivo: https://nelson2206.github.io/process-iq/** · [Repo](https://github.com/nelson2206/process-iq)
+
 **Plataforma interna de diagramación, diagnóstico y reingeniería de procesos.**
 Minsait Business Consulting · Perú · **v1.5.2** (BPMN 2.0 completo y 100% editable por UI —incluidos eventos de borde— consistente en canvas, leyendas y PPTX + leyenda y zoom + UI colapsable + deshacer/rehacer + header responsive y agrupado + pase de diseño con iconos SVG + showcase 27 nodos: barra de shapes comprimible · panel derecho ocultable · zoom con rueda/atajos · marcadores de tarea, gateways XOR/AND/OR, eventos message/timer/error/signal/terminate catch+throw · 10 ejemplos en 8 verticales · analítica 2026: what-if, automatización, cuello de botella, variantes)
 

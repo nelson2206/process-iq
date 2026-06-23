@@ -21,9 +21,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=1.5.6" />
+  <link rel="stylesheet" href="styles.css?v=1.5.7" />
 </head>
 <body>
+
+  <!-- Aviso para pantallas estrechas (link público abierto en móvil) -->
+  <div id="mobileNotice" class="mobile-notice" hidden>
+    <div class="mobile-notice-card">
+      <div class="mobile-notice-mark">M</div>
+      <h2>ProcessIQ está optimizado para escritorio</h2>
+      <p>Es un diagramador de procesos con paneles de edición y un lienzo amplio: la mejor experiencia es en una pantalla grande (laptop o monitor).</p>
+      <button id="btnMobileContinue" class="mobile-notice-btn">Continuar de todos modos</button>
+      <div class="mobile-notice-sub">Minsait · Business Consulting · Perú</div>
+    </div>
+  </div>
 
   <!-- ============== HEADER ============== -->
   <header class="app-header">
@@ -636,7 +647,7 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
-  <script src="kpi-library.js?v=1.5.6"></script>
-  <script src="app.js?v=1.5.6"></script>
+  <script src="kpi-library.js?v=1.5.7"></script>
+  <script src="app.js?v=1.5.7"></script>
 </body>
 </html>

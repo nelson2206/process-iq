@@ -63,6 +63,7 @@
     attachOnboardListeners();
     attachZoomInteractions();
     attachPresentListeners();
+    attachMobileNotice();
     loadFromStorage();
     // Si hay nodos pero faltan lanes (versión vieja en localStorage), genera layout
     if (state.nodes.length > 0 && !state._lanes) {
@@ -6599,6 +6600,15 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       `• Top inicio: *${Object.entries(startActs).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—'}*\n` +
       `• Top fin: *${Object.entries(endActs).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—'}*\n\n` +
       `El número en cada conexión = frecuencia observada. Las actividades con alta frecuencia que reaparecen son indicio de **reprocesos** (pain candidato).`);
+  }
+
+  // Aviso para pantallas estrechas (link público abierto en móvil)
+  function attachMobileNotice() {
+    const notice = $('#mobileNotice');
+    if (!notice) return;
+    if (window.innerWidth < 720) notice.hidden = false;
+    const cont = $('#btnMobileContinue');
+    if (cont) cont.addEventListener('click', () => { notice.hidden = true; });
   }
 
   // =================== BOOT ===================

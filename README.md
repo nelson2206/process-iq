@@ -24,6 +24,8 @@ Abre el **[link en vivo](https://nelson2206.github.io/process-iq/)** en una lapt
 <details>
 <summary>📜 <b>Historial de versiones</b> (notas detalladas de cada release)</summary>
 
+> ♿ **Fix de contraste WCAG AA (v1.6.1)**: audit de contraste (computado headless) encontró que el **naranja de marca #FF4713 (3.41:1)** se usaba como **texto pequeño** sobre blanco en 4 sitios (headers de la leyenda BPMN, benchmark de KPIs, target del linter, estado de grabación) — por debajo del mínimo AA de 4.5:1. Se añadió un token **--indra-primary-text (#C2330C, 5.57:1)** para esos textos, manteniendo el naranja brillante para rellenos/bordes/acentos/iconos (donde 3:1 basta). Los grises del sistema ya cumplían (gray-500 = 5.33:1). El header oscuro: 19.8:1.
+
 > 🗂️ **Galería de ejemplos accesible + limpieza de emojis (v1.6.0)**: el selector de los **12 ejemplos demo** ahora se abre también desde **Ingestar → "Ver ejemplos"** (antes solo desde la pantalla inicial vacía) — útil para explorar varios procesos en el demo público sin pasar por "Nuevo". Se reemplazaron los últimos emojis del modal de ingesta (✨/📄) y el título de la galería por iconos SVG / texto. Verificado headless: la galería abre con 13 entradas, 0 emojis en el toolbar, 0 errores.
 
 > 🔬 **v1.0** añade las 4 funcionalidades del benchmark 2026 ([`BENCHMARK_NUEVAS_FUNCIONALIDADES.md`](BENCHMARK_NUEVAS_FUNCIONALIDADES.md)):

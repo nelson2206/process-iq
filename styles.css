@@ -6,6 +6,7 @@
   /* Brand */
   --indra-primary:     #FF4713;   /* magenta corporativo — uso restringido (header rule, primary CTA, focus ring, tab active) */
   --indra-primary-dk:  #D63A0E;
+  --indra-primary-text: #C2330C;  /* naranja para TEXTO pequeño sobre blanco — 5.57:1 (WCAG AA) */
   --indra-primary-tint:rgba(255, 71, 19, 0.08);   /* fondos hover suaves */
   --indra-primary-ring:rgba(255, 71, 19, 0.18);   /* focus ring */
 
@@ -728,7 +729,7 @@ body.present-mode .btn-legend { right: 132px; }
 }
 .bpmn-legend-close:hover { background: var(--gray-150); color: var(--gray-900); }
 .bpmn-legend-body { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; padding: 14px; }
-.legend-col h5 { margin: 0 0 8px; font-size: var(--font-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--indra-primary); font-weight: 700; }
+.legend-col h5 { margin: 0 0 8px; font-size: var(--font-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--indra-primary-text); font-weight: 700; }
 .legend-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--gray-800); margin-bottom: 7px; line-height: 1.25; }
 .legend-note { font-size: 10px; font-style: italic; color: var(--gray-500); margin-top: 4px; line-height: 1.3; }
 .lg-shape { flex: 0 0 auto; width: 26px; height: 17px; border: 1px solid #414141; border-radius: 3px; background: #fff; }
@@ -1258,7 +1259,7 @@ body.present-mode .btn-present {
 
 .kpi-card .kpi-bench {
   font-size: 11px;
-  color: var(--indra-primary);
+  color: var(--indra-primary-text);
   margin-top: 4px;
   font-weight: 600;
 }
@@ -1608,7 +1609,7 @@ body.present-mode .btn-present {
 .lint-item .lint-body { flex: 1; }
 .lint-item .lint-title { font-weight: 600; color: var(--gray-950); }
 .lint-item .lint-detail { color: var(--gray-600); margin-top: 2px; font-size: var(--font-xs); }
-.lint-item .lint-target { font-style: italic; color: var(--indra-primary); margin-top: 4px; font-size: var(--font-xs); }
+.lint-item .lint-target { font-style: italic; color: var(--indra-primary-text); margin-top: 4px; font-size: var(--font-xs); }
 
 .lint-empty {
   text-align: center;
@@ -2166,7 +2167,7 @@ body.present-mode .btn-present {
 }
 
 .rec-status.recording {
-  color: var(--indra-primary);
+  color: var(--indra-primary-text);
   font-weight: 600;
   font-style: normal;
 }

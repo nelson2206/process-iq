@@ -1,9 +1,29 @@
 # ProcessIQ
 
-**🌐 App en vivo: https://nelson2206.github.io/process-iq/** · [Repo](https://github.com/nelson2206/process-iq)
+### 🌐 App en vivo → **https://nelson2206.github.io/process-iq/**
 
-**Plataforma interna de diagramación, diagnóstico y reingeniería de procesos.**
-Minsait Business Consulting · Perú · **v1.5.4** (BPMN 2.0 completo, 100% editable por UI y export XML de alta fidelidad con swimlanes —incluidos eventos de borde— consistente en canvas, leyendas y PPTX + leyenda y zoom + UI colapsable + deshacer/rehacer + header responsive y agrupado + pase de diseño con iconos SVG + showcase 27 nodos: barra de shapes comprimible · panel derecho ocultable · zoom con rueda/atajos · marcadores de tarea, gateways XOR/AND/OR, eventos message/timer/error/signal/terminate catch+throw · 10 ejemplos en 8 verticales · analítica 2026: what-if, automatización, cuello de botella, variantes)
+Herramienta web de **diagramación, diagnóstico y reingeniería de procesos** con nomenclatura **BPMN 2.0**, para acelerar el levantamiento de procesos en **Minsait Business Consulting · Perú**.
+
+Convierte **audio de entrevistas, notas o event logs (CSV)** en flujogramas automáticamente, detecta *pains*, referencia KPIs de industria, simula escenarios To-Be y exporta a **PPTX / BPMN / SVG / PNG / Word** — todo client-side, sin backend.
+
+## ✨ Capacidades clave
+
+- **BPMN 2.0 completo y editable** — tareas (user/manual/service/send/script), gateways **XOR / AND / OR**, eventos (mensaje / timer / error / señal / terminación, *catch* + *throw*), **eventos de borde**, marcadores (subproceso / loop / multi-instancia) y **swimlanes** por responsable. Consistente en canvas, leyenda y export.
+- **Ingesta multi-fuente** — voz (audio), notas (NLP) o **event log CSV → process discovery** (alpha-miner con análisis de variantes).
+- **Analítica 2026** — comparador **What-If**, scoring de **automatización**, **cuello de botella** + ruta crítica, **variantes**, mapa de valor **Lean (VA/NVA)**, **backlog** de iniciativas y edición por **lenguaje natural**.
+- **12 ejemplos demo** en 8 verticales (Banca · Seguros · Retail · Manufactura · Salud · Utilities · Telecom · Sector Público) + un showcase de 27 nodos.
+- **Export** a SVG · PNG · **BPMN 2.0** (Bizagi/Camunda) · **PPTX** (con slide de leyenda) · Word · JSON.
+- **UX** — auto-layout sin cruces, zoom (rueda/atajos/ajustar), **deshacer/rehacer**, paneles colapsables, leyenda BPMN y atajos de teclado.
+
+## ▶️ Cómo usar
+
+Abre el **[link en vivo](https://nelson2206.github.io/process-iq/)** en una laptop o monitor. En la pantalla inicial elige: **Cargar ejemplo** (explora un demo completo), **Ingestar** (audio / notas / CSV) o **Dibujar manual** (arrastra shapes). *Optimizado para escritorio.*
+
+---
+
+<details>
+<summary>📜 <b>Historial de versiones</b> (notas detalladas de cada release)</summary>
+
 
 > 🔬 **v1.0** añade las 4 funcionalidades del benchmark 2026 ([`BENCHMARK_NUEVAS_FUNCIONALIDADES.md`](BENCHMARK_NUEVAS_FUNCIONALIDADES.md)):
 > - **Comparador What-If** — compara escenarios To-Be (FTE/lead time/costo/ahorro) eligiendo palancas.
@@ -144,6 +164,8 @@ Benchmark de herramientas de IA → [`BENCHMARK_AI_TOOLS.md`](BENCHMARK_AI_TOOLS
   - **Estratégico** (reimaginar): self-service en captura, IA-assisted en validaciones/scoring.
   - Resultado editable manualmente; el comparativo As-Is vs To-Be sale en el PPTX.
 - **Export a Informe Word** (`.doc`, inspirado en MBC "Generar Informe Word"): documento consultivo con portada Minsait, resumen ejecutivo, ficha del proceso, tabla de actividades BPMN (código + tipo + responsable + sistema + tiempo + VA/NVA), pain points priorizados, KPIs con benchmark, RACI/SIPOC/simulador (si existen), diagnóstico + recomendaciones por horizonte y guía de implementación. 100% local (HTML compatible con Word).
+
+</details>
 
 ---
 

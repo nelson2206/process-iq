@@ -64,6 +64,7 @@
     attachZoomInteractions();
     attachPresentListeners();
     attachMobileNotice();
+    restoreUiState();   // restaura paneles colapsados antes del primer render
     loadFromStorage();
     // Si hay nodos pero faltan lanes (versión vieja en localStorage), genera layout
     if (state.nodes.length > 0 && !state._lanes) {
@@ -1933,6 +1934,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       if (btn) { btn.textContent = collapsed ? '⇤ Mostrar panel' : '⇥ Ocultar panel'; btn.classList.toggle('active', collapsed); }
       // El lienzo cambió de ancho → reajusta el SVG tras la transición del grid
       render(); setTimeout(render, 220);
+      saveUiState();
     });
 
     // Comprimir/expandir la barra de shapes (formato compacto solo-iconos)
@@ -1941,7 +1943,34 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       const btn = $('#btnToggleToolbar');
       if (btn) { btn.classList.toggle('active', collapsed); btn.title = collapsed ? 'Expandir la barra de shapes' : 'Comprimir la barra de shapes'; }
       render(); setTimeout(render, 220);
+      saveUiState();
     });
+  }
+
+  // Persistencia del estado de la UI (paneles colapsados) entre recargas
+  const UI_KEY = 'processiq.ui';
+  function saveUiState() {
+    try {
+      localStorage.setItem(UI_KEY, JSON.stringify({
+        panelCollapsed: document.body.classList.contains('panel-collapsed'),
+        toolbarCollapsed: document.body.classList.contains('toolbar-collapsed')
+      }));
+    } catch (e) { /* ignore */ }
+  }
+  function restoreUiState() {
+    try {
+      const ui = JSON.parse(localStorage.getItem(UI_KEY) || '{}');
+      if (ui.panelCollapsed) {
+        document.body.classList.add('panel-collapsed');
+        const b = $('#btnTogglePanel');
+        if (b) { b.textContent = '⇤ Mostrar panel'; b.classList.add('active'); }
+      }
+      if (ui.toolbarCollapsed) {
+        document.body.classList.add('toolbar-collapsed');
+        const b = $('#btnToggleToolbar');
+        if (b) { b.classList.add('active'); b.title = 'Expandir la barra de shapes'; }
+      }
+    } catch (e) { /* ignore */ }
   }
 
   const ZOOM_MIN = 0.2, ZOOM_MAX = 3;

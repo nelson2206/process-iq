@@ -2066,7 +2066,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     const html = `<p class="panel-hint">Elige un proceso de ejemplo pre-cargado (con pains, KPIs y simulación) para explorar las capacidades.</p>
       <div class="examples-list">${examples.map((e, i) =>
         `<button class="example-item" data-ex="${i}"><span class="example-t">${e.t}</span><span class="example-d">${e.d}</span></button>`).join('')}</div>`;
-    openModal('✨ Cargar ejemplo', html, () => {});
+    openModal('Procesos de ejemplo', html, () => {});
     setTimeout(() => {
       document.querySelectorAll('.example-item').forEach(b => b.addEventListener('click', () => {
         examples[+b.dataset.ex].fn();
@@ -5869,10 +5869,11 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
 
     // Cargar ejemplo demo → proceso completo pre-poblado (para demostraciones a cliente)
     const sampleBtn = $('#btnLoadSample');
-    if (sampleBtn) sampleBtn.addEventListener('click', guardIngest(() => {
-      loadDemoProcess();
+    if (sampleBtn) sampleBtn.addEventListener('click', () => {
+      // Abre la galería completa de ejemplos (12 demos) — accesible también con un proceso ya cargado
       closeIngestModal();
-    }));
+      openExamplesModal();
+    });
 
     // CSV event log
     $('#csvFile').addEventListener('change', handleCsvFile);

@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=1.5.9" />
+  <link rel="stylesheet" href="styles.css?v=1.6.0" />
 </head>
 <body>
 
@@ -603,8 +603,14 @@
           describa el proceso paso a paso. Una oración = una posible actividad.
         </p>
         <div class="notes-toolbar">
-          <button id="btnLoadDoc" class="btn btn-ghost btn-mini" title="Carga un archivo de texto (.txt, .md, .csv)">📄 Cargar documento</button>
-          <button id="btnLoadSample" class="btn btn-ghost btn-mini" title="Carga un proceso de ejemplo para demo">✨ Cargar ejemplo</button>
+          <button id="btnLoadDoc" class="btn btn-ghost btn-mini" title="Carga un archivo de texto (.txt, .md, .csv)">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+            Cargar documento
+          </button>
+          <button id="btnLoadSample" class="btn btn-ghost btn-mini" title="Explora los 12 procesos de ejemplo (8 verticales)">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/><path d="M13 3l2.4 6.1L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"/></svg></span>
+            Ver ejemplos
+          </button>
           <input id="docFileInput" type="file" accept=".txt,.md,.csv,.text" hidden />
           <span id="docFileName" class="muted-inline"></span>
         </div>
@@ -647,7 +653,7 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
-  <script src="kpi-library.js?v=1.5.9"></script>
-  <script src="app.js?v=1.5.9"></script>
+  <script src="kpi-library.js?v=1.6.0"></script>
+  <script src="app.js?v=1.6.0"></script>
 </body>
 </html>

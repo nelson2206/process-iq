@@ -6,8 +6,6 @@ Herramienta web de **diagramación, diagnóstico y reingeniería de procesos** c
 
 Convierte **audio de entrevistas, notas o event logs (CSV)** en flujogramas automáticamente, detecta *pains*, referencia KPIs de industria, simula escenarios To-Be y exporta a **PPTX / BPMN / SVG / PNG / Word** — todo client-side, sin backend.
 
-> 🗂️ **Galería de ejemplos accesible + limpieza de emojis (v1.6.0)**: el selector de los **12 ejemplos demo** ahora se abre también desde **Ingestar → "Ver ejemplos"** (antes solo desde la pantalla inicial vacía) — útil para explorar varios procesos en el demo público sin pasar por "Nuevo". Se reemplazaron los últimos emojis del modal de ingesta (✨/📄) y el título de la galería por iconos SVG / texto, completando la consistencia del pase de diseño. Verificado headless: "Ver ejemplos" abre la galería con 13 entradas, 0 emojis en el toolbar, 0 errores.
-
 ## ✨ Capacidades clave
 
 - **BPMN 2.0 completo y editable** — tareas (user/manual/service/send/script), gateways **XOR / AND / OR**, eventos (mensaje / timer / error / señal / terminación, *catch* + *throw*), **eventos de borde**, marcadores (subproceso / loop / multi-instancia) y **swimlanes** por responsable. Consistente en canvas, leyenda y export.
@@ -26,6 +24,7 @@ Abre el **[link en vivo](https://nelson2206.github.io/process-iq/)** en una lapt
 <details>
 <summary>📜 <b>Historial de versiones</b> (notas detalladas de cada release)</summary>
 
+> 🗂️ **Galería de ejemplos accesible + limpieza de emojis (v1.6.0)**: el selector de los **12 ejemplos demo** ahora se abre también desde **Ingestar → "Ver ejemplos"** (antes solo desde la pantalla inicial vacía) — útil para explorar varios procesos en el demo público sin pasar por "Nuevo". Se reemplazaron los últimos emojis del modal de ingesta (✨/📄) y el título de la galería por iconos SVG / texto. Verificado headless: la galería abre con 13 entradas, 0 emojis en el toolbar, 0 errores.
 
 > 🔬 **v1.0** añade las 4 funcionalidades del benchmark 2026 ([`BENCHMARK_NUEVAS_FUNCIONALIDADES.md`](BENCHMARK_NUEVAS_FUNCIONALIDADES.md)):
 > - **Comparador What-If** — compara escenarios To-Be (FTE/lead time/costo/ahorro) eligiendo palancas.

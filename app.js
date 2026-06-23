@@ -5969,6 +5969,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     persist();
     autoLayout();  // top-to-bottom MBB
     render();
+    maybeFitOnLoad();   // encuadra el proceso generado desde notas/audio si desborda
     activateTab('copilot');
     copilotPost('ai',
       `He construido el flujograma desde la fuente **${source}**.\n\n` +
@@ -6586,6 +6587,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
 
     persist();
     autoLayout();
+    maybeFitOnLoad();   // encuadra el proceso descubierto si desborda la pantalla
 
     const totalCases = Object.keys(cases).length;
     activateTab('copilot');

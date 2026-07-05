@@ -1370,7 +1370,7 @@
       <div style="margin-bottom:10px"><strong>${escapeHtml(k.name)}</strong> <span style="color:#7A7A7A">(${escapeHtml(k.unit)})</span></div>
       <div style="background:#F8F8F8;padding:10px;border-radius:4px;margin-bottom:12px;font-size:12px">
         ${escapeHtml(k.description)}
-        <div style="margin-top:6px;color:#FF4713;font-weight:600">Benchmark sectorial: ${escapeHtml(k.benchmark)}</div>
+        <div style="margin-top:6px;color:#5B4FCF;font-weight:600">Benchmark sectorial: ${escapeHtml(k.benchmark)}</div>
       </div>
       <label style="display:block;margin-bottom:8px;font-size:12px;font-weight:600">Valor actual del cliente
         <input type="text" id="kpiActualValue" value="${escapeHtml(current.value || '')}" placeholder="ej. 6.2" style="width:100%;padding:7px;border:1px solid #ddd;border-radius:3px;margin-top:3px" />
@@ -4108,7 +4108,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 
     html += '</svg><div style="margin-top:12px"><strong>Leyenda</strong><ol style="margin:4px 0;padding-left:20px;font-size:12px">';
     allPains.forEach(p => {
-      html += `<li><strong>${escapeHtml(p.activity)}</strong>: ${escapeHtml(p.description)} <span style="color:#FF4713">(sev ${p.severity} · frec ${p.frequency})</span></li>`;
+      html += `<li><strong>${escapeHtml(p.activity)}</strong>: ${escapeHtml(p.description)} <span style="color:#b2a5ff">(sev ${p.severity} · frec ${p.frequency})</span></li>`;
     });
     html += '</ol></div>';
 
@@ -4275,7 +4275,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       <td style="font-size:11px">${escapeHtml(v.seq.length > 90 ? v.seq.slice(0, 88) + '…' : v.seq)}</td>
       <td style="text-align:center">${v.steps}</td>
       <td style="text-align:center"><b>${v.count}</b></td>
-      <td style="text-align:center;color:#FF4713"><b>${v.pct}%</b></td>
+      <td style="text-align:center;color:#b2a5ff"><b>${v.pct}%</b></td>
     </tr>`).join('');
     const html = `<p class="panel-hint"><b>${state._variants.length} variantes</b> en ${total} casos. La variante #1 es el "happy path"; las demás son excepciones/reprocesos — fuente directa de pains.</p>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -4475,7 +4475,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         <tr><td style="padding:6px;border:1px solid #eee">Lead time (min)</td><td style="padding:6px;border:1px solid #eee;text-align:center">${fmt(asis.leadTime)}</td><td style="padding:6px;border:1px solid #eee;text-align:center">${fmt(tobe.leadTime)}</td><td style="padding:6px;border:1px solid #eee;text-align:center">${delta(asis.leadTime, tobe.leadTime, true)}</td></tr>
         <tr><td style="padding:6px;border:1px solid #eee">Costo mensual</td><td style="padding:6px;border:1px solid #eee;text-align:center">${cur(asis.monthlyCost)}</td><td style="padding:6px;border:1px solid #eee;text-align:center">${cur(tobe.fteToBe * (parseFloat($('#simCostFte')?.value) || 5000))}</td><td style="padding:6px;border:1px solid #eee;text-align:center">—</td></tr>
       </table>
-      <div style="margin-top:12px;padding:12px;background:linear-gradient(135deg,#FF4713,#D63A0E);color:#fff;border-radius:8px;text-align:center">
+      <div style="margin-top:12px;padding:12px;background:linear-gradient(135deg,#ff0054,#b2a5ff);color:#fff;border-radius:8px;text-align:center">
         Ahorro anual del escenario<br><span style="font-size:24px;font-weight:700">${cur(annual)}</span><br>
         <span style="font-size:11px;opacity:.9">${fmt(fteSaved)} FTE liberados · lead time −${Math.round((1 - tobe.leadTime / Math.max(asis.leadTime, 0.01)) * 100)}%</span>
       </div>`;

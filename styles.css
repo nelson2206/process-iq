@@ -1477,11 +1477,18 @@ body.present-mode .btn-present {
   padding: var(--space-6);
   width: 90%;
   max-width: 520px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
   box-shadow: var(--shadow-lg);
   border: 1px solid var(--glass-brd);
   color: var(--nexus-text);
   animation: modalEnter var(--duration-slow) var(--ease-spring);
 }
+/* El título y los botones quedan fijos; sólo el cuerpo hace scroll */
+.modal-card > h3,
+.modal-card > .modal-actions { flex-shrink: 0; }
+#modalBody { overflow-y: auto; flex: 1 1 auto; min-height: 0; }
 
 @keyframes modalEnter {
   from { opacity: 0; transform: translateY(16px) scale(0.97); }

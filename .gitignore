@@ -5,3 +5,11 @@ desktop.ini
 *~
 .vscode/
 .idea/
+
+# Local preview / QA scratch (never commit)
+.claude/
+_smoke*.html
+_test_*
+*.docx
+*.pdf
+*.pptx

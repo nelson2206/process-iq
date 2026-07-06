@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=1.7.0" />
+  <link rel="stylesheet" href="styles.css?v=1.8.0" />
 </head>
 <body>
 
@@ -113,6 +113,10 @@
           <button data-export="word">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
             Word · informe del proceso
+          </button>
+          <button data-export="ficha">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="13" y2="15"/></svg>
+            Ficha de Proceso · formato corporativo
           </button>
         </div>
       </div>
@@ -319,6 +323,7 @@
         <button class="tab" data-tab="kpis" title="Librería de KPIs">KPIs</button>
         <button class="tab" data-tab="sim" title="Simulador FTE y lead time">Sim</button>
         <button class="tab" data-tab="validations" title="Validaciones MBB · linter">Lint <span id="lintBadge" class="lint-badge" hidden>0</span></button>
+        <button class="tab" data-tab="ficha" title="Ficha de proceso corporativa">Ficha</button>
         <button class="tab" data-tab="copilot" title="Copiloto IA">IA</button>
       </nav>
 
@@ -519,6 +524,76 @@
       </section>
 
       <!-- TAB: COPILOTO -->
+      <!-- TAB: FICHA DE PROCESO -->
+      <section class="tab-panel" data-panel="ficha">
+        <div class="panel-section">
+          <h3>Ficha de proceso</h3>
+          <p class="panel-hint">Metadatos corporativos de la ficha. Las <b>actividades, sistemas, responsables y el diagrama</b> se generan automáticamente desde el flujo del canvas.</p>
+        </div>
+        <div class="ficha-form">
+          <div class="props-grid-2">
+            <label>Código
+              <input type="text" id="fichaCode" placeholder="PR-DU-COM-02" />
+            </label>
+            <label>Versión
+              <input type="text" id="fichaVersion" placeholder="1" />
+            </label>
+          </div>
+          <label>Objetivo
+            <textarea id="fichaObjetivo" rows="2" placeholder="Describir las actividades y responsabilidades del proceso…"></textarea>
+          </label>
+          <label>Alcance · áreas involucradas
+            <input type="text" id="fichaAlcanceAreas" placeholder="Ventas de Lotes Urbanos, Administración de Ventas" />
+          </label>
+          <div class="props-grid-2">
+            <label>Inicia con
+              <input type="text" id="fichaAlcanceDesde" placeholder="(auto desde el nodo Inicio)" />
+            </label>
+            <label>Termina con
+              <input type="text" id="fichaAlcanceHasta" placeholder="(auto desde el nodo Fin)" />
+            </label>
+          </div>
+          <label>Incluye / excluye
+            <input type="text" id="fichaAlcanceIncluye" placeholder="Abarca lotes residenciales y de segunda vivienda" />
+          </label>
+          <label>Descripción (opcional)
+            <textarea id="fichaDescripcion" rows="2" placeholder="Contexto general del proceso…"></textarea>
+          </label>
+
+          <div class="ficha-list-hint">Gobernanza — <b>una fila por línea</b>, campos separados por <code>|</code>: <code>Rol | Cargo | Nombre | Fecha</code></div>
+          <label class="sr-label">Gobernanza
+            <textarea id="fichaGobernanza" rows="4" placeholder="Dueño | Jefe de Ventas | Carlos Rolleri | 10/02/2026&#10;Aprobador | VP Desarrollo Urbano | Carlos Conroy | 10/02/2026"></textarea>
+          </label>
+
+          <div class="ficha-list-hint">Sistemas de nivel proceso — <code>Sistema | Uso</code> (además, los sistemas de cada nodo se agregan solos)</div>
+          <label class="sr-label">Sistemas
+            <textarea id="fichaSistemas" rows="3" placeholder="ONBASE | Gestión documental&#10;SAP | ERP / cierre de venta"></textarea>
+          </label>
+
+          <div class="ficha-list-hint">Términos clave — <code>Término | Definición</code></div>
+          <label class="sr-label">Términos
+            <textarea id="fichaTerminos" rows="3" placeholder="Lead | Persona interesada que comparte su contacto&#10;Oportunidad | Potencial venta de lote a un prospecto"></textarea>
+          </label>
+
+          <div class="ficha-list-hint">Anexos — <code>Código | Nombre</code></div>
+          <label class="sr-label">Anexos
+            <textarea id="fichaAnexos" rows="3" placeholder="Anexo N°1 | DJ de conocimiento de clientes PN LAFT"></textarea>
+          </label>
+
+          <div class="ficha-list-hint">Control de cambios — <code>Versión | Fecha | Descripción</code></div>
+          <label class="sr-label">Control de cambios
+            <textarea id="fichaCambios" rows="3" placeholder="1 | 10/04/2023 | Actualización completa del documento"></textarea>
+          </label>
+
+          <div class="ficha-actions">
+            <button id="btnFichaPreview" class="btn btn-primary" title="Ver y descargar la ficha completa">
+              <span class="icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="13" y2="15"/></svg></span>
+              Generar ficha
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section class="tab-panel" data-panel="copilot">
         <div class="panel-section">
           <h3>Copiloto IA</h3>
@@ -603,17 +678,18 @@
           describa el proceso paso a paso. Una oración = una posible actividad.
         </p>
         <div class="notes-toolbar">
-          <button id="btnLoadDoc" class="btn btn-ghost btn-mini" title="Carga un archivo de texto (.txt, .md, .csv)">
+          <button id="btnLoadDoc" class="btn btn-ghost btn-mini" title="Carga Word, PDF, PowerPoint, texto o BPMN — se extrae y arma el flujo">
             <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
             Cargar documento
           </button>
-          <button id="btnLoadSample" class="btn btn-ghost btn-mini" title="Explora los 12 procesos de ejemplo (8 verticales)">
+          <button id="btnLoadSample" class="btn btn-ghost btn-mini" title="Explora los procesos de ejemplo">
             <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/><path d="M13 3l2.4 6.1L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"/></svg></span>
             Ver ejemplos
           </button>
-          <input id="docFileInput" type="file" accept=".txt,.md,.csv,.text" hidden />
+          <input id="docFileInput" type="file" accept=".txt,.md,.csv,.text,.docx,.doc,.pdf,.pptx,.ppt,.bpmn,.xml" hidden />
           <span id="docFileName" class="muted-inline"></span>
         </div>
+        <p class="format-hint">Formatos aceptados: <b>Word</b> (.docx) · <b>PDF</b> · <b>PowerPoint</b> (.pptx) · <b>texto</b> (.txt/.md) · <b>BPMN 2.0</b> (.bpmn/.xml). Los BPMN se importan como diagrama directo; el resto se convierte a texto para revisar antes de generar.</p>
         <textarea id="notesInput" rows="13" placeholder="Ejemplo:
 1. El cliente solicita el servicio a través del portal web.
 2. El asesor comercial valida los datos y registra la solicitud en Salesforce.
@@ -654,6 +730,6 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="kpi-library.js?v=1.6.1"></script>
-  <script src="app.js?v=1.7.0"></script>
+  <script src="app.js?v=1.8.0"></script>
 </body>
 </html>

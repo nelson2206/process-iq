@@ -9,10 +9,11 @@ Convierte **audio de entrevistas, notas o event logs (CSV)** en flujogramas auto
 ## ✨ Capacidades clave
 
 - **BPMN 2.0 completo y editable** — tareas (user/manual/service/send/script), gateways **XOR / AND / OR**, eventos (mensaje / timer / error / señal / terminación, *catch* + *throw*), **eventos de borde**, marcadores (subproceso / loop / multi-instancia) y **swimlanes** por responsable. Consistente en canvas, leyenda y export.
-- **Ingesta multi-fuente** — voz (audio), notas (NLP) o **event log CSV → process discovery** (alpha-miner con análisis de variantes).
+- **Ingesta multi-formato** — voz (audio), notas (NLP), **event log CSV → process discovery** (alpha-miner) y **carga de documentos**: **Word (.docx) · PDF · PowerPoint (.pptx) · texto** (se extraen a texto para revisar) y **BPMN 2.0 (.bpmn/.xml)** (import directo del diagrama, round-trip verificado).
+- **Ficha de Proceso corporativa** — genera el documento formal de 12 bloques (gobernanza, objetivo, alcance, indicadores, responsabilidades, **detalle de actividades con ruteo derivado del flujo**, sistemas, términos, anexos, control de cambios) con vista previa y export a Word. Entrenada con una ficha real (PR-DU-COM-02).
 - **Analítica 2026** — comparador **What-If**, scoring de **automatización**, **cuello de botella** + ruta crítica, **variantes**, mapa de valor **Lean (VA/NVA)**, **backlog** de iniciativas y edición por **lenguaje natural**.
 - **12 ejemplos demo** en 8 verticales (Banca · Seguros · Retail · Manufactura · Salud · Utilities · Telecom · Sector Público) + un showcase de 27 nodos.
-- **Export** a SVG · PNG · **BPMN 2.0** (Bizagi/Camunda) · **PPTX** (con slide de leyenda) · Word · JSON.
+- **Export** a SVG · PNG · **BPMN 2.0** (Bizagi/Camunda) · **PPTX** (con slide de leyenda) · Word · **Ficha de Proceso** · JSON.
 - **UX** — auto-layout sin cruces, zoom (rueda/atajos/ajustar), **deshacer/rehacer**, paneles colapsables, leyenda BPMN y atajos de teclado.
 
 ## ▶️ Cómo usar
@@ -23,6 +24,8 @@ Abre el **[link en vivo](https://nelson2206.github.io/process-iq/)** en una lapt
 
 <details>
 <summary>📜 <b>Historial de versiones</b> (notas detalladas de cada release)</summary>
+
+> 📋 **Generador de Fichas de Proceso + ingesta multi-formato (v1.8.0)**: nueva pestaña **Ficha** y export **"Ficha de Proceso · formato corporativo"** que arma el documento formal completo (12 bloques) a partir del modelo. El **Detalle de Actividades** se deriva del grafo: numera las actividades en orden de flujo y genera el **ruteo real** desde las compuertas (*"Sí → continuar en la actividad 7"*, *"No → Fin del proceso"*); los **sistemas** son la unión de los declarados por nodo + los de nivel proceso; **responsabilidades** salen de los swimlanes. Los metadatos (código, versión, objetivo, alcance, **gobernanza** Dueño/Editor/Revisor/Aprobador, términos, anexos, control de cambios) se editan en la pestaña. Incluye vista previa con el diagrama embebido y descarga a Word. **Ingesta ampliada** a los formatos habituales de un proyecto de procesos: **Word (.docx)** vía mammoth, **PDF** vía pdf.js, **PowerPoint (.pptx)** vía JSZip (todas se extraen a texto para revisar antes de generar) y **BPMN 2.0 (.bpmn/.xml)** con importador nativo (sin librerías) que reconstruye tasks/gateways/eventos/flujos. Entrenado y validado con la ficha real **PR-DU-COM-02 Venta de Lotes Urbanos (Centenario)** — nuevo demo de 33 nodos / 4 roles / 2 loops / 3 ramas de firma. Verificado headless: flujo armado correcto, **round-trip BPMN sin pérdida** (33 nodos ↔ 33), extracción del Word real (39.7k caracteres), ficha con 30 actividades y ruteo correcto, 0 errores.
 
 > ♿ **Fix de contraste WCAG AA (v1.6.1)**: audit de contraste (computado headless) encontró que el **naranja de marca #FF4713 (3.41:1)** se usaba como **texto pequeño** sobre blanco en 4 sitios (headers de la leyenda BPMN, benchmark de KPIs, target del linter, estado de grabación) — por debajo del mínimo AA de 4.5:1. Se añadió un token **--indra-primary-text (#C2330C, 5.57:1)** para esos textos, manteniendo el naranja brillante para rellenos/bordes/acentos/iconos (donde 3:1 basta). Los grises del sistema ya cumplían (gray-500 = 5.33:1). El header oscuro: 19.8:1.
 

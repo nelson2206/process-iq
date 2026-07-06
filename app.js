@@ -10,6 +10,22 @@
   const STORAGE_KEY = 'processiq.v1';
   const state = {
     meta: { name: '', industry: '', macroprocess: '', client: '', owner: '' },
+    // Ficha de proceso corporativa (formato Minsait/cliente) — ver deriveFicha()/exportFicha()
+    ficha: {
+      code: '',            // p.ej. PR-DU-COM-02
+      version: '',         // p.ej. 6
+      objetivo: '',
+      alcanceAreas: '',    // áreas involucradas
+      alcanceDesde: '',    // hito de inicio (autosugerido del nodo start)
+      alcanceHasta: '',    // hito de fin (autosugerido del nodo end)
+      alcanceIncluye: '',  // qué abarca / excluye
+      descripcion: '',
+      gobernanza: [],      // [{ rol:'Dueño|Editor|Revisor|Aprobador', cargo, nombre, fecha }]
+      sistemas: [],        // [{ nombre, uso }] — sistemas a nivel proceso (además de los de cada nodo)
+      terminos: [],        // [{ termino, definicion }]
+      anexos: [],          // [{ codigo, nombre }]
+      cambios: []          // [{ version, fecha, descripcion }]
+    },
     nodes: [],   // { id, type, x, y, w, h, label, owner, system, time, volume, va, notes, pains:[] }
     edges: [],   // { id, from, to, label }
     activeView: 'asis',         // 'asis' | 'tobe'
@@ -32,6 +48,19 @@
     data:         { w: 110, h: 60,  label: 'Data' },
     system:       { w: 158, h: 76,  label: 'Sistema' }
   };
+
+  // Factory de ficha vacía (reutilizado en init/reset/restore para no arrastrar referencias)
+  function emptyFicha() {
+    return {
+      code: '', version: '', objetivo: '',
+      alcanceAreas: '', alcanceDesde: '', alcanceHasta: '', alcanceIncluye: '',
+      descripcion: '', gobernanza: [], sistemas: [], terminos: [], anexos: [], cambios: []
+    };
+  }
+  // Normaliza una ficha parcial (de storage/import) rellenando claves faltantes
+  function normalizeFicha(f) {
+    return Object.assign(emptyFicha(), f || {});
+  }
 
   // =================== DOM ===================
   const $ = (sel) => document.querySelector(sel);
@@ -74,8 +103,9 @@
     }
     resetHistory();   // línea base del historial (estado al abrir)
     attachUndoRedoListeners();
+    attachFichaListeners();
     // Hook para demos/pruebas (cargadores de ejemplo)
-    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12 };
+    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }) };
   }
 
   function populateSelects() {
@@ -157,6 +187,7 @@
           case 'bpmn': exportBpmn(); break;
           case 'pptx': exportPptx(); break;
           case 'word': exportWord(); break;
+          case 'ficha': openFichaPreview(); break;
         }
       });
     });
@@ -1518,6 +1549,47 @@
   function activateTab(name) {
     $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     $$('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === name));
+    if (name === 'ficha') renderFichaTab();
+  }
+
+  // =================== FICHA DE PROCESO — edición ===================
+  // Listas editadas como texto: una fila por línea, campos separados por "|".
+  function parsePipeLines(text, keys) {
+    return String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(line => {
+      const parts = line.split('|').map(s => s.trim());
+      const o = {}; keys.forEach((k, i) => o[k] = parts[i] || ''); return o;
+    });
+  }
+  function serializePipeLines(arr, keys) {
+    return (arr || []).map(o => keys.map(k => o[k] || '').join(' | ')).join('\n');
+  }
+  function renderFichaTab() {
+    const f = state.ficha || (state.ficha = emptyFicha());
+    const set = (id, v) => { const el = $('#' + id); if (el && document.activeElement !== el) el.value = v || ''; };
+    set('fichaCode', f.code); set('fichaVersion', f.version); set('fichaObjetivo', f.objetivo);
+    set('fichaAlcanceAreas', f.alcanceAreas); set('fichaAlcanceDesde', f.alcanceDesde);
+    set('fichaAlcanceHasta', f.alcanceHasta); set('fichaAlcanceIncluye', f.alcanceIncluye);
+    set('fichaDescripcion', f.descripcion);
+    set('fichaGobernanza', serializePipeLines(f.gobernanza, ['rol', 'cargo', 'nombre', 'fecha']));
+    set('fichaSistemas', serializePipeLines(f.sistemas, ['nombre', 'uso']));
+    set('fichaTerminos', serializePipeLines(f.terminos, ['termino', 'definicion']));
+    set('fichaAnexos', serializePipeLines(f.anexos, ['codigo', 'nombre']));
+    set('fichaCambios', serializePipeLines(f.cambios, ['version', 'fecha', 'descripcion']));
+  }
+  function attachFichaListeners() {
+    const f = () => (state.ficha || (state.ficha = emptyFicha()));
+    const bindText = (id, key) => { const el = $('#' + id); if (el) el.addEventListener('input', e => { f()[key] = e.target.value; persist(); }); };
+    bindText('fichaCode', 'code'); bindText('fichaVersion', 'version'); bindText('fichaObjetivo', 'objetivo');
+    bindText('fichaAlcanceAreas', 'alcanceAreas'); bindText('fichaAlcanceDesde', 'alcanceDesde');
+    bindText('fichaAlcanceHasta', 'alcanceHasta'); bindText('fichaAlcanceIncluye', 'alcanceIncluye');
+    bindText('fichaDescripcion', 'descripcion');
+    const bindList = (id, key, keys) => { const el = $('#' + id); if (el) el.addEventListener('input', e => { f()[key] = parsePipeLines(e.target.value, keys); persist(); }); };
+    bindList('fichaGobernanza', 'gobernanza', ['rol', 'cargo', 'nombre', 'fecha']);
+    bindList('fichaSistemas', 'sistemas', ['nombre', 'uso']);
+    bindList('fichaTerminos', 'terminos', ['termino', 'definicion']);
+    bindList('fichaAnexos', 'anexos', ['codigo', 'nombre']);
+    bindList('fichaCambios', 'cambios', ['version', 'fecha', 'descripcion']);
+    const prev = $('#btnFichaPreview'); if (prev) prev.addEventListener('click', openFichaPreview);
   }
 
   // -------- Mock generation: detecta verbos comunes para crear actividades --------
@@ -2049,6 +2121,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   // Selector de ejemplos pre-cargados
   function openExamplesModal() {
     const examples = [
+      { fn: loadFichaVentaLotes, t: '★ Ficha: Venta de Lotes Urbanos (Centenario)', d: 'Ficha corporativa completa · 29 actividades · 4 roles · 2 loops + 3 ramas de firma · export a Ficha de Proceso (Word)' },
       { fn: loadDemoProcess,   t: 'Gestión de Reclamos (Banca)', d: 'Simple · 7 actividades · 4 actores · pains + KPIs + simulación' },
       { fn: loadComplexDemo,   t: 'Originación de Crédito Hipotecario', d: 'Complejo · 23 nodos · 8 actores · loop de reproceso · cuello de botella' },
       { fn: loadComplexDemo2,  t: 'Onboarding de Personal', d: 'Gateway paralelo ＋ · 7 actores · fork/join (IT/Legal/Finanzas/Seguridad)' },
@@ -2257,6 +2330,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       };
       const snapshot = {
         meta: state.meta,
+        ficha: state.ficha,
         nodes: state.nodes,
         edges: state.edges,
         activeView: state.activeView,
@@ -2282,7 +2356,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   const HISTORY_CAP = 60;
   function buildHistorySnapshot() {
     return JSON.stringify({
-      meta: state.meta, nodes: state.nodes, edges: state.edges,
+      meta: state.meta, ficha: state.ficha, nodes: state.nodes, edges: state.edges,
       activeView: state.activeView, views: state._views, nextId: state.nextId,
       raci: state._raci || null, sipoc: state._sipoc || null,
       kpiValues: state._kpiValues || null, lanes: state._lanes || null
@@ -2308,6 +2382,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     state.nodes = data.nodes || [];
     state.edges = data.edges || [];
     state.meta = data.meta || state.meta;
+    state.ficha = normalizeFicha(data.ficha);
     state.activeView = data.activeView || 'asis';
     state._views = data.views || { asis: null, tobe: null };
     state.nextId = data.nextId || 1;
@@ -2381,6 +2456,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       if (!raw) return;
       const data = JSON.parse(raw);
       state.meta = data.meta || state.meta;
+      state.ficha = normalizeFicha(data.ficha);
       state.nodes = data.nodes || [];
       state.edges = data.edges || [];
       state.activeView = data.activeView || 'asis';
@@ -2403,6 +2479,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     historyPaused = true;
     Promise.resolve().then(() => { historyPaused = false; resetHistory(); });
     state.meta = { name: '', industry: '', macroprocess: '', client: '', owner: '' };
+    state.ficha = emptyFicha();
     state.nodes = [];
     state.edges = [];
     state.selectedNodeId = null;
@@ -3397,9 +3474,189 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       `Los **boundary events** modelan el manejo de excepciones por SLA sin romper el camino feliz — patrón clave en operaciones. La tasa fuera de SLA (13% vs <5%) es el cuello.`);
   }
 
+  // ============================================================
+  // DEMO DE ENTRENAMIENTO — Ficha real: Venta de Lotes Urbanos (Centenario, PR-DU-COM-02)
+  // ~33 nodos, 4 roles, compuertas de 2 y 3 vías, dos loops (descuento y observaciones DD)
+  // y tres ramas de firma que convergen. Valida que el flujo se arma correcto y que
+  // la ficha corporativa se genera completa desde el modelo.
+  // ============================================================
+  function loadFichaVentaLotes() {
+    resetState();
+    state.meta = { name: 'Venta de Lotes Urbanos', industry: 'Transversal', macroprocess: 'O2C', client: 'Centenario', owner: 'Jefe de Ventas (Urbanizaciones)' };
+    $('#processName').value = state.meta.name;
+    $('#processIndustry').value = 'Transversal';
+    $('#processMacro').value = 'O2C';
+
+    const N = [
+      { k: 's',   type: 'start', label: 'Lead captado', owner: 'Cliente', event: 'message' },
+      { k: 'a1',  type: 'task', label: 'Registrar y derivar lead', owner: 'Call Center', system: 'Salesforce (CRM)', exec: 'system', time: 5, vol: 3000, va: 'BVA',
+        notes: 'Canales: Digital (derivación automática a Salesforce), Call Center y Presencial (caseta de ventas).\nAsignación de leads digitales automatizada según capacidad y asesores activos.\nSolicitar consentimiento de datos personales (Anexo N°7).' },
+      { k: 'a2',  type: 'task', label: 'Elaborar perfil del cliente', owner: 'Asesor Inmobiliario', exec: 'manual', time: 20, vol: 2400, va: 'VA',
+        notes: 'Validar identidad con DNI; búsqueda en Google y redes sociales.\nDetectar señales de alerta (denuncias, temas legales).\nConstruir propuesta a la medida del cliente.' },
+      { k: 'a3',  type: 'task', label: 'Atención de cliente y presentación', owner: 'Asesor Inmobiliario', exec: 'manual', time: 30, vol: 2400, va: 'VA',
+        notes: 'Presentación del asesor y de Grupo Centenario (brochure, Anexo N°8).\nConocimiento del cliente para prevención LAFT: reportar señales de alerta al Encargado de Prevención del Delito.' },
+      { k: 'a4',  type: 'task', label: 'Gestionar visita al proyecto', owner: 'Asesor Inmobiliario', exec: 'manual', time: 10, vol: 2000, va: 'BVA',
+        notes: 'Programar visita (fecha y hora), virtual o presencial.' },
+      { k: 'd1',  type: 'decision', label: '¿Modalidad de visita?', owner: 'Asesor Inmobiliario', gateway: 'exclusive' },
+      { k: 'a5',  type: 'task', label: 'Realizar exposición virtual del producto', owner: 'Asesor Inmobiliario', system: 'Zoom / Teams', exec: 'manual', time: 40, vol: 1000, va: 'VA',
+        notes: 'Herramientas: visor de lotes, recorrido virtual, cotizador, brochure.\nEl visor puede diferir de SAP por estrategia comercial (registrar en Excel/SharePoint).' },
+      { k: 'd2',  type: 'decision', label: '¿Cliente interesado en comprar? (virtual)', owner: 'Asesor Inmobiliario', gateway: 'exclusive' },
+      { k: 'a6',  type: 'task', label: 'Presentación y recorrido presencial', owner: 'Asesor Inmobiliario', exec: 'manual', time: 60, vol: 1200, va: 'VA',
+        notes: 'Recorrido estructurado por las amenidades; revisar lotes seleccionados.' },
+      { k: 'd3',  type: 'decision', label: '¿Cliente interesado en comprar? (presencial)', owner: 'Asesor Inmobiliario', gateway: 'exclusive' },
+      { k: 'a7',  type: 'task', label: 'Ofrecer propuesta comercial', owner: 'Asesor Inmobiliario', exec: 'manual', time: 25, vol: 1600, va: 'VA',
+        notes: 'Negociación sobre lotes y modelo de financiamiento (Anexo N°9).\nMeta de ventas según Anexo N°11.',
+        pains: [{ category: 'wait', description: 'Cliente pospone decisión; se pierde momentum de cierre', severity: 3, frequency: 4 }] },
+      { k: 'd4',  type: 'decision', label: '¿Resultado de la negociación?', owner: 'Asesor Inmobiliario', gateway: 'exclusive' },
+      { k: 'a8',  type: 'task', label: 'Gestionar nueva propuesta (descuento)', owner: 'Asesor Inmobiliario', exec: 'manual', time: 15, vol: 700, va: 'BVA',
+        notes: 'Validar viabilidad según bolsa de descuentos, márgenes y precios (aprueba Jefe de Ventas).' },
+      { k: 'd5',  type: 'decision', label: '¿Descuento viable?', owner: 'Jefe de Ventas', gateway: 'exclusive' },
+      { k: 'a9',  type: 'task', label: 'Gestionar pago', owner: 'Asesor Inmobiliario', system: 'Salesforce (CRM)', exec: 'system', time: 20, vol: 900, va: 'VA',
+        notes: 'Tipos: operación con depósito / pago 1ra cuota / al contado.\nMedios: POS, PagoEfectivo, transferencia, abono en cuenta, Web Terreno.\nProhibido efectivo (reglamento interno).' },
+      { k: 'a10', type: 'task', label: 'Gestionar evaluación de debida diligencia', owner: 'Asesor Inmobiliario', system: 'Thomson Reuters', exec: 'manual', time: 30, vol: 900, va: 'BVA',
+        notes: 'Sustento de debida diligencia (Política PO-IC-LEG-04).\nScoring de riesgo (Anexo N°6); régimen reforzado requiere aprobación VP y opinión de Legal.',
+        pains: [{ category: 'handoff', description: 'Ida y vuelta con Legal/Cumplimiento en régimen reforzado', severity: 4, frequency: 3 }] },
+      { k: 'a14', type: 'task', label: 'Solicitar contrato', owner: 'Asesor Inmobiliario', system: 'OnBase', exec: 'system', time: 10, vol: 900, va: 'BVA',
+        notes: 'Cargar documentación de DD a OnBase; indicar contrato Presencial o No Presencial.\nEl Supervisor de Zona aprueba en el módulo comercial de OnBase.' },
+      { k: 'a15', type: 'task', label: 'Revisar y liberar documentación de DD', owner: 'Administrador de Ventas', system: 'OnBase', exec: 'manual', time: 25, vol: 900, va: 'BVA',
+        notes: 'Verifica que la documentación de debida diligencia esté completa.',
+        pains: [{ category: 'rework', description: 'Devoluciones por documentación incompleta', severity: 3, frequency: 4 }] },
+      { k: 'd6',  type: 'decision', label: '¿Documentación conforme?', owner: 'Administrador de Ventas', gateway: 'exclusive' },
+      { k: 'a16', type: 'task', label: 'Generar contrato y anexos', owner: 'Administrador de Ventas', system: 'OnBase', exec: 'system', time: 20, vol: 850, va: 'VA',
+        notes: 'Contrato (art. 78.1 Código de Protección al Consumidor), cronograma, hoja resumen, ROP, DJ LAFT, reporte Thomson Reuters, DJ conocimiento de cliente.' },
+      { k: 'a17', type: 'task', label: 'Recibir contrato y gestionar aceptación', owner: 'Asesor Inmobiliario', exec: 'manual', time: 15, vol: 850, va: 'VA',
+        notes: 'Entregar al comprador la información del art. 78.2 (resolución municipal, planos, características de HU, App Vecino Centenario).' },
+      { k: 'd7',  type: 'decision', label: '¿Modalidad de firma?', owner: 'Asesor Inmobiliario', gateway: 'exclusive' },
+      { k: 'a18', type: 'task', label: 'Tomar firma del cliente (presencial)', owner: 'Asesor Inmobiliario', exec: 'manual', time: 20, vol: 300, va: 'VA',
+        notes: 'Firma de todos los documentos (excepto reporte Thomson Reuters). Incentivo de cierre según escala aprobada.' },
+      { k: 'a19', type: 'task', label: 'Cargar documentación y archivar física', owner: 'Asesor Inmobiliario', system: 'OnBase', exec: 'system', time: 12, vol: 300, va: 'BVA',
+        notes: 'Carga a OnBase Comercial; documentación física a Archivo máximo el día 7 de cada mes.' },
+      { k: 'a20', type: 'task', label: 'Enviar contrato por correo al cliente', owner: 'Asesor Inmobiliario', exec: 'email', time: 10, vol: 350, va: 'VA',
+        notes: 'Correo a ventadelotes@centenario.com.pe con confirmación de entrega y lectura. Correo de bienvenida.' },
+      { k: 'a21', type: 'task', label: 'Acusar recibo y aceptar oferta', owner: 'Cliente', exec: 'manual', time: 5, vol: 350, va: 'VA',
+        notes: 'Correo 1: acuse de recibo. Correo 2: aceptación con copia de DNI y declaración firmada con huella.' },
+      { k: 'a22', type: 'task', label: 'Cargar correos de aceptación en OnBase', owner: 'Asesor Inmobiliario', system: 'OnBase', exec: 'system', time: 10, vol: 350, va: 'BVA',
+        notes: 'Descargar correos (.msg) de oferta, acuse y aceptación, y subirlos a OnBase.' },
+      { k: 'a23', type: 'task', label: 'Cargar documentos para firma electrónica', owner: 'Asesor Inmobiliario', system: 'Keynua', exec: 'system', time: 15, vol: 200, va: 'VA',
+        notes: 'Separar en 2 grupos (firma de todas las partes / firma solo del cliente) y generar los flujos de firma en Keynua.' },
+      { k: 'a24', type: 'task', label: 'Cargar documentos firmados en OnBase', owner: 'Asesor Inmobiliario', system: 'OnBase', exec: 'system', time: 8, vol: 200, va: 'BVA',
+        notes: 'Al concluir el flujo de Keynua, descargar los documentos firmados y subirlos a OnBase Comercial.' },
+      { k: 'a25', type: 'task', label: 'Publicar información en App Vecino Centenario', owner: 'Administrador de Ventas', system: 'App Vecino Centenario', exec: 'system', time: 5, vol: 850, va: 'BVA',
+        notes: 'Tras el cierre de ventas en el ERP, publicar los documentos (Anexo 10) en el App Vecino Centenario.' },
+      { k: 'a26', type: 'task', label: 'Enviar contrato, anexos y acta a Archivo', owner: 'Asesor Inmobiliario', exec: 'manual', time: 15, vol: 850, va: 'BVA',
+        notes: 'Envío físico (valija/motorizado) máximo el día 7 de cada mes: contrato, ficha cliente y acta de entrega. Confirmación con cargo firmado.' },
+      { k: 'e1',  type: 'end', label: 'Venta finalizada', owner: 'Cliente', event: 'message' },
+      { k: 'eno', type: 'end', label: 'Fin — venta no concretada', owner: 'Asesor Inmobiliario', event: 'terminate', terminate: true }
+    ];
+    const E = [
+      ['s','a1'], ['a1','a2'], ['a2','a3'], ['a3','a4'], ['a4','d1'],
+      ['d1','a5','Virtual'], ['d1','a6','Presencial'],
+      ['a5','d2'], ['d2','a7','Sí'], ['d2','eno','No'],
+      ['a6','d3'], ['d3','a7','Sí'], ['d3','eno','No'],
+      ['a7','d4'],
+      ['d4','a8','Solicita descuento'], ['d4','a9','Acepta'], ['d4','eno','No continúa'],
+      ['a8','d5'], ['d5','a7','Viable'], ['d5','eno','No viable'],
+      ['a9','a10'], ['a10','a14'], ['a14','a15'], ['a15','d6'],
+      ['d6','a14','Observaciones'], ['d6','a16','Conforme'],
+      ['a16','a17'], ['a17','d7'],
+      ['d7','a18','Presencial'], ['d7','a20','No presencial'], ['d7','a23','Firma electrónica'],
+      ['a18','a19'], ['a19','a25'],
+      ['a20','a21'], ['a21','a22'], ['a22','a25'],
+      ['a23','a24'], ['a24','a25'],
+      ['a25','a26'], ['a26','e1']
+    ];
+
+    const idMap = {};
+    N.forEach(t => {
+      const def = SHAPE_DEFAULTS[t.type];
+      const node = {
+        id: 'n' + (state.nextId++), type: t.type, x: 0, y: 0, w: def.w, h: def.h,
+        label: t.label, executionType: t.exec || (t.type === 'task' ? 'manual' : ''),
+        gatewayType: t.gateway || undefined, eventType: t.event || undefined, throw: t.throw || undefined,
+        terminate: t.terminate || undefined, marker: t.marker || '', boundary: t.boundary || undefined, activityCode: '',
+        owner: t.owner || '', system: t.system || '',
+        time: t.time != null ? String(t.time) : '', volume: t.vol != null ? String(t.vol) : '', va: t.va || '',
+        sla: '', docsIn: '', docsOut: '', rules: '', notes: t.notes || '', pains: (t.pains || []).map(p => ({ id: 'p' + (state.nextId++), ...p }))
+      };
+      idMap[t.k] = node.id;
+      state.nodes.push(node);
+    });
+    E.forEach(([a, b, lbl]) => state.edges.push({ id: 'e' + (state.nextId++), from: idMap[a], to: idMap[b], label: lbl || '' }));
+
+    // Ficha corporativa completa (datos reales del documento PR-DU-COM-02 v6)
+    state.ficha = {
+      code: 'PR-DU-COM-02', version: '6',
+      objetivo: 'Describir las actividades y responsabilidades del proceso de Venta de Lotes Urbanos en Centenario.',
+      alcanceAreas: 'Ventas de Lotes Urbanos y Administración de Ventas',
+      alcanceDesde: 'Captación de leads a través de los canales de promoción',
+      alcanceHasta: 'Firma del contrato de venta y envío de la documentación a Archivo',
+      alcanceIncluye: 'Abarca lotes residenciales y de segunda vivienda',
+      descripcion: '',
+      gobernanza: [
+        { rol: 'Dueño', cargo: 'Jefe de Ventas (Urbanizaciones)', nombre: 'Carlos Manuel Ismael Rolleri Limo', fecha: '' },
+        { rol: 'Editor', cargo: 'Jefe de Ventas (Urbanizaciones)', nombre: 'Carlos Manuel Ismael Rolleri Limo', fecha: '' },
+        { rol: 'Revisor', cargo: '—', nombre: 'Jaime Luis Alva Hurtado', fecha: '' },
+        { rol: 'Aprobador', cargo: 'Gerente Post Venta y Atención al Cliente', nombre: 'Guillermo Jorge Segura Gomi', fecha: '' },
+        { rol: 'Aprobador', cargo: 'VP Desarrollo Urbano', nombre: 'Carlos Alberto Conroy Ferreccio', fecha: '' },
+        { rol: 'Aprobador', cargo: 'Gerente Comercial (DU)', nombre: '', fecha: '' }
+      ],
+      sistemas: [
+        { nombre: 'Salesforce (CRM)', uso: 'Registro de leads, oportunidades y órdenes de pago' },
+        { nombre: 'ONBASE', uso: 'Gestión documental y workflow comercial' },
+        { nombre: 'SAP', uso: 'ERP — cierre de venta e inventario' },
+        { nombre: 'Keynua', uso: 'Firma electrónica de contratos' },
+        { nombre: 'Thomson Reuters', uso: 'Debida diligencia / listas restrictivas' },
+        { nombre: 'App Vecino Centenario', uso: 'Publicación de información al cliente' },
+        { nombre: 'Web Terreno', uso: 'Pago de primera cuota en línea' }
+      ],
+      terminos: [
+        { termino: 'Lead', definicion: 'Persona u organización interesada que comparte su información de contacto (correo, teléfono, redes).' },
+        { termino: 'Oportunidad', definicion: 'Potencial venta de lote a un prospecto.' }
+      ],
+      anexos: [
+        { codigo: 'Anexo N°1', nombre: 'DJ de conocimiento de clientes PN LAFT' },
+        { codigo: 'Anexo N°2', nombre: 'DJ de conocimiento de clientes PJ LAFT' },
+        { codigo: 'Anexo N°3', nombre: 'DJ Origen de Fondos LAFT' },
+        { codigo: 'Anexo N°4', nombre: 'DJ Accionariado de PJ LAFT' },
+        { codigo: 'Anexo N°5', nombre: 'Formato de Entrevista de Cliente' },
+        { codigo: 'Anexo N°6', nombre: 'Scoring de Calificación de Riesgo' },
+        { codigo: 'Anexo N°7', nombre: 'Guía para Privacidad y Tratamiento de Datos Personales' },
+        { codigo: 'Anexo N°8', nombre: 'Información en página web y speech de ventas' },
+        { codigo: 'Anexo N°9', nombre: 'Modelo de financiamiento' },
+        { codigo: 'Anexo N°10', nombre: 'Entrega de información relacionada a la venta' },
+        { codigo: 'Anexo N°11', nombre: 'Asignación de meta de ventas' }
+      ],
+      cambios: [
+        { version: '1', fecha: '10/04/2023', descripcion: 'Actualización completa del documento.' },
+        { version: '2', fecha: '04/10/2023', descripcion: 'Se crea el Anexo 10 (integración OnBase – App Vecino Centenario).' },
+        { version: '3', fecha: '10/11/2023', descripcion: 'Se precisa la generación de órdenes de pago y registro de pagos.' },
+        { version: '4', fecha: '25/03/2024', descripcion: 'Sustento de ingresos (cuota > 1/2.5 UIT); incentivos por firma de contrato.' },
+        { version: '5', fecha: '29/11/2024', descripcion: 'Aprobación de recargas por correo; envío físico el día 7; firma electrónica Keynua.' },
+        { version: '6', fecha: '10/02/2026', descripcion: 'Digitalización del levantamiento y ficha en ProcessIQ.' }
+      ]
+    };
+
+    state._kpiValues = {
+      'vl-01': { name: 'Tasa de conversión lead → venta', unit: '%', benchmark: '≥ 4%', value: '2.8', gap: '-1.2 pp', source: 'Salesforce' },
+      'vl-02': { name: 'Lead time captación → firma', unit: 'días', benchmark: '≤ 30 días', value: '41', gap: '+11 días', source: 'OnBase' }
+    };
+
+    ensureDecisionBranches();
+    persist();
+    autoLayout();
+    runSimulation();
+    persist();
+    activateTab('ficha');
+    renderFichaTab();
+    copilotPost('ai',
+      `**Ficha cargada: Venta de Lotes Urbanos — Centenario (PR-DU-COM-02, v6).**\n\n` +
+      `Es el ejemplo de entrenamiento real: **29 actividades · 4 roles** (Cliente, Call Center, Asesor Inmobiliario, Administración de Ventas), compuertas de 2 y 3 vías, **dos loops** (descuento no viable → renegociar; observaciones de debida diligencia → subsanar) y **tres ramas de firma** (presencial, no presencial, Keynua) que convergen antes del cierre.\n\n` +
+      `La pestaña **Ficha** ya trae los metadatos corporativos (gobernanza, sistemas, términos, 11 anexos, control de cambios). Pulsa **Generar ficha** o Exportar → *Ficha de Proceso* para producir el documento Word completo con el detalle de actividades y ruteo derivado del flujo.`);
+  }
+
   // =================== EXPORT / IMPORT ===================
   function exportJson() {
-    const data = { meta: state.meta, nodes: state.nodes, edges: state.edges, exportedAt: new Date().toISOString() };
+    const data = { meta: state.meta, ficha: state.ficha, nodes: state.nodes, edges: state.edges, exportedAt: new Date().toISOString() };
     download(JSON.stringify(data, null, 2), filename('json'), 'application/json');
   }
 
@@ -3411,6 +3668,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       try {
         const data = JSON.parse(reader.result);
         state.meta = data.meta || state.meta;
+        state.ficha = normalizeFicha(data.ficha);
         state.nodes = data.nodes || [];
         state.edges = data.edges || [];
         state.nextId = (Math.max(0, ...state.nodes.map(n => parseInt(n.id.slice(1), 10) || 0)) || 0) + 1;
@@ -4491,6 +4749,101 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   // EXPORT WORD — informe del proceso (HTML compatible con Word)
   // Inspirado en MBC Process Disruptor: "Generar Informe Word"
   // ============================================================
+  // ============================================================
+  // DERIVACIÓN DE FICHA DE PROCESO
+  // Reconstruye, a partir del grafo (nodos + edges + compuertas + lanes),
+  // el "Detalle de actividades" con numeración y ruteo real, la unión de
+  // sistemas, responsables y sugerencias de alcance (desde/hasta).
+  // Es el motor que alimenta exportFicha() y la vista previa.
+  // ============================================================
+  function flowOrderNodes() {
+    // Orden de recorrido siguiendo edges desde el/los nodo(s) inicio (BFS estable).
+    const byId = Object.fromEntries(state.nodes.map(n => [n.id, n]));
+    const out = [], seen = new Set();
+    const outEdges = (id) => state.edges.filter(e => e.from === id);
+    const starts = state.nodes.filter(n => n.type === 'start');
+    const roots = starts.length ? starts : state.nodes.filter(n => !state.edges.some(e => e.to === n.id));
+    const queue = [...(roots.length ? roots : state.nodes.slice(0, 1))];
+    while (queue.length) {
+      const n = queue.shift();
+      if (!n || seen.has(n.id)) continue;
+      seen.add(n.id); out.push(n);
+      outEdges(n.id).forEach(e => { const t = byId[e.to]; if (t && !seen.has(t.id)) queue.push(t); });
+    }
+    // Cualquier nodo no alcanzado (islas) se agrega al final en orden de creación
+    state.nodes.forEach(n => { if (!seen.has(n.id)) { seen.add(n.id); out.push(n); } });
+    return out;
+  }
+
+  function deriveFicha() {
+    const f = state.ficha || emptyFicha();
+    const ordered = flowOrderNodes();
+    const lane = state._lanes?.laneOf || {};
+    const bpmnName = (n) => {
+      const e = (window.EXECUTION_TYPES || []).find(t => t.id === n.executionType);
+      return e ? e.bpmn : (n.type === 'system' ? 'User Task' : (n.type === 'decision' ? 'Exclusive Gateway' : 'Task'));
+    };
+
+    // Numeración: solo actividades ejecutables (task/system/decision) reciben N°
+    const isStep = (n) => n.type === 'task' || n.type === 'system' || n.type === 'decision';
+    const stepNum = {};
+    let k = 0;
+    ordered.forEach(n => { if (isStep(n)) stepNum[n.id] = ++k; });
+
+    const targetLabel = (toId) => {
+      const t = state.nodes.find(x => x.id === toId);
+      if (!t) return '';
+      if (t.type === 'end') return t.label ? `Fin del proceso (${t.label})` : 'Fin del proceso';
+      if (stepNum[t.id]) return `continuar en la actividad ${stepNum[t.id]}`;
+      return `continuar (${t.label || t.type})`;
+    };
+
+    const activities = ordered.filter(isStep).map(n => {
+      const outs = state.edges.filter(e => e.from === n.id);
+      // Ruteo: para compuertas o cuando hay bifurcación / salto no lineal
+      let ruteo = [];
+      const next = ordered[ordered.indexOf(n) + 1];
+      const isLinear = outs.length === 1 && next && outs[0].to === next.id && next.type !== 'end';
+      if (n.type === 'decision' || outs.length > 1) {
+        ruteo = outs.map(e => `${e.label ? e.label + ': ' : ''}${targetLabel(e.to)}`);
+      } else if (outs.length === 1 && !isLinear) {
+        ruteo = [targetLabel(outs[0].to)];
+      }
+      return {
+        num: stepNum[n.id],
+        label: n.label || '(sin título)',
+        responsable: lane[n.id] || n.owner || '',
+        bpmn: bpmnName(n),
+        sistema: n.system || '',
+        descripcion: (n.notes || n.rules || '').trim(),
+        ruteo,
+        va: n.va || '',
+        time: n.time || ''
+      };
+    });
+
+    // Sistemas: unión de los declarados por nodo + los de nivel proceso (ficha.sistemas)
+    const nodeSys = new Set();
+    state.nodes.forEach(n => { if (n.system) String(n.system).split(/[,/;]+/).forEach(s => { const t = s.trim(); if (t) nodeSys.add(t); }); });
+    const manualSys = (f.sistemas || []);
+    const manualNames = new Set(manualSys.map(s => (s.nombre || '').trim().toLowerCase()));
+    const sistemas = [
+      ...manualSys.filter(s => (s.nombre || '').trim()),
+      ...[...nodeSys].filter(s => !manualNames.has(s.toLowerCase())).map(s => ({ nombre: s, uso: '' }))
+    ];
+
+    // Responsables (para sección "Responsabilidades")
+    const responsables = (state._lanes?.list || [...new Set(state.nodes.map(n => n.owner).filter(Boolean))]);
+
+    // Alcance: sugerencias desde/hasta si el usuario no las escribió
+    const startN = state.nodes.find(n => n.type === 'start');
+    const endNs = state.nodes.filter(n => n.type === 'end');
+    const alcanceDesde = f.alcanceDesde || (startN ? startN.label : '');
+    const alcanceHasta = f.alcanceHasta || (endNs.length ? endNs.map(e => e.label).filter(Boolean).join(' / ') : '');
+
+    return { f, activities, sistemas, responsables, alcanceDesde, alcanceHasta, stepCount: k };
+  }
+
   function exportWord() {
     if (state.nodes.length === 0) { alert('No hay proceso para documentar.'); return; }
     const meta = state.meta;
@@ -4678,6 +5031,226 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 </body></html>`;
 
     download('﻿' + html, filename('doc'), 'application/msword');
+  }
+
+  // ============================================================
+  // FICHA DE PROCESO — documento corporativo completo (formato Minsait/cliente)
+  // Estructura de 12 bloques inspirada en el estándar PR-DU-COM-* (Centenario):
+  // cabecera de gobernanza, código/versión, objetivo, alcance, indicadores,
+  // responsabilidades, procedimiento (diagrama), detalle de actividades,
+  // sistemas, términos clave, anexos y control de cambios.
+  // ============================================================
+  function buildFichaBody(opts) {
+    opts = opts || {};
+    const embedDiagram = opts.embedDiagram !== false;
+    const meta = state.meta;
+    const d = deriveFicha();
+    const f = d.f;
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+    // Convierte texto con saltos (notas del nodo) en <li> por línea o en párrafos
+    const richText = (s) => {
+      if (!s) return '';
+      const lines = String(s).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (lines.length <= 1) return `<span>${esc(lines[0] || '')}</span>`;
+      return '<ul class="tight">' + lines.map(l => `<li>${esc(l)}</li>`).join('') + '</ul>';
+    };
+    const fechaLarga = new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    // ── Cabecera de gobernanza ──
+    const govRows = (f.gobernanza || []).length
+      ? f.gobernanza.map(g => `<tr>
+          <td><b>${esc(g.rol || '')}</b></td><td>${esc(g.cargo || '')}</td>
+          <td>${esc(g.nombre || '')}</td><td style="text-align:center">${esc(g.fecha || '')}</td></tr>`).join('')
+      : `<tr><td colspan="4" class="muted">Sin responsables de gobernanza documental registrados (edítalos en la pestaña Ficha).</td></tr>`;
+
+    // ── Indicadores (valores capturados o librería KPI) ──
+    let indicadoresRows = '';
+    const kv = state._kpiValues || {};
+    if (Object.keys(kv).length) {
+      indicadoresRows = Object.values(kv).map(k => `<tr>
+        <td>${esc(k.name)}</td><td style="text-align:center">${esc(k.unit || '')}</td>
+        <td>${esc(k.benchmark || '')}</td><td style="text-align:center">${esc(k.value || '—')}</td>
+        <td style="text-align:center">${esc(k.gap || '—')}</td></tr>`).join('');
+    } else {
+      const kpis = (window.KPI_LIBRARY || []).filter(k => !meta.industry || k.industry === meta.industry || k.industry === 'Transversal').slice(0, 6);
+      indicadoresRows = kpis.length
+        ? kpis.map(k => `<tr><td>${esc(k.name)}</td><td style="text-align:center">${esc(k.unit)}</td><td>${esc(k.benchmark)}</td><td style="text-align:center">—</td><td style="text-align:center">—</td></tr>`).join('')
+        : `<tr><td colspan="5" class="muted">N/A</td></tr>`;
+    }
+
+    // ── Responsabilidades ──
+    let respBody;
+    if (state._raci && Object.keys(state._raci).length) {
+      const roles = [...new Set(Object.values(state._raci).flatMap(r => Object.keys(r)))];
+      const rtasks = state.nodes.filter(n => state._raci[n.id]);
+      respBody = `<table><tr><th>Actividad</th>${roles.map(r => `<th style="text-align:center">${esc(r)}</th>`).join('')}</tr>
+        ${rtasks.map(t => `<tr><td>${esc(t.label)}</td>${roles.map(r => `<td style="text-align:center"><b>${esc(state._raci[t.id][r] || '')}</b></td>`).join('')}</tr>`).join('')}</table>
+        <p class="muted">R = Responsable · A = Accountable · C = Consultado · I = Informado</p>`;
+    } else if (d.responsables.length) {
+      respBody = '<ul class="tight">' + d.responsables.map(r => `<li><b>${esc(r)}</b></li>`).join('') + '</ul>';
+    } else {
+      respBody = '<p class="muted">N/A</p>';
+    }
+
+    // ── Procedimiento: diagrama ──
+    let diagrama = '<p class="muted">Ver diagrama en la herramienta ProcessIQ.</p>';
+    if (embedDiagram && state.nodes.length) {
+      try {
+        const svg = serializeCanvasSvg();
+        diagrama = `<div class="diagram">${svg}</div>`;
+      } catch (_) {}
+    }
+
+    // ── Detalle de actividades ──
+    const actRows = d.activities.map(a => {
+      const ruteo = a.ruteo && a.ruteo.length
+        ? `<div class="ruteo"><b>Ruteo:</b><ul class="tight">${a.ruteo.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>` : '';
+      const desc = a.descripcion ? richText(a.descripcion) : '<span class="muted">—</span>';
+      return `<tr>
+        <td style="text-align:center;font-weight:700;color:${'#FF4713'}">${a.num}</td>
+        <td><b>${esc(a.label)}</b>${a.sistema ? `<div class="sysbadge">🖥️ ${esc(a.sistema)}</div>` : ''}</td>
+        <td>${esc(a.responsable || '—')}</td>
+        <td>${desc}${ruteo}</td>
+      </tr>`;
+    }).join('');
+
+    // ── Sistemas ──
+    const sysRows = d.sistemas.length
+      ? d.sistemas.map(s => `<tr><td><b>${esc(s.nombre)}</b></td><td>${esc(s.uso || '')}</td></tr>`).join('')
+      : `<tr><td colspan="2" class="muted">N/A</td></tr>`;
+
+    // ── Términos clave ──
+    const termRows = (f.terminos || []).length
+      ? f.terminos.map(t => `<tr><td style="width:22%"><b>${esc(t.termino)}</b></td><td>${esc(t.definicion)}</td></tr>`).join('')
+      : `<tr><td colspan="2" class="muted">N/A</td></tr>`;
+
+    // ── Anexos ──
+    const anexoRows = (f.anexos || []).length
+      ? f.anexos.map(a => `<tr><td style="width:22%"><b>${esc(a.codigo || '')}</b></td><td>${esc(a.nombre || '')}</td></tr>`).join('')
+      : `<tr><td colspan="2" class="muted">N/A</td></tr>`;
+
+    // ── Control de cambios ──
+    const cambioRows = (f.cambios || []).length
+      ? f.cambios.map(c => `<tr><td style="text-align:center">${esc(c.version || '')}</td><td style="text-align:center">${esc(c.fecha || '')}</td><td>${esc(c.descripcion || '')}</td></tr>`).join('')
+      : `<tr><td colspan="3" class="muted">Sin historial de cambios.</td></tr>`;
+
+    return `
+  <div class="ficha-cover">
+    <p class="tag">MINSAIT BUSINESS CONSULTING · PERÚ${meta.client ? ' · ' + esc(meta.client) : ''}</p>
+    <div class="ficha-code">${esc(f.code || '—')}${f.version ? ` &nbsp;·&nbsp; v${esc(f.version)}` : ''}</div>
+    <h1>${esc(meta.name || 'Ficha de Proceso')}</h1>
+    <p class="muted">Ficha de proceso &nbsp;·&nbsp; ${esc(meta.macroprocess || '')}${meta.industry ? ' · ' + esc(meta.industry) : ''} &nbsp;·&nbsp; ${esc(fechaLarga)}</p>
+  </div>
+
+  <table class="gov">
+    <tr><th>Función</th><th>Cargo</th><th>Nombre</th><th style="text-align:center">Fecha</th></tr>
+    ${govRows}
+  </table>
+
+  <h2>1. Objetivo</h2>
+  ${f.objetivo ? `<p>${esc(f.objetivo)}</p>` : '<p class="muted">Describir el objetivo del proceso (pestaña Ficha).</p>'}
+
+  <h2>2. Alcance</h2>
+  <table class="kv">
+    <tr><td class="k">Áreas involucradas</td><td>${esc(f.alcanceAreas) || (d.responsables.join(', ') || '—')}</td></tr>
+    <tr><td class="k">Inicia con</td><td>${esc(d.alcanceDesde) || '—'}</td></tr>
+    <tr><td class="k">Termina con</td><td>${esc(d.alcanceHasta) || '—'}</td></tr>
+    ${f.alcanceIncluye ? `<tr><td class="k">Incluye / excluye</td><td>${esc(f.alcanceIncluye)}</td></tr>` : ''}
+  </table>
+
+  <h2>3. Indicadores</h2>
+  <table>
+    <tr><th>Indicador</th><th style="text-align:center">Unidad</th><th>Meta / Benchmark</th><th style="text-align:center">Valor actual</th><th style="text-align:center">Gap</th></tr>
+    ${indicadoresRows}
+  </table>
+
+  <h2>4. Responsabilidades</h2>
+  ${respBody}
+
+  ${f.descripcion ? `<h2>5. Descripción</h2><p>${esc(f.descripcion)}</p>` : ''}
+
+  <h2>6. Procedimiento</h2>
+  <p><b>${esc(f.code || '')}</b> ${esc(meta.name || '')}</p>
+  ${diagrama}
+
+  <h2>7. Detalle de las Actividades</h2>
+  <table class="acts">
+    <tr><th style="width:36px;text-align:center">N°</th><th style="width:26%">Actividad</th><th style="width:20%">Responsable</th><th>Descripción y ruteo</th></tr>
+    ${actRows || '<tr><td colspan="4" class="muted">Sin actividades modeladas.</td></tr>'}
+  </table>
+
+  <h2>8. Sistemas</h2>
+  <table><tr><th style="width:22%">Sistema</th><th>Uso en el proceso</th></tr>${sysRows}</table>
+
+  <h2>9. Términos Clave</h2>
+  <table>${termRows}</table>
+
+  <h2>10. Anexos</h2>
+  <table>${anexoRows}</table>
+
+  <h2>11. Control de Cambios</h2>
+  <table><tr><th style="width:60px;text-align:center">Versión</th><th style="width:120px;text-align:center">Fecha</th><th>Descripción del cambio</th></tr>${cambioRows}</table>
+
+  <p class="muted foot">Ficha generada con ProcessIQ · Minsait Business Consulting · ${esc(fechaLarga)}</p>`;
+  }
+
+  function fichaStyles(forWord) {
+    const MAGENTA = '#FF4713', DARK = '#232323', GRAY = '#7A7A7A';
+    return `
+  ${forWord ? '@page { size: A4; margin: 1.8cm; }' : ''}
+  body { font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: ${DARK}; line-height: 1.4; }
+  h1 { font-size: 23pt; margin: 2pt 0 4pt 0; color: ${DARK}; }
+  h2 { font-size: 13.5pt; color: ${MAGENTA}; border-bottom: 2px solid ${MAGENTA}; padding-bottom: 3pt; margin: 20pt 0 8pt; }
+  p { margin: 6pt 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8pt 0; font-size: 10pt; }
+  th { background: ${DARK}; color: #fff; padding: 5pt 7pt; text-align: left; font-size: 9pt; }
+  td { border: 1px solid #ccc; padding: 5pt 7pt; vertical-align: top; }
+  table.acts td, table.acts th { font-size: 9.5pt; }
+  tr:nth-child(even) td { background: #faf8f7; }
+  ul.tight { margin: 3pt 0; padding-left: 16pt; }
+  ul.tight li { margin: 1pt 0; }
+  .ficha-cover { border-left: 6px solid ${MAGENTA}; padding-left: 16pt; margin-bottom: 18pt; }
+  .ficha-code { font-family: Consolas, monospace; font-size: 10pt; color: ${MAGENTA}; font-weight: 700; letter-spacing: 1px; margin-top: 4pt; }
+  .tag { display:inline-block; background:${MAGENTA}; color:#fff; padding:2pt 8pt; font-size:8.5pt; border-radius:3pt; letter-spacing:.5px; }
+  .muted { color: ${GRAY}; font-size: 9.5pt; }
+  table.kv .k { width: 28%; background:#f4f2f1; font-weight:600; }
+  table.gov th { font-size: 8.5pt; }
+  .sysbadge { display:inline-block; margin-top:3pt; font-size:8pt; color:${GRAY}; }
+  .ruteo { margin-top:5pt; padding:4pt 7pt; background:#fff6f3; border-left:3px solid ${MAGENTA}; font-size:9pt; }
+  .ruteo ul { margin:2pt 0; }
+  .diagram { border:1px solid #e2e2e2; border-radius:6px; padding:10px; margin:8pt 0; overflow-x:auto; text-align:center; background:#fff; }
+  .diagram svg { max-width:100%; height:auto; }
+  .foot { margin-top:24pt; border-top:1px solid #ccc; padding-top:8pt; }`;
+  }
+
+  function exportFicha() {
+    if (state.nodes.length === 0) { alert('No hay proceso para generar la ficha.'); return; }
+    const meta = state.meta;
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+    const body = buildFichaBody({ embedDiagram: true });
+    const html = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>${esc((meta.name || 'Ficha') + ' — Ficha de Proceso')}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>${fichaStyles(true)}</style></head>
+<body>${body}</body></html>`;
+    download('﻿' + html, filename('doc').replace(/\.doc$/, '_ficha.doc'), 'application/msword');
+  }
+
+  function openFichaPreview() {
+    if (state.nodes.length === 0) { alert('No hay proceso para generar la ficha.'); return; }
+    const body = buildFichaBody({ embedDiagram: true });
+    const html = `<div class="ficha-preview"><style>${fichaStyles(false)}
+      .ficha-preview { background:#fff; color:#232323; max-height:70vh; overflow:auto; padding:22px 26px; border-radius:8px; box-shadow: inset 0 0 0 1px #eee; }
+    </style>${body}</div>`;
+    openModal('📋 Ficha de Proceso · vista previa', html, () => exportFicha());
+    // Ensancha el modal para la ficha y renombra el botón OK a "Descargar Word"
+    const card = document.querySelector('#modal .modal-card');
+    if (card) card.classList.add('modal-card-lg');
+    const ok = $('#modalOk'); if (ok) ok.innerHTML = '⬇️ Descargar Word';
+    const cancel = $('#modalCancel'); if (cancel) cancel.textContent = 'Cerrar';
+    const restore = () => { if (card) card.classList.remove('modal-card-lg'); if (ok) ok.textContent = 'Aceptar'; if (cancel) cancel.textContent = 'Cancelar'; };
+    if (ok) { const prev = ok.onclick; ok.onclick = (e) => { restore(); if (prev) prev(e); }; }
+    if (cancel) { const prevc = cancel.onclick; cancel.onclick = (e) => { restore(); if (prevc) prevc(e); }; }
   }
 
   function exportBpmn() {
@@ -5849,20 +6422,13 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       closeIngestModal();
     }));
 
-    // Cargar documento de texto (.txt, .md, .csv) → vuelca al textarea
+    // Cargar documento multi-formato (Word/PDF/PPTX/texto/BPMN) → texto o import directo
     const docBtn = $('#btnLoadDoc'), docInput = $('#docFileInput');
     if (docBtn && docInput) {
       docBtn.addEventListener('click', () => docInput.click());
       docInput.addEventListener('change', (e) => {
         const f = e.target.files[0];
-        if (!f) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          $('#notesInput').value = reader.result;
-          $('#docFileName').textContent = `✓ ${f.name} (${Math.round(f.size / 1024)} KB)`;
-        };
-        reader.onerror = () => alert('No se pudo leer el archivo.');
-        reader.readAsText(f, 'utf-8');
+        if (f) ingestDocFile(f);
         e.target.value = '';
       });
     }
@@ -5945,6 +6511,234 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     $('#recStatus').classList.remove('recording');
     $('#btnRecStart').disabled = false;
     $('#btnRecStop').disabled = true;
+  }
+
+  // ============================================================
+  // INGESTA MULTI-FORMATO — Word / PDF / PowerPoint / texto / BPMN
+  // Los formatos habituales de un proyecto de procesos. Word/PDF/PPTX se
+  // extraen a texto (para revisar antes de generar); BPMN/XML se importan
+  // como diagrama directo. Las librerías pesadas (mammoth/pdf.js/JSZip) se
+  // cargan bajo demanda desde CDN sólo cuando el usuario sube ese formato.
+  // ============================================================
+  const CDN = {
+    mammoth: 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js',
+    pdfjs:   'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs',
+    pdfWorker:'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs',
+    jszip:   'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'
+  };
+  const _loadedScripts = {};
+  function lazyLoadScript(url) {
+    if (_loadedScripts[url]) return _loadedScripts[url];
+    _loadedScripts[url] = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = url; s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('No se pudo cargar ' + url + ' (¿sin conexión o CDN bloqueado?)'));
+      document.head.appendChild(s);
+    });
+    return _loadedScripts[url];
+  }
+  function ingestStatus(msg, ok) {
+    const el = $('#docFileName');
+    if (el) el.textContent = msg;
+  }
+  function readFileAs(file, how) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+      if (how === 'arraybuffer') r.readAsArrayBuffer(file); else r.readAsText(file, 'utf-8');
+    });
+  }
+
+  async function ingestDocFile(file) {
+    const name = file.name || 'documento';
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    ingestStatus(`⏳ Procesando ${name}…`);
+    try {
+      // ---- BPMN / XML → import directo del diagrama ----
+      if (ext === 'bpmn' || ext === 'xml') {
+        const xml = await readFileAs(file, 'text');
+        const res = importBpmnXml(xml);
+        if (!res || !res.count) { alert('No se encontraron elementos BPMN (tasks/eventos/gateways) en el archivo.'); ingestStatus(''); return; }
+        ingestStatus(`✓ ${name} — ${res.count} elementos importados`);
+        closeIngestModal();
+        maybeFitOnLoad();
+        activateTab('ficha');
+        copilotPost('ai', `**BPMN importado desde ${escapeHtml(name)}:** ${res.count} elementos (${res.tasks} actividades, ${res.gateways} compuertas, ${res.events} eventos) y ${res.flows} flujos. Revisa el diagrama y completa la pestaña **Ficha** para generar el documento corporativo.`);
+        return;
+      }
+
+      // ---- Formatos que se convierten a texto ----
+      let text = '';
+      if (ext === 'txt' || ext === 'md' || ext === 'csv' || ext === 'text') {
+        text = await readFileAs(file, 'text');
+      } else if (ext === 'docx') {
+        await lazyLoadScript(CDN.mammoth);
+        const buf = await readFileAs(file, 'arraybuffer');
+        const out = await window.mammoth.extractRawText({ arrayBuffer: buf });
+        text = out.value || '';
+      } else if (ext === 'doc') {
+        // .doc binario antiguo: intento de lectura best-effort (texto embebido)
+        const raw = await readFileAs(file, 'text');
+        text = raw.replace(/[^\x09\x0A\x0D\x20-\x7E -ɏ]+/g, ' ').replace(/\s{3,}/g, '\n').trim();
+        if (text.length < 40) { alert('El formato .doc antiguo no se pudo leer bien. Guárdalo como .docx o .pdf y reintenta.'); ingestStatus(''); return; }
+      } else if (ext === 'pdf') {
+        text = await extractPdfText(file);
+      } else if (ext === 'pptx') {
+        text = await extractPptxText(file);
+      } else if (ext === 'ppt') {
+        alert('El formato .ppt antiguo no es compatible. Guárdalo como .pptx y reintenta.'); ingestStatus(''); return;
+      } else {
+        alert('Formato no soportado: .' + ext); ingestStatus(''); return;
+      }
+
+      text = (text || '').trim();
+      if (!text) { alert('No se pudo extraer texto del documento.'); ingestStatus(''); return; }
+      $('#notesInput').value = text;
+      activateIngestTab('notes');
+      ingestStatus(`✓ ${name} (${Math.round(file.size / 1024)} KB) — ${text.length.toLocaleString('es-PE')} caracteres extraídos. Revisa y pulsa "Generar proceso".`);
+    } catch (err) {
+      console.error('[ProcessIQ] ingestDocFile:', err);
+      alert('No se pudo procesar el documento: ' + (err.message || err));
+      ingestStatus('');
+    }
+  }
+
+  async function extractPdfText(file) {
+    // pdf.js se importa como módulo ESM
+    if (!window._pdfjsLib) {
+      window._pdfjsLib = await import(/* @vite-ignore */ CDN.pdfjs);
+      try { window._pdfjsLib.GlobalWorkerOptions.workerSrc = CDN.pdfWorker; } catch (_) {}
+    }
+    const buf = await readFileAs(file, 'arraybuffer');
+    const pdf = await window._pdfjsLib.getDocument({ data: buf }).promise;
+    let out = [];
+    const maxPages = Math.min(pdf.numPages, 60);
+    for (let i = 1; i <= maxPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      // Reagrupa por líneas usando la coordenada Y
+      let lastY = null, line = [];
+      const lines = [];
+      content.items.forEach(it => {
+        const y = it.transform ? Math.round(it.transform[5]) : 0;
+        if (lastY !== null && Math.abs(y - lastY) > 3) { lines.push(line.join('')); line = []; }
+        line.push(it.str); lastY = y;
+      });
+      if (line.length) lines.push(line.join(''));
+      out.push(lines.join('\n'));
+    }
+    if (pdf.numPages > maxPages) out.push(`\n[… documento truncado a ${maxPages} páginas de ${pdf.numPages}]`);
+    return out.join('\n\n');
+  }
+
+  async function extractPptxText(file) {
+    await lazyLoadScript(CDN.jszip);
+    const buf = await readFileAs(file, 'arraybuffer');
+    const zip = await window.JSZip.loadAsync(buf);
+    // Ordena las slides por número (slide1.xml, slide2.xml, …)
+    const slideNames = Object.keys(zip.files)
+      .filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+      .sort((a, b) => (parseInt(a.match(/(\d+)/)[1], 10)) - (parseInt(b.match(/(\d+)/)[1], 10)));
+    const out = [];
+    for (let i = 0; i < slideNames.length; i++) {
+      const xml = await zip.files[slideNames[i]].async('string');
+      // Extrae el texto de los nodos <a:t>…</a:t>
+      const texts = [];
+      xml.replace(/<a:t>([\s\S]*?)<\/a:t>/g, (m, t) => { texts.push(t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')); return m; });
+      const slideText = texts.join('\n').trim();
+      if (slideText) out.push(`--- Slide ${i + 1} ---\n${slideText}`);
+    }
+    return out.join('\n\n');
+  }
+
+  // ----------- Importador BPMN 2.0 (nativo, sin librerías) -----------
+  function importBpmnXml(xmlString) {
+    const doc = new DOMParser().parseFromString(xmlString, 'application/xml');
+    if (doc.querySelector('parsererror')) throw new Error('El XML no es válido.');
+    // Selector tolerante a prefijos de namespace (bpmn:, ns0:, sin prefijo…)
+    const local = (tag) => Array.from(doc.getElementsByTagName('*')).filter(el => el.localName === tag);
+    const flowEls = ['task', 'userTask', 'serviceTask', 'manualTask', 'sendTask', 'receiveTask', 'scriptTask', 'businessRuleTask', 'callActivity', 'subProcess'];
+    const gwEls = ['exclusiveGateway', 'parallelGateway', 'inclusiveGateway', 'complexGateway', 'eventBasedGateway'];
+    const evStart = ['startEvent'], evEnd = ['endEvent'], evInt = ['intermediateCatchEvent', 'intermediateThrowEvent', 'boundaryEvent'];
+
+    const idMap = {};        // bpmn id → nuevo node id
+    const nameById = {};
+    let tasks = 0, gateways = 0, events = 0;
+
+    const execFor = (tag) => ({
+      userTask: 'manual', serviceTask: 'system', manualTask: 'manual',
+      sendTask: 'email', receiveTask: 'email', scriptTask: 'automatic', businessRuleTask: 'system'
+    }[tag] || 'manual');
+    const gwType = (tag) => ({
+      exclusiveGateway: 'exclusive', parallelGateway: 'parallel', inclusiveGateway: 'inclusive',
+      complexGateway: 'inclusive', eventBasedGateway: 'exclusive'
+    }[tag] || 'exclusive');
+
+    const addNode = (el, type, extra) => {
+      const def = SHAPE_DEFAULTS[type] || SHAPE_DEFAULTS.task;
+      const bpmnId = el.getAttribute('id') || ('bp' + state.nextId);
+      const label = (el.getAttribute('name') || '').trim() || (type === 'start' ? 'Inicio' : type === 'end' ? 'Fin' : def.label);
+      const node = Object.assign({
+        id: 'n' + (state.nextId++), type, x: 0, y: 0, w: def.w, h: def.h,
+        label, executionType: type === 'task' || type === 'system' ? (extra.exec || 'manual') : '',
+        gatewayType: extra.gatewayType, eventType: extra.eventType, throw: extra.throw,
+        activityCode: '', owner: '', system: '', time: '', volume: '', va: '',
+        sla: '', docsIn: '', docsOut: '', rules: '', notes: '', pains: []
+      }, {});
+      idMap[bpmnId] = node.id; nameById[bpmnId] = label;
+      state.nodes.push(node);
+      return node;
+    };
+
+    resetState();
+
+    // Tareas / actividades
+    flowEls.forEach(tag => local(tag).forEach(el => {
+      const isSub = tag === 'subProcess' || tag === 'callActivity';
+      addNode(el, 'task', { exec: execFor(tag) });
+      const nd = state.nodes[state.nodes.length - 1];
+      if (isSub) nd.marker = 'subprocess';
+      if (tag === 'serviceTask' || tag === 'scriptTask' || tag === 'businessRuleTask') nd.type = 'task';
+      tasks++;
+    }));
+    // Gateways
+    gwEls.forEach(tag => local(tag).forEach(el => { addNode(el, 'decision', { gatewayType: gwType(tag) }); gateways++; }));
+    // Eventos
+    evStart.forEach(tag => local(tag).forEach(el => { addNode(el, 'start', {}); events++; }));
+    evEnd.forEach(tag => local(tag).forEach(el => { addNode(el, 'end', {}); events++; }));
+    evInt.forEach(tag => local(tag).forEach(el => {
+      const isThrow = tag === 'intermediateThrowEvent';
+      addNode(el, 'intermediate', { throw: isThrow || undefined }); events++;
+    }));
+
+    // Flujos de secuencia
+    let flows = 0;
+    local('sequenceFlow').forEach(el => {
+      const from = idMap[el.getAttribute('sourceRef')];
+      const to = idMap[el.getAttribute('targetRef')];
+      if (!from || !to) return;
+      const label = (el.getAttribute('name') || '').trim();
+      state.edges.push({ id: 'e' + (state.nextId++), from, to, label });
+      flows++;
+    });
+
+    // Metadatos: nombre del proceso
+    const proc = local('process')[0];
+    const procName = proc && (proc.getAttribute('name') || '').trim();
+    if (procName) { state.meta.name = procName; const el = $('#processName'); if (el) el.value = procName; }
+    state.ficha = state.ficha || emptyFicha();
+
+    const count = tasks + gateways + events;
+    if (count === 0) return { count: 0 };
+
+    ensureDecisionBranches();
+    persist();
+    autoLayout();
+    runSimulation();
+    persist();
+    return { count, tasks, gateways, events, flows };
   }
 
   // ----------- NLP heurístico: texto → actividades -----------

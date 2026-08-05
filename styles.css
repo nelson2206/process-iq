@@ -2391,3 +2391,30 @@ code {
   border: 1px solid var(--glass-brd, rgba(255,255,255,0.10));
 }
 .format-hint b { color: var(--nexus-text, #e9e4f7); font-weight: 700; }
+
+/* ===================== IA (BYOK Claude) ===================== */
+.btn-icon.ai-on { color: var(--trace, #b2a5ff); box-shadow: inset 0 0 0 1px var(--trace, #b2a5ff); }
+.btn-icon.ai-on::after {
+  content: ""; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px;
+  border-radius: 50%; background: #37d67a; box-shadow: 0 0 0 2px var(--bg-1, #160a26);
+}
+#btnAiSettings { position: relative; }
+.ai-settings { display: flex; flex-direction: column; gap: 8px; }
+.ai-settings label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--nexus-text-soft, #cfc9e6); }
+.ai-settings input, .ai-settings select {
+  font: inherit; font-weight: 400; padding: 8px 10px; border-radius: 8px;
+  background: var(--glass, rgba(255,255,255,0.04)); border: 1px solid var(--glass-brd, rgba(255,255,255,0.12));
+  color: var(--nexus-text, #f2eefc);
+}
+.ai-settings input:focus, .ai-settings select:focus { outline: none; border-color: var(--trace, #b2a5ff); box-shadow: 0 0 0 3px rgba(178,165,255,0.18); }
+.ai-hint { font-size: 10.5px; color: var(--nexus-text-soft, #a99fce); margin: 2px 0; line-height: 1.4; }
+.ai-hint code { font-family: Consolas, monospace; font-size: 10px; background: rgba(178,165,255,0.14); color: var(--trace, #cdc3ff); padding: 1px 5px; border-radius: 4px; }
+.ai-actions-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.ai-test-status { font-size: 11.5px; color: var(--nexus-text-soft, #a99fce); }
+.ai-test-status.ok { color: #37d67a; }
+.ai-test-status.err { color: #ff6b6b; }
+.ingest-actions-2 { display: flex; gap: 8px; align-items: center; }
+.ingest-actions-2 .btn-primary { flex: 1; justify-content: center; }
+.ingest-ai-status { font-size: 12px; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(178,165,255,0.08); border: 1px solid var(--glass-brd, rgba(255,255,255,0.10)); color: var(--nexus-text-soft, #cfc9e6); }
+.ingest-ai-status.ok { color: #37d67a; }
+.ingest-ai-status.err { color: #ff6b6b; }

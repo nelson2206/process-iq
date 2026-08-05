@@ -104,8 +104,10 @@
     resetHistory();   // línea base del historial (estado al abrir)
     attachUndoRedoListeners();
     attachFichaListeners();
+    attachAiListeners();
+    updateAiUi();
     // Hook para demos/pruebas (cargadores de ejemplo)
-    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }) };
+    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test') };
   }
 
   function populateSelects() {
@@ -6739,6 +6741,213 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     runSimulation();
     persist();
     return { count, tasks, gateways, events, flows };
+  }
+
+  // ============================================================
+  // MOTOR DE IA — Anthropic API (BYOK, llamada directa desde el navegador)
+  // La API key la pone el usuario en Ajustes y se guarda SOLO en su navegador
+  // (localStorage). Nunca viaja a ningún servidor nuestro. Usa el header
+  // anthropic-dangerous-direct-browser-access para permitir la llamada CORS.
+  // ============================================================
+  const AI_KEY = 'processiq.ai';
+  const AI_MODELS = [
+    { id: 'claude-opus-5', label: 'Claude Opus — máxima calidad de interpretación' },
+    { id: 'claude-sonnet-5', label: 'Claude Sonnet — rápido y económico' },
+    { id: 'claude-haiku-4-5', label: 'Claude Haiku — ultrarrápido, tareas simples' }
+  ];
+  function aiConfig() { try { return JSON.parse(localStorage.getItem(AI_KEY)) || {}; } catch (e) { return {}; } }
+  function saveAiConfig(c) { try { localStorage.setItem(AI_KEY, JSON.stringify(c)); } catch (e) {} }
+  function aiReady() { return !!(aiConfig().key || '').trim(); }
+
+  async function callClaude(userText, opts) {
+    opts = opts || {};
+    const cfg = aiConfig();
+    const key = (cfg.key || '').trim();
+    if (!key) throw new Error('Falta la API key. Configúrala en Ajustes de IA (⚙).');
+    const body = {
+      model: cfg.model || 'claude-opus-5',
+      max_tokens: opts.maxTokens || 16000,
+      messages: [{ role: 'user', content: userText }]
+    };
+    if (opts.system) body.system = opts.system;
+    if (opts.effort) body.output_config = { effort: opts.effort };
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      let msg = 'Error ' + res.status;
+      try { const j = await res.json(); msg += ': ' + (j.error?.message || JSON.stringify(j).slice(0, 200)); } catch (_) {}
+      if (res.status === 401) msg = 'API key inválida o revocada (401). Revísala en Ajustes de IA.';
+      if (res.status === 429) msg = 'Límite de uso alcanzado (429). Espera unos segundos y reintenta.';
+      throw new Error(msg);
+    }
+    const data = await res.json();
+    if (data.stop_reason === 'refusal') throw new Error('El modelo rechazó la solicitud por políticas de seguridad.');
+    return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  }
+
+  // Extrae el primer objeto JSON de una respuesta (tolera fences ```json y prosa alrededor)
+  function parseJsonLoose(txt) {
+    if (!txt) throw new Error('Respuesta vacía de la IA.');
+    let s = txt.replace(/```json/gi, '```').trim();
+    const fence = s.match(/```([\s\S]*?)```/);
+    if (fence) s = fence[1].trim();
+    const a = s.indexOf('{'), b = s.lastIndexOf('}');
+    if (a === -1 || b === -1) throw new Error('La IA no devolvió JSON.');
+    return JSON.parse(s.slice(a, b + 1));
+  }
+
+  const AI_SYSTEM = `Eres un analista senior de procesos de negocio (estilo MBB) experto en notación BPMN 2.0. Reconstruyes flujos de proceso a partir de documentos, procedimientos o descripciones en español (Perú).
+
+Devuelves EXCLUSIVAMENTE un objeto JSON válido (sin texto adicional, sin markdown) con esta forma:
+{
+  "meta": { "name": string, "industry"?: string, "macroprocess"?: string, "client"?: string },
+  "ficha"?: { "code"?, "version"?, "objetivo"?, "alcanceAreas"?, "alcanceDesde"?, "alcanceHasta"?, "alcanceIncluye"?,
+              "sistemas"?: [{"nombre":string,"uso"?:string}], "terminos"?: [{"termino":string,"definicion":string}] },
+  "nodes": [ { "k": string (id corto único, p.ej. "a1"), "type": "start"|"end"|"task"|"system"|"decision"|"document"|"data"|"intermediate",
+               "label": string, "owner"?: string (rol/área responsable = swimlane), "system"?: string (sistema/app usado),
+               "exec"?: "manual"|"system"|"automatic"|"email"|"phone", "gateway"?: "exclusive"|"parallel"|"inclusive", "notes"?: string } ],
+  "edges": [ { "from": k, "to": k, "label"?: string (etiqueta de la rama, p.ej. "Sí"/"No") } ]
+}
+
+Reglas:
+- Exactamente un nodo "start" y al menos un "end". Nombra el inicio y el fin con un hito real.
+- Cada decisión/bifurcación es un nodo "decision" con gateway "exclusive" (o "parallel"/"inclusive" si aplica) y sus ramas etiquetadas en los edges.
+- Modela loops (reprocesos) y convergencias reales del texto; no inventes pasos que el documento no menciona.
+- "owner" es el rol que ejecuta cada actividad (define los carriles). "system" es la herramienta (CRM, ERP, OnBase, etc.).
+- "notes" resume la actividad en 1-3 frases. Numeración y ruteo se derivan solos; no los pongas en labels.
+- Si el documento trae código de proceso, versión, objetivo, alcance, sistemas o glosario, rellénalos en "ficha".
+- Responde SOLO con el JSON.`;
+
+  async function aiBuildProcess(sourceText, sourceLabel, statusFn) {
+    const setStatus = statusFn || (() => {});
+    setStatus('⏳ Interpretando con IA… (puede tardar unos segundos)');
+    const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, 60000)}`;
+    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: 16000 });
+    const spec = parseJsonLoose(raw);
+    buildProcessFromAiSpec(spec, sourceLabel);
+    return spec;
+  }
+
+  function buildProcessFromAiSpec(spec, sourceLabel) {
+    if (!spec || !Array.isArray(spec.nodes) || !spec.nodes.length) throw new Error('La IA no devolvió un proceso con actividades.');
+    resetState();
+    const m = spec.meta || {};
+    state.meta = { name: m.name || sourceLabel || 'Proceso (IA)', industry: m.industry || '', macroprocess: m.macroprocess || '', client: m.client || '', owner: '' };
+    $('#processName').value = state.meta.name;
+    if (m.industry) $('#processIndustry').value = m.industry;
+    if (m.macroprocess) $('#processMacro').value = m.macroprocess;
+    if (spec.ficha) state.ficha = normalizeFicha(spec.ficha);
+    const idMap = {};
+    spec.nodes.forEach(t => {
+      const type = SHAPE_DEFAULTS[t.type] ? t.type : 'task';
+      const def = SHAPE_DEFAULTS[type];
+      const node = {
+        id: 'n' + (state.nextId++), type, x: 0, y: 0, w: def.w, h: def.h,
+        label: t.label || '(sin título)', executionType: t.exec || (type === 'task' ? 'manual' : ''),
+        gatewayType: (type === 'decision' ? (t.gateway || 'exclusive') : undefined),
+        activityCode: '', owner: t.owner || '', system: t.system || '',
+        time: '', volume: '', va: '', sla: '', docsIn: '', docsOut: '', rules: '', notes: t.notes || '', pains: []
+      };
+      idMap[t.k] = node.id;
+      state.nodes.push(node);
+    });
+    (spec.edges || []).forEach(e => {
+      const f = idMap[e.from], to = idMap[e.to];
+      if (f && to) state.edges.push({ id: 'e' + (state.nextId++), from: f, to, label: e.label || '' });
+    });
+    ensureDecisionBranches();
+    persist();
+    autoLayout();
+    runSimulation();
+    persist();
+  }
+
+  // ----------- Panel de Ajustes de IA (BYOK) -----------
+  function openAiSettings() {
+    const cfg = aiConfig();
+    const esc = s => String(s == null ? '' : s).replace(/"/g, '&quot;');
+    const opts = AI_MODELS.map(m => `<option value="${m.id}"${(cfg.model || 'claude-opus-5') === m.id ? ' selected' : ''}>${m.label}</option>`).join('');
+    const html = `
+      <div class="ai-settings">
+        <p class="panel-hint">ProcessIQ usa el <b>API de Anthropic (Claude)</b> con tu propia API key. La key se guarda <b>solo en este navegador</b> (localStorage) y se envía directo a Anthropic — nunca pasa por ningún servidor de ProcessIQ.</p>
+        <label>API key de Anthropic
+          <input type="password" id="aiKey" placeholder="sk-ant-..." value="${esc(cfg.key || '')}" autocomplete="off" />
+        </label>
+        <p class="ai-hint">La obtienes en <b>console.anthropic.com → API Keys</b>. Empieza con <code>sk-ant-</code>.</p>
+        <label>Modelo
+          <select id="aiModel">${opts}</select>
+        </label>
+        <div class="ai-actions-row">
+          <button id="aiTest" class="btn btn-ghost btn-mini" type="button">Probar conexión</button>
+          <span id="aiTestStatus" class="ai-test-status"></span>
+        </div>
+        <p class="ai-hint" style="margin-top:10px">⚠️ Modo BYOK: úsalo para trabajo interno o demos. Para un link público compartido, conviene un proxy con la key en el servidor.</p>
+      </div>`;
+    openModal('⚙ Ajustes de IA (Claude)', html, () => {
+      saveAiConfig({ key: ($('#aiKey').value || '').trim(), model: $('#aiModel').value });
+      updateAiUi();
+    });
+    const ok = $('#modalOk'); if (ok) ok.textContent = 'Guardar';
+    const test = $('#aiTest');
+    if (test) test.addEventListener('click', async () => {
+      const st = $('#aiTestStatus');
+      const prev = aiConfig();
+      saveAiConfig({ key: ($('#aiKey').value || '').trim(), model: $('#aiModel').value });
+      st.textContent = '⏳ Probando…'; st.className = 'ai-test-status';
+      try {
+        const r = await callClaude('Responde solo con la palabra: OK', { maxTokens: 16 });
+        st.textContent = /ok/i.test(r) ? '✓ Conexión correcta' : '✓ Respondió: ' + r.slice(0, 20);
+        st.className = 'ai-test-status ok';
+      } catch (e) {
+        st.textContent = '✕ ' + e.message; st.className = 'ai-test-status err';
+        saveAiConfig(prev);
+      }
+    });
+  }
+
+  // Refleja en la UI si la IA está configurada (badge en el botón)
+  function updateAiUi() {
+    const b = $('#btnAiSettings');
+    if (b) b.classList.toggle('ai-on', aiReady());
+  }
+
+  function attachAiListeners() {
+    const gear = $('#btnAiSettings');
+    if (gear) gear.addEventListener('click', openAiSettings);
+
+    const btn = $('#btnIngestAi');
+    if (btn) btn.addEventListener('click', async () => {
+      const txt = ($('#notesInput').value || '').trim();
+      if (!txt) { alert('Pega o carga texto primero.'); return; }
+      if (!aiReady()) {
+        if (confirm('Aún no configuraste tu API key de Anthropic. ¿Abrir Ajustes de IA?')) openAiSettings();
+        return;
+      }
+      const st = $('#ingestAiStatus');
+      const setStatus = (m, cls) => { if (st) { st.hidden = false; st.textContent = m; st.className = 'ingest-ai-status' + (cls ? ' ' + cls : ''); } };
+      btn.disabled = true;
+      try {
+        await aiBuildProcess(txt, 'documento', setStatus);
+        setStatus('✓ Proceso generado con IA.', 'ok');
+        closeIngestModal();
+        maybeFitOnLoad();
+        activateTab('ficha');
+        renderFichaTab();
+        copilotPost('ai', '**Proceso interpretado con IA (Claude).** Revisé el texto y armé el flujo con actividades, roles (carriles), sistemas y decisiones. Verifica el diagrama y completa la pestaña **Ficha** si falta algún dato; luego exporta a **Ficha de Proceso**.');
+      } catch (e) {
+        setStatus('✕ ' + e.message, 'err');
+      } finally {
+        btn.disabled = false;
+      }
+    });
   }
 
   // ----------- NLP heurístico: texto → actividades -----------

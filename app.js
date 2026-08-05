@@ -107,7 +107,7 @@
     attachAiListeners();
     updateAiUi();
     // Hook para demos/pruebas (cargadores de ejemplo)
-    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test') };
+    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob() };
   }
 
   function populateSelects() {
@@ -6416,21 +6416,12 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       closeIngestModal();
     }));
 
-    // Notes
-    $('#btnIngestNotes').addEventListener('click', guardIngest(() => {
-      const txt = $('#notesInput').value.trim();
-      if (!txt) { alert('Pega texto primero.'); return; }
-      buildProcessFromText(txt, 'Notas/documentación');
-      closeIngestModal();
-    }));
-
-    // Cargar documento multi-formato (Word/PDF/PPTX/texto/BPMN) → texto o import directo
-    const docBtn = $('#btnLoadDoc'), docInput = $('#docFileInput');
-    if (docBtn && docInput) {
-      docBtn.addEventListener('click', () => docInput.click());
+    // Selección de archivo (desde la zona de arrastrar) → flujo único
+    const docInput = $('#docFileInput');
+    if (docInput) {
       docInput.addEventListener('change', (e) => {
         const f = e.target.files[0];
-        if (f) ingestDocFile(f);
+        if (f) { const n = $('#docFileName'); if (n) n.textContent = f.name; runIngest({ file: f }); }
         e.target.value = '';
       });
     }
@@ -6544,6 +6535,46 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const el = $('#docFileName');
     if (el) el.textContent = msg;
   }
+
+  // ---- Progreso visible + cancelación (evita que la app "parezca muerta") ----
+  let ingestAbort = null;             // { cancelled: bool, controller: AbortController }
+  const MAX_FILE_MB = 40;             // por encima de esto avisamos antes de intentar
+  const MAX_PDF_PAGES = 120;          // tope de páginas a extraer
+  const MAX_AI_CHARS = 60000;         // lo que enviamos al modelo
+  function ingestBusy(on) {
+    const box = $('#ingestProgress');
+    if (box) box.hidden = !on;
+    const btn = $('#btnIngestGo');
+    if (btn) btn.disabled = !!on;
+  }
+  function ingestProgress(msg, pct) {
+    const t = $('#ingestProgressText');
+    if (t) t.textContent = msg;
+    const bar = $('#ingestProgressBar');
+    if (bar) {
+      const indeterminate = (pct == null);
+      bar.classList.toggle('indeterminate', indeterminate);
+      bar.style.width = indeterminate ? '100%' : Math.max(2, Math.min(100, pct)) + '%';
+    }
+  }
+  // Cede el hilo para que el navegador repinte (si no, la UI se congela)
+  const uiTick = () => new Promise(r => setTimeout(r, 0));
+  function throwIfCancelled() {
+    if (ingestAbort && ingestAbort.cancelled) throw new Error('CANCELLED');
+  }
+  function startIngestJob() {
+    ingestAbort = { cancelled: false, controller: new AbortController() };
+    ingestBusy(true);
+    return ingestAbort;
+  }
+  function endIngestJob() { ingestAbort = null; ingestBusy(false); }
+  function cancelIngestJob() {
+    if (!ingestAbort) return;
+    ingestAbort.cancelled = true;
+    try { ingestAbort.controller.abort(); } catch (_) {}
+    ingestProgress('Cancelando…', null);
+  }
+
   function readFileAs(file, how) {
     return new Promise((resolve, reject) => {
       const r = new FileReader();
@@ -6553,30 +6584,118 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     });
   }
 
-  async function ingestDocFile(file) {
-    const name = file.name || 'documento';
-    const ext = (name.split('.').pop() || '').toLowerCase();
-    ingestStatus(`⏳ Procesando ${name}…`);
+  // ============================================================
+  // FLUJO ÚNICO DE INGESTA — "suelta el archivo y listo"
+  // Extrae -> interpreta (IA si hay key, si no heurístico) -> dibuja.
+  // Todo con progreso visible y botón Cancelar, cediendo el hilo para
+  // que la UI nunca parezca congelada.
+  // ============================================================
+  async function runIngest(source) {
+    if (ingestAbort) return;                       // ya hay un trabajo corriendo
+    startIngestJob();
+    const t0 = Date.now();
     try {
-      // ---- BPMN / XML → import directo del diagrama ----
-      if (ext === 'bpmn' || ext === 'xml') {
-        const xml = await readFileAs(file, 'text');
-        const res = importBpmnXml(xml);
-        if (!res || !res.count) { alert('No se encontraron elementos BPMN (tasks/eventos/gateways) en el archivo.'); ingestStatus(''); return; }
-        ingestStatus(`✓ ${name} — ${res.count} elementos importados`);
+      let text = '', label = 'documento';
+
+      if (source && source.file) {
+        ingestProgress('Abriendo ' + source.file.name + '...', 2);
+        await uiTick();
+        const r = await extractFileText(source.file);
+        if (r.kind === 'bpmn') {                    // BPMN -> ya quedó dibujado
+          ingestProgress('Diagrama importado', 100);
+          closeIngestModal();
+          maybeFitOnLoad();
+          activateTab('ficha');
+          copilotPost('ai', `**BPMN importado desde ${escapeHtml(r.name)}:** ${r.result.count} elementos (${r.result.tasks} actividades, ${r.result.gateways} compuertas, ${r.result.events} eventos) y ${r.result.flows} flujos.`);
+          return;
+        }
+        text = r.text; label = r.name;
+        $('#notesInput').value = text.length > 200000 ? text.slice(0, 200000) : text;
+      } else {
+        text = ($('#notesInput').value || '').trim();
+        label = 'texto pegado';
+      }
+      throwIfCancelled();
+      if (!text) throw new Error('No hay texto que interpretar. Carga un archivo o pega el texto del proceso.');
+
+      const useAi = aiReady();
+      ingestProgress(
+        useAi ? 'Interpretando con IA ' + text.length.toLocaleString('es-PE') + ' caracteres... (puede tardar hasta 1 min)'
+              : 'Analizando ' + text.length.toLocaleString('es-PE') + ' caracteres...',
+        useAi ? null : 80);
+      await uiTick();
+
+      if (useAi) {
+        const spec = await aiBuildProcess(text, label, (m) => ingestProgress(m, null));
+        throwIfCancelled();
+        ingestProgress('Proceso generado con IA', 100);
         closeIngestModal();
         maybeFitOnLoad();
         activateTab('ficha');
-        copilotPost('ai', `**BPMN importado desde ${escapeHtml(name)}:** ${res.count} elementos (${res.tasks} actividades, ${res.gateways} compuertas, ${res.events} eventos) y ${res.flows} flujos. Revisa el diagrama y completa la pestaña **Ficha** para generar el documento corporativo.`);
-        return;
+        renderFichaTab();
+        const n = (spec.nodes || []).length;
+        copilotPost('ai', `**Proceso interpretado con IA desde ${escapeHtml(label)}.** ${n} elementos con roles, sistemas y decisiones. Revisa el diagrama y completa la pestaña **Ficha**; luego exporta a **Ficha de Proceso**.` +
+          (text.length > MAX_AI_CHARS ? `\n\nNota: el documento excedía ${(MAX_AI_CHARS / 1000) | 0}K caracteres, interpreté la primera parte. Si falta el final del proceso, pega esa sección y vuelve a generar.` : ''));
+      } else {
+        buildProcessFromText(text, label);
+        ingestProgress('Proceso generado', 100);
+        closeIngestModal();
+        maybeFitOnLoad();
       }
+      console.info('[ProcessIQ] ingesta OK en', ((Date.now() - t0) / 1000).toFixed(1) + 's');
+    } catch (err) {
+      if (String(err.message) === 'CANCELLED' || err.name === 'AbortError') {
+        ingestProgress('Cancelado.', 0);
+        setTimeout(() => ingestBusy(false), 900);
+      } else {
+        console.error('[ProcessIQ] ingesta:', err);
+        ingestProgress('', 0);
+        ingestBusy(false);
+        alert('No se pudo completar:\n\n' + (err.message || err));
+      }
+    } finally {
+      if (ingestAbort) endIngestJob();
+    }
+  }
 
-      // ---- Formatos que se convierten a texto ----
+  // Compatibilidad: el input de archivo entra por aquí
+  async function ingestDocFile(file) { return runIngest({ file }); }
+
+  // Extrae texto de cualquier formato soportado (con progreso).
+  // Devuelve { kind:'bpmn', result } cuando el archivo es un diagrama importable.
+  async function extractFileText(file) {
+    const name = file.name || 'documento';
+    const ext = (name.split('.').pop() || '').toLowerCase();
+
+    // Guardia de tamaño: avisa ANTES de intentar y colgar el navegador
+    const mb = file.size / (1024 * 1024);
+    if (mb > MAX_FILE_MB) {
+      throw new Error('El archivo pesa ' + mb.toFixed(1) + ' MB (máximo ' + MAX_FILE_MB + ' MB). Divídelo o exporta solo el capítulo del proceso.');
+    }
+    // ---- BPMN / XML: import directo del diagrama ----
+    if (ext === 'bpmn' || ext === 'xml') {
+      ingestProgress('Importando diagrama BPMN...', 40);
+      await uiTick();
+      const xml = await readFileAs(file, 'text');
+      const res = importBpmnXml(xml);
+      if (!res || !res.count) throw new Error('No se encontraron elementos BPMN (actividades, eventos o compuertas) en el archivo.');
+      return { kind: 'bpmn', result: res, name };
+    }
+
+    // ---- Formatos que se convierten a texto ----
+    {
       let text = '';
       if (ext === 'txt' || ext === 'md' || ext === 'csv' || ext === 'text') {
+        ingestProgress('Leyendo el archivo...', 30);
+        await uiTick();
         text = await readFileAs(file, 'text');
       } else if (ext === 'docx') {
+        ingestProgress('Abriendo el documento Word...', 15);
+        await uiTick();
         await lazyLoadScript(CDN.mammoth);
+        throwIfCancelled();
+        ingestProgress('Extrayendo texto del Word...', 45);
+        await uiTick();
         const buf = await readFileAs(file, 'arraybuffer');
         const out = await window.mammoth.extractRawText({ arrayBuffer: buf });
         text = out.value || '';
@@ -6584,40 +6703,50 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         // .doc binario antiguo: intento de lectura best-effort (texto embebido)
         const raw = await readFileAs(file, 'text');
         text = raw.replace(/[^\x09\x0A\x0D\x20-\x7E -ɏ]+/g, ' ').replace(/\s{3,}/g, '\n').trim();
-        if (text.length < 40) { alert('El formato .doc antiguo no se pudo leer bien. Guárdalo como .docx o .pdf y reintenta.'); ingestStatus(''); return; }
+        if (text.length < 40) throw new Error('El formato .doc antiguo no se pudo leer. Guárdalo como .docx o PDF y reintenta.');
       } else if (ext === 'pdf') {
         text = await extractPdfText(file);
       } else if (ext === 'pptx') {
+        ingestProgress('Abriendo la presentación...', 15);
+        await uiTick();
         text = await extractPptxText(file);
       } else if (ext === 'ppt') {
-        alert('El formato .ppt antiguo no es compatible. Guárdalo como .pptx y reintenta.'); ingestStatus(''); return;
+        throw new Error('El formato .ppt antiguo no es compatible. Guárdalo como .pptx y reintenta.');
       } else {
-        alert('Formato no soportado: .' + ext); ingestStatus(''); return;
+        throw new Error('Formato no soportado: .' + ext + '. Admite Word, PDF, PowerPoint, texto y BPMN.');
       }
 
       text = (text || '').trim();
-      if (!text) { alert('No se pudo extraer texto del documento.'); ingestStatus(''); return; }
-      $('#notesInput').value = text;
-      activateIngestTab('notes');
-      ingestStatus(`✓ ${name} (${Math.round(file.size / 1024)} KB) — ${text.length.toLocaleString('es-PE')} caracteres extraídos. Revisa y pulsa "Generar proceso".`);
-    } catch (err) {
-      console.error('[ProcessIQ] ingestDocFile:', err);
-      alert('No se pudo procesar el documento: ' + (err.message || err));
-      ingestStatus('');
+      if (!text) throw new Error('No se pudo extraer texto del documento.');
+      return { kind: 'text', text, name };
     }
   }
 
   async function extractPdfText(file) {
-    // pdf.js se importa como módulo ESM
+    // pdf.js se importa como módulo ESM (la primera vez tarda ~4s: avisamos)
     if (!window._pdfjsLib) {
+      ingestProgress('Cargando el lector de PDF (solo la primera vez)…', null);
+      await uiTick();
       window._pdfjsLib = await import(/* @vite-ignore */ CDN.pdfjs);
       try { window._pdfjsLib.GlobalWorkerOptions.workerSrc = CDN.pdfWorker; } catch (_) {}
     }
+    throwIfCancelled();
+    ingestProgress('Leyendo el archivo…', 3);
+    await uiTick();
     const buf = await readFileAs(file, 'arraybuffer');
-    const pdf = await window._pdfjsLib.getDocument({ data: buf }).promise;
-    let out = [];
-    const maxPages = Math.min(pdf.numPages, 60);
+    throwIfCancelled();
+    let pdf;
+    try {
+      pdf = await window._pdfjsLib.getDocument({ data: buf }).promise;
+    } catch (e) {
+      if (/password/i.test(e.message || '')) throw new Error('El PDF está protegido con contraseña. Quítasela y reintenta.');
+      throw new Error('El PDF está dañado o no se puede abrir. Prueba a reguardarlo desde el visor (Archivo → Guardar como) y reintenta.');
+    }
+    const total = pdf.numPages;
+    const maxPages = Math.min(total, MAX_PDF_PAGES);
+    const out = [];
     for (let i = 1; i <= maxPages; i++) {
+      throwIfCancelled();
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
       // Reagrupa por líneas usando la coordenada Y
@@ -6630,9 +6759,20 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       });
       if (line.length) lines.push(line.join(''));
       out.push(lines.join('\n'));
+      // Progreso real + cede el hilo cada página para que la UI respire
+      ingestProgress(`Extrayendo texto… página ${i} de ${maxPages}`, 3 + (i / maxPages) * 62);
+      if (i % 3 === 0 || i === maxPages) await uiTick();
     }
-    if (pdf.numPages > maxPages) out.push(`\n[… documento truncado a ${maxPages} páginas de ${pdf.numPages}]`);
-    return out.join('\n\n');
+    const text = out.join('\n\n').trim();
+    // PDF escaneado = sin capa de texto → mensaje claro en vez de un error genérico
+    if (text.replace(/\s/g, '').length < 40) {
+      throw new Error(`El PDF no tiene texto seleccionable (parece escaneado o son imágenes). Necesita OCR: ábrelo en Acrobat → "Reconocer texto", o pega el texto a mano.`);
+    }
+    if (total > maxPages) {
+      out.push(`\n[… documento truncado: se procesaron ${maxPages} de ${total} páginas]`);
+      return out.join('\n\n');
+    }
+    return text;
   }
 
   async function extractPptxText(file) {
@@ -6771,16 +6911,35 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     };
     if (opts.system) body.system = opts.system;
     if (opts.effort) body.output_config = { effort: opts.effort };
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify(body)
-    });
+    // Timeout propio + cancelación desde el botón Cancelar (si no, parece colgada)
+    const ctrl = new AbortController();
+    const timeoutMs = opts.timeoutMs || 180000;   // 3 min
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const onCancel = () => ctrl.abort();
+    if (ingestAbort) ingestAbort.controller.signal.addEventListener('abort', onCancel);
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        if (ingestAbort && ingestAbort.cancelled) throw new Error('CANCELLED');
+        throw new Error('La IA tardó más de ' + Math.round(timeoutMs / 1000) + 's y se canceló. Prueba con un documento más corto o con el modelo Sonnet (más rápido) en Ajustes de IA.');
+      }
+      throw new Error('No se pudo conectar con Anthropic. Revisa tu conexión a internet. (' + e.message + ')');
+    } finally {
+      clearTimeout(timer);
+      if (ingestAbort) { try { ingestAbort.controller.signal.removeEventListener('abort', onCancel); } catch (_) {} }
+    }
     if (!res.ok) {
       let msg = 'Error ' + res.status;
       try { const j = await res.json(); msg += ': ' + (j.error?.message || JSON.stringify(j).slice(0, 200)); } catch (_) {}
@@ -6829,7 +6988,7 @@ Reglas:
   async function aiBuildProcess(sourceText, sourceLabel, statusFn) {
     const setStatus = statusFn || (() => {});
     setStatus('⏳ Interpretando con IA… (puede tardar unos segundos)');
-    const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, 60000)}`;
+    const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, MAX_AI_CHARS)}`;
     const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: 16000 });
     const spec = parseJsonLoose(raw);
     buildProcessFromAiSpec(spec, sourceLabel);
@@ -6917,45 +7076,70 @@ Reglas:
   function updateAiUi() {
     const b = $('#btnAiSettings');
     if (b) b.classList.toggle('ai-on', aiReady());
+    updateAiModeHint();
   }
 
   function attachAiListeners() {
     const gear = $('#btnAiSettings');
     if (gear) gear.addEventListener('click', openAiSettings);
 
-    const btn = $('#btnIngestAi');
-    if (btn) btn.addEventListener('click', async () => {
-      const txt = ($('#notesInput').value || '').trim();
-      if (!txt) { alert('Pega o carga texto primero.'); return; }
-      if (!aiReady()) {
-        if (confirm('Aún no configuraste tu API key de Anthropic. ¿Abrir Ajustes de IA?')) openAiSettings();
-        return;
-      }
-      const st = $('#ingestAiStatus');
-      const setStatus = (m, cls) => { if (st) { st.hidden = false; st.textContent = m; st.className = 'ingest-ai-status' + (cls ? ' ' + cls : ''); } };
-      btn.disabled = true;
-      try {
-        await aiBuildProcess(txt, 'documento', setStatus);
-        setStatus('✓ Proceso generado con IA.', 'ok');
-        closeIngestModal();
-        maybeFitOnLoad();
-        activateTab('ficha');
-        renderFichaTab();
-        copilotPost('ai', '**Proceso interpretado con IA (Claude).** Revisé el texto y armé el flujo con actividades, roles (carriles), sistemas y decisiones. Verifica el diagrama y completa la pestaña **Ficha** si falta algún dato; luego exporta a **Ficha de Proceso**.');
-      } catch (e) {
-        setStatus('✕ ' + e.message, 'err');
-      } finally {
-        btn.disabled = false;
-      }
-    });
+    // Botón único: "Generar proceso" (usa el texto pegado)
+    const go = $('#btnIngestGo');
+    if (go) go.addEventListener('click', () => runIngest(null));
+
+    const cancel = $('#btnIngestCancel');
+    if (cancel) cancel.addEventListener('click', cancelIngestJob);
+
+    // Zona de arrastrar y soltar (el gesto principal)
+    const dz = $('#dropZone'), fi = $('#docFileInput');
+    if (dz && fi) {
+      const pick = () => { if (!ingestAbort) fi.click(); };
+      dz.addEventListener('click', pick);
+      dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+      ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, (e) => {
+        e.preventDefault(); e.stopPropagation(); dz.classList.add('over');
+      }));
+      ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (ev === 'dragleave' && dz.contains(e.relatedTarget)) return;
+        dz.classList.remove('over');
+      }));
+      dz.addEventListener('drop', (e) => {
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) { $('#docFileName').textContent = f.name; runIngest({ file: f }); }
+      });
+    }
+    updateAiModeHint();
+  }
+
+  // Aclara qué motor se usará al pulsar "Generar proceso"
+  function updateAiModeHint() {
+    const el = $('#ingestAiMode');
+    if (!el) return;
+    if (aiReady()) {
+      const m = (aiConfig().model || 'claude-opus-5').replace('claude-', '').replace('-5', ' 5');
+      el.innerHTML = `Se interpretará con <b>IA (${escapeHtml(m)})</b>: reconstruye actividades, roles y decisiones.`;
+      el.className = 'ingest-mode on';
+    } else {
+      el.innerHTML = `Modo básico (sin IA): extrae actividades por palabras clave. Para interpretar el documento de verdad, configura la <b>IA</b> con el botón ⚙ de la cabecera.`;
+      el.className = 'ingest-mode';
+    }
   }
 
   // ----------- NLP heurístico: texto → actividades -----------
   function buildProcessFromText(text, source) {
-    const activities = parseTextToActivities(text);
+    let activities = parseTextToActivities(text);
     if (activities.length === 0) {
       alert('No pude extraer actividades del texto. Intenta separar por puntos o bullets.');
       return;
+    }
+    // Guardia: sin IA, un documento largo genera cientos de nodos y el diagrama
+    // queda inservible (y el render se arrastra). Recortamos y avisamos.
+    const MAX_HEUR_NODES = 60;
+    let truncatedAt = 0;
+    if (activities.length > MAX_HEUR_NODES) {
+      truncatedAt = activities.length;
+      activities = activities.slice(0, MAX_HEUR_NODES);
     }
 
     state.nodes = [];
@@ -7009,7 +7193,8 @@ Reglas:
       `He construido el flujograma desde la fuente **${source}**.\n\n` +
       `Detecté **${activities.length} actividades** (+ inicio/fin).\n` +
       `Patrones aplicados: actividades con verbos en infinitivo/imperativo, gateways de decisión por condicionales ("si", "cuando", "en caso").\n\n` +
-      `Revisa, ajusta etiquetas y completa responsables. Cuando termines pídeme: *"detecta pains"* o *"sugiere KPIs"*.`);
+      `Revisa, ajusta etiquetas y completa responsables. Cuando termines pídeme: *"detecta pains"* o *"sugiere KPIs"*.` +
+      (truncatedAt ? `\n\n⚠️ **El documento era muy largo** (${truncatedAt} actividades detectadas). Me quedé con las primeras ${activities.length} para que el diagrama siga siendo legible.\n\n**Recomendación:** configura la **IA (⚙ en la cabecera)** — interpreta el documento completo y arma el flujo real con roles y decisiones, en vez de esta extracción por palabras clave.` : ''));
   }
 
   // Garantiza que cada gateway de decisión tenga 2 salidas con etiquetas Sí/No

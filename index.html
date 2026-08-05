@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=1.9.0" />
+  <link rel="stylesheet" href="styles.css?v=2.0.0" />
   <script defer src="https://umami-mbc.vercel.app/script.js" data-website-id="0f3aaa08-7bb8-4aec-b09b-d9c4abf3868c"></script>
 </head>
 <body>
@@ -681,19 +681,26 @@
           Pega notas de levantamiento, manuales de procedimiento, descripciones del cliente o cualquier texto que
           describa el proceso paso a paso. Una oración = una posible actividad.
         </p>
-        <div class="notes-toolbar">
-          <button id="btnLoadDoc" class="btn btn-ghost btn-mini" title="Carga Word, PDF, PowerPoint, texto o BPMN — se extrae y arma el flujo">
-            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
-            Cargar documento
-          </button>
-          <button id="btnLoadSample" class="btn btn-ghost btn-mini" title="Explora los procesos de ejemplo">
-            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/><path d="M13 3l2.4 6.1L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"/></svg></span>
-            Ver ejemplos
-          </button>
-          <input id="docFileInput" type="file" accept=".txt,.md,.csv,.text,.docx,.doc,.pdf,.pptx,.ppt,.bpmn,.xml" hidden />
-          <span id="docFileName" class="muted-inline"></span>
+        <!-- Zona de arrastrar y soltar: el gesto principal -->
+        <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Suelta tu documento aquí o haz clic para elegirlo">
+          <svg class="drop-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <div class="drop-title">Suelta aquí tu documento</div>
+          <div class="drop-sub">o <b>haz clic para elegirlo</b> — Word · PDF · PowerPoint · texto · BPMN</div>
+          <div id="docFileName" class="drop-file"></div>
         </div>
-        <p class="format-hint">Formatos aceptados: <b>Word</b> (.docx) · <b>PDF</b> · <b>PowerPoint</b> (.pptx) · <b>texto</b> (.txt/.md) · <b>BPMN 2.0</b> (.bpmn/.xml). Los BPMN se importan como diagrama directo; el resto se convierte a texto para revisar antes de generar.</p>
+        <input id="docFileInput" type="file" accept=".txt,.md,.csv,.text,.docx,.doc,.pdf,.pptx,.ppt,.bpmn,.xml" hidden />
+
+        <!-- Progreso + cancelar (para que nunca parezca colgada) -->
+        <div id="ingestProgress" class="ingest-progress" hidden>
+          <div class="ip-row">
+            <span id="ingestProgressText" class="ip-text">Procesando…</span>
+            <button id="btnIngestCancel" class="btn btn-ghost btn-mini" type="button">Cancelar</button>
+          </div>
+          <div class="ip-track"><div id="ingestProgressBar" class="ip-bar"></div></div>
+        </div>
+
+        <details class="ingest-more">
+          <summary>o pega el texto a mano</summary>
         <textarea id="notesInput" rows="13" placeholder="Ejemplo:
 1. El cliente solicita el servicio a través del portal web.
 2. El asesor comercial valida los datos y registra la solicitud en Salesforce.
@@ -702,14 +709,16 @@
 5. Se notifica al cliente y se cierra el caso.
 
 Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
-        <div class="ingest-actions ingest-actions-2">
-          <button id="btnIngestAi" class="btn btn-primary" title="Usa Claude para interpretar el texto y armar el flujo con roles y decisiones">
-            <span class="icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/></svg></span>
-            Interpretar con IA →
+        </details>
+
+        <div class="ingest-actions">
+          <button id="btnIngestGo" class="btn btn-primary btn-go" title="Extrae, interpreta y dibuja el proceso">
+            <span class="icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/></svg></span>
+            Generar proceso
           </button>
-          <button id="btnIngestNotes" class="btn btn-ghost" title="Extracción heurística sin IA (rápida, básica)">Sin IA (heurístico)</button>
+          <button id="btnLoadSample" class="btn btn-ghost btn-mini" title="Explora los procesos de ejemplo">Ver ejemplos</button>
         </div>
-        <p id="ingestAiStatus" class="ingest-ai-status" hidden></p>
+        <p id="ingestAiMode" class="ingest-mode"></p>
       </section>
 
       <!-- TAB EVENT LOG -->
@@ -739,6 +748,6 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="kpi-library.js?v=1.6.1"></script>
-  <script src="app.js?v=1.9.0"></script>
+  <script src="app.js?v=2.0.0"></script>
 </body>
 </html>

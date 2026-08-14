@@ -344,13 +344,20 @@
     if (state._lanes && state._lanes.list.length > 0) {
       const L = state._lanes;
       const ns = 'http://www.w3.org/2000/svg';
-      // Ancho total de las lanes: cubre todos los nodos
-      let maxRight = L.padX + L.headerW + L.innerPadL + L.totalRanks * L.colW + 60;
-      state.nodes.forEach(n => { maxRight = Math.max(maxRight, n.x + n.w + 40); });
+      // En modo envolvente el bloque de carriles se repite en cada banda
+      const bandCount = Math.max(1, L.bands || 1);
+      const bandH = L.bandH || (L.list.length * L.laneH + 70);
+      for (let band = 0; band < bandCount; band++) {
+      // Ancho de esta banda: cubre sus propios nodos
+      let maxRight = L.padX + L.headerW + L.innerPadL + 240;
+      state.nodes.forEach(n => {
+        if ((n._band || 0) !== band) return;
+        maxRight = Math.max(maxRight, n.x + n.w + 40);
+      });
       const lanesWidth = maxRight - L.padX;
 
       L.list.forEach((laneName, idx) => {
-        const y = L.padY + idx * L.laneH;
+        const y = L.padY + band * bandH + idx * L.laneH;
 
         // ===== Capa fondo (bg + separadores) =====
         const bg = document.createElementNS(ns, 'rect');
@@ -416,6 +423,7 @@
         }
         laneHeadersLayer.appendChild(label);
       });
+      }   // fin bandas
 
       // Activa sticky: traslada laneHeadersLayer en X según scrollLeft
       updateStickyHeaders();
@@ -425,9 +433,8 @@
     state.edges.forEach(e => {
       const a = getNode(e.from), b = getNode(e.to);
       if (!a || !b) return;
-      const p1 = nodeCenter(a), p2 = nodeCenter(b);
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', orthoPath(p1, p2));
+      path.setAttribute('d', smartEdgePath(a, b, e));
       // Message flow (punteado) si cruza lanes/responsables distintos; sequence flow (sólido) si no
       const laneOfA = state._lanes?.laneOf?.[a.id];
       const laneOfB = state._lanes?.laneOf?.[b.id];
@@ -470,7 +477,8 @@
       edgesLayer.appendChild(path);
 
       if (e.label) {
-        const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+        const lp = edgeLabelPoint(a, b, e);
+        const mx = lp.x, my = lp.y;
         const nsv = 'http://www.w3.org/2000/svg';
         const txt = document.createElementNS(nsv, 'text');
         txt.setAttribute('x', mx);
@@ -950,6 +958,182 @@
       const my = p1.y + dy / 2;
       return `M ${p1.x} ${p1.y} L ${p1.x} ${my} L ${p2.x} ${my} L ${p2.x} ${p2.y}`;
     }
+  }
+
+  // ============================================================
+  // RUTEO DE FLECHAS (calidad BPMN)
+  // Las flechas salen y entran por los BORDES de las cajas (no por el centro),
+  // el codo se coloca en el hueco ENTRE columnas (nunca dentro de una caja) y
+  // los retornos de reproceso viajan por un corredor inferior despejado.
+  // ============================================================
+  const EDGE_RADIUS = 10;             // radio del codo redondeado
+  const LOOP_GAP = 26;                // separación del primer corredor de retorno
+  const LOOP_LANE_H = 16;             // separación entre corredores de retorno
+
+  // Convierte una polilínea en un path con esquinas redondeadas
+  function roundedPath(pts, r) {
+    pts = pts.filter((p, i) => i === 0 || Math.abs(p.x - pts[i - 1].x) > 0.5 || Math.abs(p.y - pts[i - 1].y) > 0.5);
+    if (pts.length < 3) return `M ${pts[0].x} ${pts[0].y} L ${pts[pts.length - 1].x} ${pts[pts.length - 1].y}`;
+    const dist = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+    const toward = (from, to, d) => {
+      const len = dist(from, to) || 1;
+      return { x: from.x + (to.x - from.x) * (d / len), y: from.y + (to.y - from.y) * (d / len) };
+    };
+    let d = `M ${pts[0].x} ${pts[0].y}`;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const p = pts[i], prev = pts[i - 1], next = pts[i + 1];
+      const rr = Math.min(r, dist(prev, p) / 2, dist(p, next) / 2);
+      const a = toward(p, prev, rr), b = toward(p, next, rr);
+      d += ` L ${a.x} ${a.y} Q ${p.x} ${p.y} ${b.x} ${b.y}`;
+    }
+    const last = pts[pts.length - 1];
+    return d + ` L ${last.x} ${last.y}`;
+  }
+
+  // Reserva un "carril" por cada flecha de retorno para que no se solapen
+  function loopCorridors() {
+    if (state._loopSlots && state._loopSlotsFor === state.edges.length) return state._loopSlots;
+    const slots = {};
+    // Un corredor por banda: el retorno viaja justo debajo de SU banda, no al
+    // fondo del documento (si no, en modo envolvente cruzaría todo el diagrama).
+    const bandBottom = {};
+    state.nodes.forEach(n => {
+      const bd = n._band || 0;
+      bandBottom[bd] = Math.max(bandBottom[bd] || 0, n.y + n.h);
+    });
+    const backs = state.edges.filter(e => {
+      const a = getNode(e.from), b = getNode(e.to);
+      return a && b && (b.x + b.w) <= (a.x + 4);
+    });
+    const perBand = {};
+    backs.map(e => {
+      const a = getNode(e.from), b = getNode(e.to);
+      // Banda SUPERIOR: el corredor va justo debajo de la banda de origen, de modo
+      // que un salto de banda baja una sola vez y entra por arriba del destino.
+      return { id: e.id, band: Math.min(a._band || 0, b._band || 0), span: Math.abs((a.x + a.w / 2) - (b.x + b.w / 2)) };
+    }).sort((p, q) => p.span - q.span)
+      .forEach(it => {
+        const i = (perBand[it.band] = (perBand[it.band] || 0)) ;
+        perBand[it.band]++;
+        slots[it.id] = (bandBottom[it.band] || 0) + LOOP_GAP + i * LOOP_LANE_H;
+      });
+    state._loopSlots = slots;
+    state._loopSlotsFor = state.edges.length;
+    return slots;
+  }
+
+  // ¿La flecha salta columnas? (hay cajas intermedias que esquivar)
+  function longSpan(a, b) {
+    const R = state._lanes && state._lanes.ranks;
+    if (R && R[a.id] != null && R[b.id] != null) return (R[b.id] - R[a.id]) > 1;
+    return (b.x - (a.x + a.w)) > 260;
+  }
+
+  // Ejes verticales SEGUROS: el centro del hueco entre columnas. Usar el borde del
+  // nodo no basta: los nodos estrechos van centrados en su columna, así que a su
+  // lado queda espacio que ocupan las cajas anchas de otros carriles.
+  function colGapAfter(node) {
+    const L = state._lanes, r = L && L.ranks ? L.ranks[node.id] : null;
+    if (L && L.colX && L.rankW && r != null && L.colX[r] != null) return L.colX[r] + L.rankW[r] + 29;
+    return node.x + node.w + 18;
+  }
+  function colGapBefore(node) {
+    const L = state._lanes, r = L && L.ranks ? L.ranks[node.id] : null;
+    if (L && L.colX && r != null && L.colX[r] != null) return L.colX[r] - 29;
+    return node.x - 18;
+  }
+
+  // Franja inferior libre del carril de un nodo (autopista para tramos largos)
+  function laneGutterY(node) {
+    const L = state._lanes;
+    if (!L || !L.list || !L.laneOf) return null;
+    const idx = L.list.indexOf(L.laneOf[node.id]);
+    if (idx < 0) return null;
+    const bandY = (node._band || 0) * (L.bandH || 0);
+    const laneTop = L.padY + bandY + idx * L.laneH;
+    return laneTop + L.laneH - 13;      // dentro del carril, bajo las cajas
+  }
+
+  // Path inteligente entre dos nodos (reemplaza centro-a-centro)
+  function smartEdgePath(a, b, edge) {
+    const ac = nodeCenter(a), bc = nodeCenter(b);
+    const forward = b.x >= a.x + a.w - 4;
+    const backward = (b.x + b.w) <= (a.x + 4);
+
+    if (forward) {
+      const from = { x: a.x + a.w, y: ac.y };
+      const to = { x: b.x, y: bc.y };
+      if (Math.abs(from.y - to.y) < 2 && !longSpan(a, b)) {
+        return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+      }
+      // Tramo largo (salta columnas): la recta pisaría las cajas intermedias.
+      // Se desvía por la franja libre del carril y sólo entra al destino al final.
+      if (longSpan(a, b)) {
+        const gy = laneGutterY(a);
+        if (gy != null && Math.abs(gy - from.y) > 8) {
+          const x1 = colGapAfter(a), x2 = colGapBefore(b);
+          if (x2 > x1 + 10) {
+            return roundedPath([from, { x: x1, y: from.y }, { x: x1, y: gy },
+                                { x: x2, y: gy }, { x: x2, y: to.y }, to], EDGE_RADIUS);
+          }
+        }
+      }
+      // codo en el hueco entre columnas => nunca cae dentro de una caja
+      const mx = from.x + (to.x - from.x) / 2;
+      return roundedPath([from, { x: mx, y: from.y }, { x: mx, y: to.y }, to], EDGE_RADIUS);
+    }
+
+    if (backward) {
+      // Retorno: baja al corredor, viaja horizontal y entra al destino.
+      // Clave: si el destino está DEBAJO del corredor (salto de banda en modo
+      // envolvente) hay que entrar por ARRIBA; si no, la flecha lo atravesaría.
+      const y = (loopCorridors()[edge && edge.id]) ||
+                (Math.max(a.y + a.h, b.y + b.h) + LOOP_GAP);
+      // Sale por abajo, se desplaza al hueco entre columnas (sin cajas), baja al
+      // corredor, vuelve y entra al destino por su lado izquierdo — la flecha
+      // apunta en el sentido del flujo, como se dibuja un reproceso en BPMN.
+      const xOut = colGapAfter(a);                    // hueco tras la columna origen
+      const xIn = colGapBefore(b);                    // hueco antes de la columna destino
+      // El corredor puede quedar ARRIBA del origen (retorno que sube de banda):
+      // en ese caso hay que salir por el techo, no por el suelo.
+      const exitTop = y < a.y;
+      const from = { x: ac.x, y: exitTop ? a.y : a.y + a.h };
+      const to = { x: b.x, y: bc.y };
+      return roundedPath([from, { x: xOut, y: from.y }, { x: xOut, y },
+                          { x: xIn, y }, { x: xIn, y: to.y }, to], EDGE_RADIUS);
+    }
+
+    // misma columna (o solape): conexión vertical por bordes
+    if (bc.y >= ac.y) {
+      const from = { x: ac.x, y: a.y + a.h }, to = { x: bc.x, y: b.y };
+      if (Math.abs(from.x - to.x) < 2) return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+      const my = from.y + (to.y - from.y) / 2;
+      return roundedPath([from, { x: from.x, y: my }, { x: to.x, y: my }, to], EDGE_RADIUS);
+    }
+    const from = { x: ac.x, y: a.y }, to = { x: bc.x, y: b.y + b.h };
+    if (Math.abs(from.x - to.x) < 2) return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+    const my = from.y + (to.y - from.y) / 2;
+    return roundedPath([from, { x: from.x, y: my }, { x: to.x, y: my }, to], EDGE_RADIUS);
+  }
+
+  // Punto medio real del recorrido (para colocar la etiqueta sin pisar cajas)
+  function edgeLabelPoint(a, b, edge) {
+    const ac = nodeCenter(a), bc = nodeCenter(b);
+    const forward = b.x >= a.x + a.w - 4;
+    const backward = (b.x + b.w) <= (a.x + 4);
+    if (forward) {
+      const fx = a.x + a.w, tx = b.x;
+      const mx = fx + (tx - fx) / 2;
+      // si hay codo, la etiqueta va en el tramo horizontal de salida
+      return Math.abs(ac.y - bc.y) < 2
+        ? { x: mx, y: ac.y }
+        : { x: fx + (mx - fx) / 2, y: ac.y };
+    }
+    if (backward) {
+      const y = (loopCorridors()[edge && edge.id]) || (Math.max(a.y + a.h, b.y + b.h) + LOOP_GAP);
+      return { x: (ac.x + bc.x) / 2, y };
+    }
+    return { x: (ac.x + bc.x) / 2, y: (ac.y + bc.y) / 2 };
   }
 
   function getCss(varName) {
@@ -1524,6 +1708,20 @@
       case 'exec-summary':
         copilotPost('user', 'Resumen ejecutivo del diagnóstico.');
         setTimeout(execSummaryMock, 300);
+        break;
+      case 'merge-gateways':
+        copilotPost('user', 'Insertar compuertas de convergencia.');
+        setTimeout(insertMergeGateways, 250);
+        break;
+      case 'relayout':
+        copilotPost('user', 'Reorganizar el diagrama.');
+        setTimeout(() => {
+          state._wrap = undefined;          // vuelve a decidir automáticamente
+          autoLayout();
+          maybeFitOnLoad();
+          const L = state._lanes || {};
+          copilotPost('ai', `**Diagrama reorganizado.** ${L.wrap ? `Modo envolvente activo: ${L.bands} bandas de hasta ${L.wrapAt} columnas (evita el diagrama kilométrico).` : 'Disposición en una sola banda.'} Carriles ordenados para minimizar cruces y retornos de reproceso por corredor inferior.`);
+        }, 200);
         break;
     }
   }
@@ -2257,21 +2455,87 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       if (!laneOrder.includes(lane)) laneOrder.push(lane);
     });
 
-    // Layout parámetros — espaciado generoso para evitar superposición de cajas y labels
+    // --- Anti-cruces: reordena los carriles por baricentro (Sugiyama simplificado) ---
+    // Dos carriles muy conectados deben quedar contiguos; así las flechas entre
+    // responsables son cortas y se cruzan mucho menos.
+    if (laneOrder.length > 2) {
+      const link = {};                                   // lane -> lane -> peso
+      state.edges.forEach(e => {
+        const a = getNode(e.from), b = getNode(e.to);
+        if (!a || !b) return;
+        const la = laneOf(a), lb = laneOf(b);
+        if (la === lb) return;
+        (link[la] = link[la] || {})[lb] = ((link[la] || {})[lb] || 0) + 1;
+        (link[lb] = link[lb] || {})[la] = ((link[lb] || {})[la] || 0) + 1;
+      });
+      const firstRankOf = {};                            // desempate: mantiene la lectura temporal
+      laneOrder.forEach(l => { firstRankOf[l] = Infinity; });
+      state.nodes.forEach(n => {
+        const l = laneOf(n), r = ranks[n.id] || 0;
+        if (r < firstRankOf[l]) firstRankOf[l] = r;
+      });
+      for (let pass = 0; pass < 4; pass++) {
+        const pos = {};
+        laneOrder.forEach((l, i) => { pos[l] = i; });
+        const bary = laneOrder.map(l => {
+          const nb = link[l] || {};
+          let sum = 0, w = 0;
+          Object.keys(nb).forEach(o => { sum += pos[o] * nb[o]; w += nb[o]; });
+          return { lane: l, b: w ? sum / w : pos[l] };
+        });
+        bary.sort((p, q) => (p.b - q.b) || (firstRankOf[p.lane] - firstRankOf[q.lane]));
+        const next = bary.map(x => x.lane);
+        if (next.join('|') === laneOrder.join('|')) break;
+        laneOrder.length = 0; next.forEach(l => laneOrder.push(l));
+      }
+    }
+
+    // Layout parámetros
     const headerW = 140;            // ancho del header de la swimlane (label izquierda)
-    const colW = 240;               // separación horizontal entre ranks (caja 158 + holgura)
     const laneH = 170;              // altura de cada carretera (caja 76 + meta + holgura)
     const padX = 30;
     const padY = 30;
     const innerPadL = 30;
+    const BASE_GAP = 58;            // hueco mínimo entre columnas
+    const LABEL_GAP = 96;           // hueco cuando la flecha lleva etiqueta (Sí/No…)
+    const totalRanks = Math.max(...Object.values(ranks), 0) + 1;
 
-    // Posiciona cada nodo: x = rank, y = centro de su lane
+    // --- Columnas compactas: cada rank ocupa sólo lo que necesita ---
+    // (antes: 240px fijos aunque el rank sólo tuviera un evento de 54px)
+    const rankW = {}, gapAfter = {};
+    for (let r = 0; r < totalRanks; r++) { rankW[r] = 0; gapAfter[r] = BASE_GAP; }
     state.nodes.forEach(n => {
       const r = ranks[n.id] || 0;
-      const lane = laneOf(n);
-      const laneIdx = laneOrder.indexOf(lane);
-      n.x = padX + headerW + innerPadL + r * colW;
-      n.y = padY + laneIdx * laneH + (laneH - n.h) / 2;
+      rankW[r] = Math.max(rankW[r], n.w);
+    });
+    state.edges.forEach(e => {
+      if (!e.label) return;
+      const rf = ranks[e.from], rt = ranks[e.to];
+      if (rt === rf + 1) gapAfter[rf] = Math.max(gapAfter[rf], LABEL_GAP);
+    });
+
+    // --- Modo envolvente: procesos largos bajan en bandas en vez de irse a 6m de ancho ---
+    const WRAP_AT = 14;                                   // ranks por banda
+    const doWrap = (state._wrap === true) || (state._wrap !== false && totalRanks > WRAP_AT);
+    const bandOf = (r) => doWrap ? Math.floor(r / WRAP_AT) : 0;
+    const bandH = laneOrder.length * laneH + 70;          // alto de una banda + corredor
+
+    const colX = {};
+    let cx = padX + headerW + innerPadL;
+    for (let r = 0; r < totalRanks; r++) {
+      if (doWrap && r % WRAP_AT === 0) cx = padX + headerW + innerPadL;   // nueva banda: vuelve a la izquierda
+      colX[r] = cx;
+      cx += rankW[r] + gapAfter[r];
+    }
+
+    // Posiciona cada nodo: x = columna compacta, y = su carril (+ banda)
+    state.nodes.forEach(n => {
+      const r = ranks[n.id] || 0;
+      const laneIdx = laneOrder.indexOf(laneOf(n));
+      const band = bandOf(r);
+      n._band = band;
+      n.x = colX[r] + (rankW[r] - n.w) / 2;               // centrado en su columna
+      n.y = padY + band * bandH + laneIdx * laneH + (laneH - n.h) / 2;
     });
 
     // Colisiones: varios nodos en mismo rank+lane → reparte verticalmente DENTRO de la lane,
@@ -2283,8 +2547,18 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     });
     Object.values(groups).forEach(grp => {
       if (grp.length < 2) return;
+      // Anti-cruces dentro del grupo: ordena por la altura media de sus vecinos
+      const neighborY = (n) => {
+        const ys = [];
+        state.edges.forEach(e => {
+          if (e.from === n.id) { const t = getNode(e.to); if (t) ys.push(t.y); }
+          else if (e.to === n.id) { const s = getNode(e.from); if (s) ys.push(s.y); }
+        });
+        return ys.length ? ys.reduce((a, c) => a + c, 0) / ys.length : n.y;
+      };
+      grp.sort((p, q) => neighborY(p) - neighborY(q));
       const laneIdx = laneOrder.indexOf(laneOf(grp[0]));
-      const laneTop = padY + laneIdx * laneH;
+      const laneTop = padY + (grp[0]._band || 0) * bandH + laneIdx * laneH;
       const gap = grp[0].h + 26;                     // alto de caja + espacio para meta
       const totalH = (grp.length - 1) * gap;
       const startY = laneTop + (laneH - grp[0].h) / 2 - totalH / 2;
@@ -2296,10 +2570,13 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       list: laneOrder,
       laneOf: ownerMap,
       ranks: ranks,
-      headerW, colW, laneH, padX, padY, innerPadL,
-      totalRanks: Math.max(...Object.values(ranks), 0) + 1,
+      headerW, colW: BASE_GAP + 158, laneH, padX, padY, innerPadL,
+      colX, rankW, bandH, wrap: doWrap, wrapAt: WRAP_AT,
+      bands: doWrap ? Math.ceil(totalRanks / WRAP_AT) : 1,
+      totalRanks,
       inferredCount: state.nodes.filter(n => n._inferredOwner).length
     };
+    state._loopSlots = null;   // invalida corredores de retorno tras recolocar
 
     // Asigna códigos de actividad BPMN ahora que existen ranks (orden izq→der)
     assignActivityCodes();
@@ -7195,6 +7472,55 @@ Reglas:
       `Patrones aplicados: actividades con verbos en infinitivo/imperativo, gateways de decisión por condicionales ("si", "cuando", "en caso").\n\n` +
       `Revisa, ajusta etiquetas y completa responsables. Cuando termines pídeme: *"detecta pains"* o *"sugiere KPIs"*.` +
       (truncatedAt ? `\n\n⚠️ **El documento era muy largo** (${truncatedAt} actividades detectadas). Me quedé con las primeras ${activities.length} para que el diagrama siga siendo legible.\n\n**Recomendación:** configura la **IA (⚙ en la cabecera)** — interpreta el documento completo y arma el flujo real con roles y decisiones, en vez de esta extracción por palabras clave.` : ''));
+  }
+
+  // ============================================================
+  // COMPUERTAS DE CONVERGENCIA (merge)
+  // BPMN riguroso: cuando 2+ ramas abiertas por una compuerta vuelven a
+  // juntarse, se dibuja la compuerta de cierre en vez de un merge implícito.
+  // Es opt-in (acción del copiloto) porque cambia el número de nodos.
+  // ============================================================
+  function insertMergeGateways() {
+    const before = state.nodes.length;
+    // Candidatos: nodos con 2+ entradas que NO son compuerta ni fin
+    const targets = state.nodes.filter(n => {
+      if (n.type === 'decision' || n.type === 'end' || n.type === 'start') return false;
+      return state.edges.filter(e => e.to === n.id).length >= 2;
+    });
+    let added = 0;
+    targets.forEach(n => {
+      const ins = state.edges.filter(e => e.to === n.id);
+      if (ins.length < 2) return;
+      // Sólo si alguna de las entradas viene (directa o indirectamente) de una decisión
+      const fromDecision = ins.some(e => {
+        const src = getNode(e.from);
+        return src && (src.type === 'decision' || state.edges.some(x => x.to === src.id && (getNode(x.from) || {}).type === 'decision'));
+      });
+      if (!fromDecision) return;
+      const def = SHAPE_DEFAULTS.decision;
+      const merge = {
+        id: 'n' + (state.nextId++), type: 'decision', gatewayType: 'exclusive', _merge: true,
+        x: n.x - 120, y: n.y, w: def.w, h: def.h,
+        label: '', executionType: '', activityCode: '',
+        owner: n.owner || '', system: '', time: '', volume: '', va: '',
+        sla: '', docsIn: '', docsOut: '', rules: '', notes: 'Convergencia de ramas', pains: []
+      };
+      state.nodes.push(merge);
+      ins.forEach(e => { e.to = merge.id; });                       // las ramas entran al merge
+      state.edges.push({ id: 'e' + (state.nextId++), from: merge.id, to: n.id, label: '' });
+      added++;
+    });
+    if (!added) {
+      copilotPost('ai', 'No encontré convergencias que necesiten compuerta de cierre: las ramas de este proceso terminan en fines distintos o ya convergen en una compuerta.');
+      return 0;
+    }
+    persist();
+    autoLayout();
+    copilotPost('ai',
+      `**${added} compuerta(s) de convergencia insertada(s).**\n\n` +
+      `Donde varias ramas volvían a juntarse en una actividad, ahora se dibuja la compuerta de cierre (✕) — es lo que exige el BPMN riguroso y lo que esperan ver los comités.\n\n` +
+      `Nodos: ${before} → ${state.nodes.length}. Si prefieres el merge implícito, usa **deshacer** (Ctrl+Z).`);
+    return added;
   }
 
   // Garantiza que cada gateway de decisión tenga 2 salidas con etiquetas Sí/No

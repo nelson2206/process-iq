@@ -5726,6 +5726,15 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const MAGENTA = 'FF4713';
     const DARK = '232323';
     const GRAY = '7A7A7A';
+    // ── Paleta "formato Telered" (referencia: slides 40-41 Gobierno IA) ──
+    const T_VINO = '4F062A';      // decisiones (diamante) y títulos
+    const T_AZUL = '004481';      // acentos corporativos
+    const T_ROSA = 'EF659D';      // evento de fin
+    const T_VERDE = '44B757';     // evento de inicio
+    const T_NARANJA = 'E56813';   // headers de rol (swimlane)
+    const T_ARENA = 'E3E2DA';     // cajas de actividad
+    const T_TXT = '1A1A1A';
+    const T_FONT = 'Lato';        // tipografía del deck de referencia
 
     // ============ SLIDE 1: PORTADA ============
     const s1 = pres.addSlide();
@@ -5783,21 +5792,26 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const sliceWPixels = ranksPerSlice * srcColW;
     const scale = Math.min(SLIDE_DRAW_H / srcH, drawableW_calc / sliceWPixels);
 
+    // Estilo Telered: actividades arena sin borde, diamante vino, inicio verde, fin rosa
     const shapeKind = { task: 'rect', system: 'rect', decision: 'diamond', start: 'ellipse', end: 'ellipse', intermediate: 'ellipse', document: 'rect', data: 'parallelogram' };
-    const shapeFill = { task: 'FFFFFF', system: 'ECEFF1', decision: 'FFF8E1', start: 'E8F5E9', end: 'FFEBEE', intermediate: 'FEF7E0', document: 'E3F2FD', data: 'F3E5F5' };
-    const shapeBorder = { task: '414141', system: '37474F', decision: 'F9A825', start: '2E7D32', end: 'C62828', intermediate: 'B45309', document: '1565C0', data: '6A1B9A' };
+    const shapeFill = { task: T_ARENA, system: T_ARENA, decision: T_VINO, start: T_VERDE, end: T_ROSA, intermediate: 'FFFFFF', document: T_ARENA, data: T_ARENA };
+    const shapeBorder = { task: 'D0CEC4', system: '9AA4AE', decision: T_VINO, start: T_VERDE, end: T_ROSA, intermediate: T_AZUL, document: T_AZUL, data: T_AZUL };
     // Glyph unicode por subtipo de evento BPMN (render confiable en PowerPoint; Calibri/Segoe fallback)
     const EV_GLYPH = { message: '✉', timer: '⌛', error: '⚡', signal: '▲' };
     const MK_GLYPH = { subprocess: '⊞', loop: '↻', multiinstance: '|||', 'multiinstance-seq': '☰' };
 
     // Función helper: dibuja un slice del proceso en un slide
     function drawProcessSlice(slide, sliceIdx, rankStart, rankEnd) {
-      // Header del slide
+      // Header estilo Telered: título vino + kicker gris uppercase, sin barras
       slide.background = { color: 'FFFFFF' };
-      slide.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-      slide.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-      const subtitle = slicesCount > 1 ? ` · Parte ${sliceIdx + 1} de ${slicesCount}` : '';
-      slide.addText('Mapa del proceso (As-Is)' + subtitle, { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+      const subtitle = slicesCount > 1 ? ` (${sliceIdx + 1}/${slicesCount})` : '';
+      slide.addText(`Flujo del proceso: ${state.meta.name || 'As-Is'}${subtitle}`, {
+        x: 0.4, y: 0.12, w: 12.5, h: 0.4, fontSize: 18, color: T_VINO, bold: true, fontFace: T_FONT });
+      slide.addText(((state.meta.macroprocess || 'PROCESO') + ' · ' + (state.meta.client || state.meta.industry || 'MINSAIT')).toUpperCase(), {
+        x: 0.4, y: 0.52, w: 12.5, h: 0.25, fontSize: 10, color: GRAY, fontFace: T_FONT, charSpacing: 2 });
+      // Pie de página del deck de referencia
+      slide.addText(`MINSAIT · ${(state.meta.client || 'Business Consulting').toUpperCase()} · ${state.meta.name || ''} · ${new Date().toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}`, {
+        x: 0.4, y: 7.15, w: 12.5, h: 0.25, fontSize: 8, color: GRAY, fontFace: T_FONT });
 
       // Filtra nodos en el rango de ranks del slice
       const nodesInSlice = state.nodes.filter(n => {
@@ -5829,14 +5843,13 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           // Fondo de la lane (todo el ancho)
           slide.addShape('rect', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: laneRowH,
             fill: { color: lidx % 2 ? 'FAFAFA' : 'F4F4F4' }, line: { color: 'E0E0E0', width: 0.5 } });
-          // Header sticky (vertical) en el lado izquierdo
-          slide.addShape('rect', { x: 0.4, y: ly, w: LANE_HEADER_W, h: laneRowH,
-            fill: { color: 'FFFFFF' }, line: { color: 'CCCCCC', width: 0.5 } });
-          // Texto rotado 270° (lee de abajo hacia arriba)
+          // Header de rol naranja (formato Telered), texto blanco rotado
+          slide.addShape('rect', { x: 0.4, y: ly + 0.03, w: LANE_HEADER_W, h: laneRowH - 0.06,
+            fill: { color: T_NARANJA }, line: { type: 'none' } });
           slide.addText(laneName, {
-            x: 0.4, y: ly, w: LANE_HEADER_W, h: laneRowH,
-            fontSize: 9, bold: true, color: '232323',
-            align: 'center', valign: 'middle', fontFace: 'Calibri',
+            x: 0.4, y: ly + 0.03, w: LANE_HEADER_W, h: laneRowH - 0.06,
+            fontSize: 9, bold: true, color: 'FFFFFF',
+            align: 'center', valign: 'middle', fontFace: T_FONT,
             rotate: 270, wrap: false
           });
         });
@@ -5898,16 +5911,18 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
               fill: { type: 'none' }, line: { color: shapeBorder.intermediate, width: 1 } });
           }
           // Símbolo: subtipo BPMN si lo tiene; terminate = disco; si no, ▶/■/◇
-          let sym, symColor = shapeBorder[n.type], symBold = true, symSize = 12;
+          // Formato Telered: inicio/fin son círculos planos SIN glifo; los
+          // subtipos de evento sí llevan su símbolo (en blanco sobre el relleno)
+          let sym, symColor = (n.type === 'intermediate') ? T_AZUL : 'FFFFFF', symBold = true, symSize = 12;
           if (n.type === 'end' && n.terminate) {
-            // Disco de terminación (relleno)
+            // Disco de terminación (anillo con disco blanco interior)
             slide.addShape('ellipse', { x: b.x + b.w*0.28, y: b.y + b.h*0.28, w: b.w*0.44, h: b.h*0.44,
-              fill: { color: shapeBorder.end }, line: { type: 'none' } });
+              fill: { color: 'FFFFFF' }, line: { type: 'none' } });
             sym = '';
           } else if (n.eventType && EV_GLYPH[n.eventType]) {
             sym = EV_GLYPH[n.eventType]; symSize = n.eventType === 'signal' ? 11 : 12;
           } else {
-            sym = n.type === 'start' ? '▶' : (n.type === 'end' ? '■' : '◆');
+            sym = '';   // círculo plano, como en el deck de referencia
           }
           if (sym) {
             slide.addText(sym, { x: b.x, y: b.y, w: b.w, h: b.h,
@@ -5918,7 +5933,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             slide.addText(n.label, {
               x: b.x - 0.3, y: b.y + b.h + 0.02, w: b.w + 0.6, h: 0.3,
               fontSize: FONT_NODE, color: '232323', align: 'center', valign: 'top',
-              fontFace: 'Calibri', wrap: true, autoFit: false
+              fontFace: T_FONT, wrap: true, autoFit: false
             });
           } else if (n.label === 'Inicio') {
             slide.addText('Inicio', { x: b.x - 0.3, y: b.y + b.h + 0.02, w: b.w + 0.6, h: 0.25,
@@ -5952,7 +5967,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           slide.addText(n.label || '', {
             x: b.x + 0.06, y: b.y + (hasCode || exec ? 0.22 : 0.04), w: b.w - 0.12, h: b.h - (hasCode || exec ? 0.26 : 0.08) - (hasMarker ? 0.16 : 0),
             fontSize: FONT_NODE, align: 'center', valign: 'middle',
-            color: '232323', fontFace: 'Calibri', wrap: true, autoFit: false
+            color: '232323', fontFace: T_FONT, wrap: true, autoFit: false
           });
           // Marcador de actividad BPMN en la base (centro inferior)
           if (hasMarker) {
@@ -5979,24 +5994,25 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           });
           slide.addText(n.label || '', {
             x: b.x - 0.3, y: b.y + b.h + 0.01, w: b.w + 0.6, h: 0.3,
-            fontSize: FONT_NODE, align: 'center', valign: 'top', color: '232323', fontFace: 'Calibri', wrap: true, autoFit: false
+            fontSize: FONT_NODE, align: 'center', valign: 'top', color: '232323', fontFace: T_FONT, wrap: true, autoFit: false
           });
         } else if (n.type === 'decision') {
-          // Gateway exclusivo (XOR): marca ✕ sutil al centro + label debajo
-          slide.addText('✕', {
+          // Gateway exclusivo formato Telered: diamante vino con "x" blanca,
+          // y la pregunta FUERA del diamante como etiqueta en vino
+          slide.addText('x', {
             x: b.x, y: b.y, w: b.w, h: b.h,
-            fontSize: 13, bold: true, color: 'D9B441', align: 'center', valign: 'middle', fontFace: 'Calibri'
+            fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: T_FONT
           });
           slide.addText(n.label || '', {
-            x: b.x - 0.3, y: b.y + b.h + 0.01, w: b.w + 0.6, h: 0.3,
-            fontSize: FONT_NODE, align: 'center', valign: 'top', color: '232323', fontFace: 'Calibri', wrap: true, autoFit: false
+            x: b.x - 0.45, y: b.y + b.h + 0.01, w: b.w + 0.9, h: 0.3,
+            fontSize: 9, bold: true, align: 'center', valign: 'top', color: T_VINO, fontFace: T_FONT, wrap: true, autoFit: false
           });
         } else {
           // Documento / data: label centrado
           slide.addText(n.label || '', {
             x: b.x + 0.08, y: b.y + 0.04, w: b.w - 0.16, h: b.h - 0.08,
             fontSize: FONT_NODE, align: 'center', valign: 'middle',
-            color: '232323', fontFace: 'Calibri', wrap: true, autoFit: false
+            color: '232323', fontFace: T_FONT, wrap: true, autoFit: false
           });
         }
         // Badge owner inferido (esquina sup-derecha para no chocar con el chip)
@@ -6155,6 +6171,31 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const slide = pres.addSlide();
       drawProcessSlice(slide, si, rankStart, rankEnd);
     }
+
+    // ============ SLIDE: PUNTOS IMPORTANTES (formato Telered: octágono negro) ============
+    (function addPuntosImportantes() {
+      const pains = [];
+      state.nodes.forEach(n => (n.pains || []).forEach(p => pains.push({ ...p, act: n.label })));
+      pains.sort((a, b) => (b.severity * b.frequency) - (a.severity * a.frequency));
+      const bullets = pains.slice(0, 5).map(p => `${p.description} (${p.act})`);
+      if (!bullets.length) {
+        state.nodes.filter(n => n.notes && n.notes.trim()).slice(0, 4)
+          .forEach(n => bullets.push(`${n.label}: ${n.notes.split('\n')[0]}`));
+      }
+      if (!bullets.length) return;   // sin contenido, no agregamos el slide
+      const sl = pres.addSlide();
+      sl.background = { color: 'FFFFFF' };
+      sl.addText(`Flujo del proceso: ${state.meta.name || ''} — puntos importantes`, {
+        x: 0.4, y: 0.12, w: 12.5, h: 0.4, fontSize: 18, color: T_VINO, bold: true, fontFace: T_FONT });
+      // Octágono negro con título rosa y bullets blancos, como el panel del deck de referencia
+      sl.addShape('octagon', { x: 2.6, y: 1.1, w: 8.1, h: 5.4, fill: { color: '000000' }, line: { type: 'none' } });
+      sl.addText('Puntos importantes', { x: 3.2, y: 1.5, w: 7, h: 0.5, fontSize: 20, bold: true, color: T_ROSA, fontFace: T_FONT });
+      sl.addText(bullets.map((b, i) => ({
+        text: b, options: { bullet: true, breakLine: i < bullets.length - 1, paraSpaceAfter: 10 }
+      })), { x: 3.2, y: 2.2, w: 6.9, h: 3.9, fontSize: 13, color: 'FFFFFF', fontFace: T_FONT, valign: 'top' });
+      sl.addText(`MINSAIT · ${(state.meta.client || 'Business Consulting').toUpperCase()} · ${new Date().toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}`, {
+        x: 0.4, y: 7.15, w: 12.5, h: 0.25, fontSize: 8, color: GRAY, fontFace: T_FONT });
+    })();
 
     // ============ SLIDE: LEYENDA BPMN ============
     (function addLegendSlide() {

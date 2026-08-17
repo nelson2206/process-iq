@@ -5837,18 +5837,24 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const orderedLanes = laneList.filter(l => lanesInSlice.includes(l));
       if (orderedLanes.length > 0) {
         const laneRowH = (SLIDE_DRAW_H - 0.2) / orderedLanes.length;
-        const LANE_HEADER_W = 0.5;   // header ahora vertical (rotado) → ahorra ancho
+        const LANE_HEADER_W = 0.42;  // chip vertical estrecho (ref. Telered: 0.47in)
         orderedLanes.forEach((laneName, lidx) => {
           const ly = 0.9 + lidx * laneRowH;
-          // Fondo de la lane (todo el ancho)
+          // Carril blanco con línea separadora arena (formato Telered), no bandas grises
           slide.addShape('rect', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: laneRowH,
-            fill: { color: lidx % 2 ? 'FAFAFA' : 'F4F4F4' }, line: { color: 'E0E0E0', width: 0.5 } });
-          // Header de rol naranja (formato Telered), texto blanco rotado
-          slide.addShape('rect', { x: 0.4, y: ly + 0.03, w: LANE_HEADER_W, h: laneRowH - 0.06,
+            fill: { color: 'FFFFFF' }, line: { type: 'none' } });
+          if (lidx > 0) {
+            slide.addShape('line', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: 0,
+              line: { color: T_ARENA, width: 1 } });
+          }
+          // Chip de rol: barra estrecha con margen (ref: 0.47in ancho x ~1.3in alto)
+          const chipH = Math.min(laneRowH - 0.18, 1.45);
+          const chipY = ly + (laneRowH - chipH) / 2;
+          slide.addShape('rect', { x: 0.42, y: chipY, w: LANE_HEADER_W, h: chipH,
             fill: { color: T_NARANJA }, line: { type: 'none' } });
           slide.addText(laneName, {
-            x: 0.4, y: ly + 0.03, w: LANE_HEADER_W, h: laneRowH - 0.06,
-            fontSize: 9, bold: true, color: 'FFFFFF',
+            x: 0.42, y: chipY, w: LANE_HEADER_W, h: chipH,
+            fontSize: 8, bold: true, color: 'FFFFFF',
             align: 'center', valign: 'middle', fontFace: T_FONT,
             rotate: 270, wrap: false
           });
@@ -5864,13 +5870,22 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const laneRowH2 = (SLIDE_DRAW_H - 0.2) / orderedLanes2.length;
 
       // Tamaños por tipo, ahora EN PROPORCIÓN a la celda disponible
+      // Proporciones calcadas del deck de referencia (Telered slides 40-41):
+      // actividad 1.13x0.53in, diamante 0.31in, eventos 0.30in. Se topan contra
+      // la celda disponible para que nunca desborden en procesos densos.
       function cellSize(n) {
-        let w = cellWFinal;
-        let h;
-        if (n.type === 'start' || n.type === 'end') { w = Math.min(0.7, cellWFinal * 0.5); h = w; }
-        else if (n.type === 'decision') { w = cellWFinal * 0.95; h = Math.min(laneRowH2 * 0.7, 1.0); }
-        else { h = Math.min(laneRowH2 * 0.72, 1.1); } // task/system grandes
-        return { w, h };
+        if (n.type === 'start' || n.type === 'end' || n.type === 'intermediate') {
+          const d = Math.min(0.32, cellWFinal * 0.5, laneRowH2 * 0.35);
+          return { w: d, h: d };
+        }
+        if (n.type === 'decision') {
+          const d = Math.min(0.34, cellWFinal * 0.5, laneRowH2 * 0.35);
+          return { w: d, h: d };
+        }
+        return {
+          w: Math.min(cellWFinal, 1.30),                      // ref: 1.12-1.14
+          h: Math.min(laneRowH2 * 0.42, 0.58)                 // ref: 0.53
+        };
       }
 
       // Posiciones
@@ -5942,8 +5957,11 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         } else if (n.type === 'task' || n.type === 'system') {
           // ── Tarea BPMN: chip de tipo + código (arriba), label (abajo) ──
           const exec = (window.EXECUTION_TYPES || []).find(t => t.id === n.executionType);
-          const hasCode = !!n.activityCode;
-          if (exec) {
+          // Caja compacta estilo Telered: el chip de tipo y el código sólo caben
+          // si la caja es alta; si no, el texto usa toda la caja (como el deck ref).
+          const compact = b.h < 0.62;
+          const hasCode = !!n.activityCode && !compact;
+          if (exec && !compact) {
             // Marcador BPMN: chip de color con la inicial del tipo (USR, RCV, SRV...)
             slide.addShape('roundRect', {
               x: b.x + 0.05, y: b.y + 0.05, w: 0.42, h: 0.17,
@@ -5963,11 +5981,12 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             });
           }
           // Label centrado en el espacio inferior (deja hueco para el marcador si lo hay)
-          const hasMarker = n.marker && n.marker !== 'none' && MK_GLYPH[n.marker];
+          const hasMarker = n.marker && n.marker !== 'none' && MK_GLYPH[n.marker] && !compact;
+          const topPad = (!compact && (hasCode || exec)) ? 0.22 : 0.03;
           slide.addText(n.label || '', {
-            x: b.x + 0.06, y: b.y + (hasCode || exec ? 0.22 : 0.04), w: b.w - 0.12, h: b.h - (hasCode || exec ? 0.26 : 0.08) - (hasMarker ? 0.16 : 0),
-            fontSize: FONT_NODE, align: 'center', valign: 'middle',
-            color: '232323', fontFace: T_FONT, wrap: true, autoFit: false
+            x: b.x + 0.04, y: b.y + topPad, w: b.w - 0.08, h: b.h - topPad - 0.03 - (hasMarker ? 0.16 : 0),
+            fontSize: compact ? 7.5 : FONT_NODE, align: 'center', valign: 'middle',
+            color: T_TXT, fontFace: T_FONT, wrap: true, autoFit: false
           });
           // Marcador de actividad BPMN en la base (centro inferior)
           if (hasMarker) {
@@ -6027,7 +6046,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       // ───── Dibuja edges ortogonales (horizontal + vertical, sin diagonales) ─────
       // Helper: dibuja una L (horizontal primero, luego vertical) o solo línea recta si están alineados
       function drawOrthoEdge(slide, ax, ay, aw, ah, bx, by, bw, bh, hasArrow, label, dash) {
-        const EDGE_COLOR = dash ? '888888' : '666666', EDGE_W = dash ? 0.7 : 0.85;
+        // Conectores rosa magenta finos (ref. Telered: accent1 FF0054 a 0.5pt)
+        const EDGE_COLOR = dash ? 'B8879E' : 'FF0054', EDGE_W = dash ? 0.6 : 0.75;
         const DASH = dash ? 'dash' : 'solid';
         // Puntos de salida/entrada en bordes (no centros)
         let sx, sy, tx, ty;
@@ -6047,8 +6067,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           if (label) {
             slide.addText(label, {
               x: (sx + tx) / 2 - 0.35, y: sy - 0.15, w: 0.7, h: 0.22,
-              fontSize: FONT_EDGE, color: '666666', align: 'center',
-              fontFace: 'Calibri', italic: true, fill: { color: 'FFFFFF' }
+              fontSize: FONT_EDGE, color: T_TXT, align: 'center',
+              fontFace: T_FONT, italic: false
             });
           }
         } else if (sameCol) {
@@ -6065,8 +6085,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           if (label) {
             slide.addText(label, {
               x: sx + 0.05, y: (sy + ty) / 2 - 0.11, w: 0.7, h: 0.22,
-              fontSize: FONT_EDGE, color: '666666', align: 'left',
-              fontFace: 'Calibri', italic: true, fill: { color: 'FFFFFF' }
+              fontSize: FONT_EDGE, color: T_TXT, align: 'left',
+              fontFace: T_FONT, italic: false
             });
           }
         } else {
@@ -6091,8 +6111,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           if (label) {
             slide.addText(label, {
               x: Math.min(sx, cornerX) + Math.abs(cornerX - sx) / 2 - 0.35, y: sy - 0.18, w: 0.7, h: 0.22,
-              fontSize: FONT_EDGE, color: '666666', align: 'center',
-              fontFace: 'Calibri', italic: true, fill: { color: 'FFFFFF' }
+              fontSize: FONT_EDGE, color: T_TXT, align: 'center',
+              fontFace: T_FONT, italic: false
             });
           }
         }

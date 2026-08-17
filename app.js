@@ -5890,19 +5890,28 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
 
       // Posiciones
       const nodeBoxes = new Map();
-      const stackSeen = {};
+      // Cuántos nodos comparten cada celda (rank × lane): se necesita ANTES de
+      // posicionar para repartirlos centrados y sin que las etiquetas se pisen.
+      const cellCount = {}, cellIdx = {};
+      const keyOf = (n) => orderedLanes2.indexOf(state._lanes?.laneOf?.[n.id] || 'Por asignar') + '|' + ((ranks[n.id] || 0) - rankStart);
+      nodesInSlice.forEach(n => { const k = keyOf(n); cellCount[k] = (cellCount[k] || 0) + 1; });
       nodesInSlice.forEach(n => {
-        const owner = state._lanes?.laneOf?.[n.id] || 'Por asignar';
-        const li = orderedLanes2.indexOf(owner);
+        const li = orderedLanes2.indexOf(state._lanes?.laneOf?.[n.id] || 'Por asignar');
         const r = (ranks[n.id] || 0) - rankStart;
         const key = li + '|' + r;
-        const stackIdx = (stackSeen[key] = (stackSeen[key] === undefined ? 0 : stackSeen[key] + 1));
+        const total = cellCount[key];
+        const idx = (cellIdx[key] = (cellIdx[key] === undefined ? 0 : cellIdx[key] + 1));
         const sz = cellSize(n);
         const cellX = 0.4 + 0.55 + r * cellInnerW + (cellInnerW - sz.w) / 2;
         const ly = 0.9 + li * laneRowH2;
-        const baseY = ly + (laneRowH2 - sz.h) / 2;
-        const stackOff = stackIdx * (sz.h * 0.5 + 0.05) - (stackIdx > 0 ? sz.h * 0.5 : 0);
-        const cellY = baseY + stackOff;
+        let cellY = ly + (laneRowH2 - sz.h) / 2;
+        if (total > 1) {
+          // Paso que incluye la etiqueta bajo la figura (decisiones/eventos la
+          // llevan debajo) para que dos nodos apilados no se solapen el texto.
+          const labelBelow = (n.type === 'decision' || n.type === 'start' || n.type === 'end' || n.type === 'intermediate');
+          const step = Math.min((laneRowH2 - 0.1) / total, sz.h + (labelBelow ? 0.42 : 0.12));
+          cellY = ly + (laneRowH2 - (total - 1) * step - sz.h) / 2 + idx * step;
+        }
         nodeBoxes.set(n.id, { x: cellX, y: cellY, w: sz.w, h: sz.h, cx: cellX + sz.w/2, cy: cellY + sz.h/2 });
       });
 
@@ -6059,6 +6068,29 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           sy = ay + ah / 2;
           tx = bx > ax ? bx : bx + bw;
           ty = by + bh / 2;
+          // ¿Hay cajas en medio? Si la recta las atravesaría, se rodea por debajo.
+          const x1 = Math.min(sx, tx), x2 = Math.max(sx, tx);
+          const blockers = [...nodeBoxes.values()].filter(o =>
+            sy > o.y + 0.02 && sy < o.y + o.h - 0.02 && x1 < o.x + o.w - 0.03 && x2 > o.x + 0.03);
+          if (blockers.length) {
+            const dy = Math.max(...blockers.map(o => o.y + o.h), ay + ah, by + bh) + 0.13;
+            const exX = sx + (tx > sx ? 0.07 : -0.07);
+            const enX = tx + (tx > sx ? -0.07 : 0.07);
+            const seg = (X, Y, W, H, arrow, fh, fv) => slide.addShape('line', {
+              x: X, y: Y, w: W, h: H,
+              line: { color: EDGE_COLOR, width: EDGE_W, dashType: DASH, endArrowType: arrow ? 'triangle' : 'none' },
+              flipH: !!fh, flipV: !!fv });
+            seg(Math.min(sx, exX), sy, Math.abs(exX - sx) || 0.01, 0.01, false, exX < sx);   // salida
+            seg(exX, sy, 0.01, dy - sy, false, false, false);                                 // baja
+            seg(Math.min(exX, enX), dy, Math.abs(enX - exX) || 0.01, 0.01, false, enX < exX); // rodea
+            seg(enX, ty, 0.01, dy - ty, false, false, true);                                  // sube
+            seg(Math.min(enX, tx), ty, Math.abs(tx - enX) || 0.01, 0.01, hasArrow, tx < enX); // entra
+            if (label) {
+              slide.addText(label, { x: (exX + enX) / 2 - 0.4, y: dy - 0.20, w: 0.8, h: 0.18,
+                fontSize: FONT_EDGE, color: T_TXT, align: 'center', fontFace: T_FONT });
+            }
+            return;
+          }
           slide.addShape('line', {
             x: Math.min(sx, tx), y: sy, w: Math.max(Math.abs(tx - sx), 0.01), h: 0.01,
             line: { color: EDGE_COLOR, width: EDGE_W, dashType: DASH, endArrowType: hasArrow ? 'triangle' : 'none' },
@@ -6164,9 +6196,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         }
       });
 
-      // Footer: nota sobre conectores
+      // Nota de conectores: a la derecha, para no pisar el pie de página
       if (slicesCount > 1) {
-        slide.addText(`Slide ${sliceIdx + 1}/${slicesCount} — los círculos magenta indican continuidad entre slides.`, { x: 0.4, y: 7.15, w: 12.5, h: 0.2, fontSize: 8, color: GRAY, italic: true });
+        slide.addText('Los círculos magenta indican continuidad entre slides.',
+          { x: 8.0, y: 7.15, w: 4.9, h: 0.2, fontSize: 7.5, color: GRAY, italic: true, align: 'right', fontFace: T_FONT });
       }
     }
 

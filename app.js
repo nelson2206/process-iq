@@ -6022,9 +6022,27 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const orderedLanes = laneList.filter(l => lanesInSlice.includes(l));
       const orderedLanes2 = orderedLanes;  // alias
 
+      // ───── Conectores de página DENTRO del carril blanco ─────
+      // Hasta v2.6.0 el círculo iba en x=0,21 y el carril empieza en x=0,4: el
+      // conector quedaba flotando sobre el fondo Cerámica y no se leía a qué
+      // actor pertenecía. Ahora se le reserva un pasillo dentro del carril,
+      // justo después del chip de rol, y sólo cuando ese tramo tiene conectores.
+      const hayEntradaIzq = state.edges.some(e => {
+        const ra = ranks[e.from], rb = ranks[e.to];
+        return ra != null && rb != null && ra < rankStart && rb >= rankStart && rb < rankEnd;
+      });
+      const haySalidaDer = state.edges.some(e => {
+        const ra = ranks[e.from], rb = ranks[e.to];
+        return ra != null && rb != null && ra >= rankStart && ra < rankEnd && rb >= rankEnd;
+      });
+      const GUT_IZQ = hayEntradaIzq ? 1.05 : 0.55;   // 0,55 = chip de rol
+      const GUT_DER = haySalidaDer ? 0.60 : 0.05;
+      const CONN_X_IZQ = 0.4 + (0.44 + GUT_IZQ) / 2;                  // centro del pasillo
+      const CONN_X_DER = 0.4 + (SLIDE_DRAW_W - 0.4) - GUT_DER / 2;
+
       // ───── Grid de celdas: cada nodo en su rank-column × lane-row ─────
       const sliceColCount = rankEnd - rankStart;
-      const cellInnerW = (SLIDE_DRAW_W - 0.4 - 0.6) / sliceColCount;  // resta header vertical (0.5) + márgenes
+      const cellInnerW = (SLIDE_DRAW_W - 0.4 - GUT_IZQ - GUT_DER) / sliceColCount;
       const CELL_GAP_X = 0.18;
       const cellWFinal = cellInnerW - CELL_GAP_X;
 
@@ -6150,7 +6168,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         const idx = (cellIdx[key] = (cellIdx[key] === undefined ? 0 : cellIdx[key] + 1));
         const lh = laneH[li], ly = laneY[li];
         const sz = cellSize(n, lh);
-        const cellX = 0.4 + 0.55 + r * cellInnerW + (cellInnerW - sz.w) / 2;
+        const cellX = 0.4 + GUT_IZQ + r * cellInnerW + (cellInnerW - sz.w) / 2;
         let cellY = ly + (lh - sz.h) / 2;
         if (total > 1) {
           // Paso que incluye la etiqueta bajo la figura (decisiones/eventos la
@@ -6433,7 +6451,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const ba = nodeBoxes.get(a.id);
           const letter = edgeLetters[e.id] || '?';
           const targetSlice = Math.floor((ranks[b.id]||0) / ranksPerSlice) + 1;
-          const cx = SLIDE_DRAW_W - 0.15;
+          const cx = CONN_X_DER;
           const sy = ba.y + ba.h / 2;
           const cy = reservaOffPage(offPageDer, sy);
           // Si el círculo tuvo que apartarse, se llega en tres tramos ortogonales
@@ -6459,9 +6477,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const bb = nodeBoxes.get(b.id);
           const letter = edgeLetters[e.id] || '?';
           const sourceSlice = Math.floor((ranks[a.id]||0) / ranksPerSlice) + 1;
-          // 0,21 y no 0,15: con 0,15 el circulo empezaba en x=-0,03 y la lamina
-          // lo cortaba. Asi queda dentro y sin tocar el chip de rol (x=0,42).
-          const cx = 0.21;
+          const cx = CONN_X_IZQ;
           const ty = bb.y + bb.h / 2;
           const cy = reservaOffPage(offPageIzq, ty);
           const xJog = cx + 0.62;

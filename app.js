@@ -107,7 +107,7 @@
     attachAiListeners();
     updateAiUi();
     // Hook para demos/pruebas (cargadores de ejemplo)
-    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob() };
+    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob() };
   }
 
   function populateSelects() {
@@ -152,7 +152,16 @@
     $('#btnViewAsIs').addEventListener('click', () => setView('asis'));
     $('#btnViewToBe').addEventListener('click', () => setView('tobe'));
     $('#btnCloneToBe').addEventListener('click', cloneAsIsToToBe);
-    $('#btnTransformToBe').addEventListener('click', openTransformToBeModal);
+    $('#btnTransformToBe').addEventListener('click', () => {
+      // Con API key el To-Be lo disena Claude sobre ESTE proceso; sin key, reglas fijas
+      if (aiReady() && state.nodes.length) {
+        activateTab('copilot');
+        copilotPost('user', 'Disenar el proceso To-Be (IA).');
+        runAiTask('propose-tobe');
+        return;
+      }
+      (openTransformToBeModal)();
+    });
 
     $('#btnIngest').addEventListener('click', openIngestModal);
     $('#btnImport').addEventListener('click', () => $('#fileImport').click());
@@ -1729,6 +1738,8 @@
   }
 
   function handleCopilotAction(action) {
+    if (aiReady() && AI_TASKS[action]) { copilotPost('user', AI_TASKS[action].etiqueta + ' (IA).'); runAiTask(action); return; }
+
     activateTab('copilot');
     switch (action) {
       case 'generate':
@@ -7567,6 +7578,70 @@ Reglas:
     '- Un paso que menciona la transcripcion y no esta en el diagrama antiguo: SI inclúyelo (es la actualizacion).',
     '- En "notes" de cada actividad, cuando una fuente aporte un detalle relevante, indica brevemente de donde sale.'
   ].join(String.fromCharCode(10));
+
+  // ============================================================
+  // COPILOTO REAL — enruta las acciones analiticas al API de Anthropic
+  // Antes eran plantillas/reglas fijas. Ahora, si hay API key configurada,
+  // cada accion analiza ESTE proceso con Claude; sin key cae al heuristico.
+  // ============================================================
+  const AI_ROLE = 'Eres un consultor senior de procesos de negocio (estilo MBB) trabajando para Minsait Business Consulting Peru. Analizas el proceso concreto que se te entrega. Escribes en espanol de Peru, directo y accionable, sin relleno. Usas Markdown: negritas para lo clave, tablas cuando comparas, y numeros concretos cuando el proceso los aporta. Nunca inventes datos que el proceso no tenga: si falta un dato, dilo y explica como obtenerlo.';
+
+  const AI_TASKS = {
+    'suggest-kpis': {
+      etiqueta: 'Sugerir KPIs aplicables',
+      prompt: 'Propon los KPIs que de verdad miden la salud de ESTE proceso. Para cada uno: nombre, que mide, formula concreta con los datos del proceso, unidad, meta o benchmark de la industria indicada, y donde se obtiene el dato (sistema o actividad del propio flujo). Prioriza 5-8 KPIs: primero los que atacan los cuellos visibles del flujo. Presenta una tabla y despues una linea por KPI explicando por que importa para el negocio.'
+    },
+    'propose-tobe': {
+      etiqueta: 'Proponer reingenieria To-Be',
+      prompt: 'Disena el proceso To-Be. Estructura la respuesta en: (1) Diagnostico en 3 lineas de lo que hoy no funciona; (2) Tabla de cambios propuestos con columnas Actividad actual | Que cambia | Palanca (eliminar/automatizar/simplificar/paralelizar/reasignar) | Impacto esperado; (3) Como queda el flujo To-Be descrito paso a paso con sus roles; (4) Que se elimina y por que; (5) Riesgos del rediseno y como mitigarlos. Se especifico con las actividades reales del proceso, citandolas por su nombre.'
+    },
+    'raci': {
+      etiqueta: 'Matriz RACI',
+      prompt: 'Construye la matriz RACI del proceso. Devuelve una tabla Markdown con las actividades en filas y los roles reales del proceso en columnas, marcando R, A, C o I en cada celda. Reglas: exactamente un A por actividad; R es quien ejecuta. Debajo de la tabla, senala en vinetas los problemas de gobernanza que revele la matriz (actividades sin A claro, roles sobrecargados de R, exceso de C que ralentiza).'
+    },
+    'impact-effort': {
+      etiqueta: 'Matriz impacto-esfuerzo',
+      prompt: 'Lista las iniciativas de mejora que salen de este proceso y clasifícalas en una matriz impacto-esfuerzo. Tabla con columnas Iniciativa | Impacto (Alto/Medio/Bajo) | Esfuerzo (Alto/Medio/Bajo) | Cuadrante | Horizonte. Agrupa despues en Quick wins (0-3 meses), Tacticas (3-9) y Estructurales (9-18), y di con cual empezarias y por que.'
+    },
+    'automation': {
+      etiqueta: 'Oportunidades de automatizacion',
+      prompt: 'Evalua que actividades de este proceso son automatizables. Tabla con columnas Actividad | Tecnologia adecuada (RPA / workflow / integracion API / IDP-OCR / IA / reglas DMN) | Viabilidad (Alta/Media/Baja) | Ahorro estimado | Precondiciones. Justifica la viabilidad con lo que dice el proceso (volumen, si es rule-based, si el dato esta digitalizado). Cierra indicando cual automatizarias primero y que hace falta para arrancar.'
+    },
+    'backlog': {
+      etiqueta: 'Backlog de iniciativas',
+      prompt: 'Arma el backlog priorizado de iniciativas de mejora. Tabla con columnas # | Iniciativa | Problema que resuelve | Owner sugerido (rol del proceso) | Esfuerzo | Impacto | Horizonte | Criterio de exito medible. Ordena por prioridad y explica el criterio de priorizacion que usaste.'
+    },
+    'exec-summary': {
+      etiqueta: 'Resumen ejecutivo',
+      prompt: 'Escribe el resumen ejecutivo del diagnostico para un comite de direccion, en piramide (conclusion primero). Estructura: (1) Mensaje principal en 2 lineas; (2) Situacion actual con los numeros del proceso; (3) Los 3 hallazgos criticos con su impacto de negocio; (4) Recomendacion y su valor esperado; (5) Que decision se pide al comite. Maximo una pagina, sin jerga tecnica.'
+    },
+    'sipoc': {
+      etiqueta: 'SIPOC',
+      prompt: 'Construye el SIPOC del proceso. Tabla con las 5 columnas Suppliers | Inputs | Process | Outputs | Customers, con elementos concretos de este proceso (no genericos). Debajo, indica los requisitos criticos del cliente (CTQs) y como se miden hoy.'
+    },
+    'bottleneck': {
+      etiqueta: 'Cuello de botella y ruta critica',
+      prompt: 'Identifica el cuello de botella real del proceso y la ruta critica. Explica: (1) Cual es el cuello y con que evidencia del proceso lo sostienes (tiempo x volumen, esperas, dependencia de un rol); (2) La ruta critica actividad por actividad con su tiempo; (3) Cuanto mejoraria el lead time si se destraba el cuello; (4) Las 3 acciones concretas para destrabarlo.'
+    }
+  };
+
+  async function runAiTask(kind) {
+    const t = AI_TASKS[kind];
+    if (!t) return false;
+    if (state.nodes.length === 0) { alert('No hay proceso que analizar.'); return true; }
+    copilotPost('ai', '_' + t.etiqueta + ': analizando el proceso con IA…_');
+    try {
+      const NL = String.fromCharCode(10);
+      const md = await callClaude(
+        t.prompt + NL + NL + '=== PROCESO A ANALIZAR ===' + NL + processDigestForAi(),
+        { system: AI_ROLE, effort: 'high', maxTokens: 8000 });
+      copilotPost('ai', md);
+    } catch (e) {
+      copilotPost('ai', '**No se pudo completar el analisis:** ' + e.message +
+        String.fromCharCode(10) + String.fromCharCode(10) + '_Puedes reintentar o usar el modo basico._');
+    }
+    return true;
+  }
 
   // ============================================================
   // ANALISIS DE PAINS CON IA

@@ -774,7 +774,7 @@
         const cx = n.w - 9, cy = n.h - 9;
         const circ = document.createElementNS(ns, 'circle');
         circ.setAttribute('cx', cx); circ.setAttribute('cy', cy); circ.setAttribute('r', 9);
-        circ.setAttribute('fill', '#FF4713');
+        circ.setAttribute('fill', '#FF0054');
         circ.setAttribute('stroke', '#FFFFFF');
         circ.setAttribute('stroke-width', '1.5');
         badge.appendChild(circ);
@@ -4747,7 +4747,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       const effort = (effortMap[p.category] || 3) / 5;  // 0..1
       const x = 40 + effort * 340;
       const y = 290 - impact * 270;
-      html += `<circle cx="${x}" cy="${y}" r="${6 + impact * 8}" fill="#FF4713" opacity="0.7" stroke="#fff" stroke-width="1.5"/>
+      html += `<circle cx="${x}" cy="${y}" r="${6 + impact * 8}" fill="#FF0054" opacity="0.7" stroke="#fff" stroke-width="1.5"/>
                <text x="${x}" y="${y + 3}" font-size="10" text-anchor="middle" fill="white" font-weight="700">${i + 1}</text>`;
     });
 
@@ -5235,7 +5235,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     if (state.nodes.length === 0) { alert('No hay proceso para documentar.'); return; }
     const meta = state.meta;
     const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-    const MAGENTA = '#FF4713', DARK = '#232323', GRAY = '#7A7A7A';
+    const MAGENTA = '#FF0054', DARK = '#4F062A', GRAY = '#926979';   // paleta Minsait: Fucsia, Pruno, secundario
     const fechaLarga = new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' });
 
     const tasks = state.nodes.filter(n => n.type === 'task' || n.type === 'system');
@@ -5342,7 +5342,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
 <style>
   @page { size: A4; margin: 2cm; }
-  body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: ${DARK}; line-height: 1.4; }
+  body { font-family: 'ForFuture Sans', Calibri, Arial, sans-serif; font-size: 11pt; color: ${DARK}; line-height: 1.4; }
   h1 { font-size: 24pt; color: ${DARK}; margin: 0 0 4pt 0; }
   h2 { font-size: 14pt; color: ${MAGENTA}; border-bottom: 2px solid ${MAGENTA}; padding-bottom: 3pt; margin-top: 22pt; }
   table { border-collapse: collapse; width: 100%; margin: 8pt 0; font-size: 10pt; }
@@ -5494,7 +5494,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         ? `<div class="ruteo"><b>Ruteo:</b><ul class="tight">${a.ruteo.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>` : '';
       const desc = a.descripcion ? richText(a.descripcion) : '<span class="muted">—</span>';
       return `<tr>
-        <td style="text-align:center;font-weight:700;color:${'#FF4713'}">${a.num}</td>
+        <td style="text-align:center;font-weight:700;color:${'#FF0054'}">${a.num}</td>
         <td><b>${esc(a.label)}</b>${a.sistema ? `<div class="sysbadge">🖥️ ${esc(a.sistema)}</div>` : ''}</td>
         <td>${esc(a.responsable || '—')}</td>
         <td>${desc}${ruteo}</td>
@@ -5582,10 +5582,10 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   }
 
   function fichaStyles(forWord) {
-    const MAGENTA = '#FF4713', DARK = '#232323', GRAY = '#7A7A7A';
+    const MAGENTA = '#FF0054', DARK = '#4F062A', GRAY = '#926979';   // paleta Minsait: Fucsia, Pruno, secundario
     return `
   ${forWord ? '@page { size: A4; margin: 1.8cm; }' : ''}
-  body { font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: ${DARK}; line-height: 1.4; }
+  body { font-family: 'ForFuture Sans', Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: ${DARK}; line-height: 1.4; }
   h1 { font-size: 23pt; margin: 2pt 0 4pt 0; color: ${DARK}; }
   h2 { font-size: 13.5pt; color: ${MAGENTA}; border-bottom: 2px solid ${MAGENTA}; padding-bottom: 3pt; margin: 20pt 0 8pt; }
   p { margin: 6pt 0; }

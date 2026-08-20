@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=2.2.2" />
+  <link rel="stylesheet" href="styles.css?v=2.3.0" />
   <script defer src="https://umami-mbc.vercel.app/script.js" data-website-id="0f3aaa08-7bb8-4aec-b09b-d9c4abf3868c"></script>
 </head>
 <body>
@@ -240,6 +240,7 @@
         <button id="btnRedo" title="Rehacer (Ctrl/⌘ Y · Ctrl/⌘ Shift Z)" aria-label="Rehacer el cambio deshecho" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4"/></svg>
         </button>
+        <button id="btnAutoFit" class="hist-btn" title="Autoajustar: reordena y verifica que no se crucen las flechas" aria-label="Autoajustar diagrama"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3"/><rect x="8" y="8" width="8" height="8" rx="1.5"/></svg></button>
         <button id="btnShortcuts" title="Atajos de teclado (tecla ?)" aria-label="Ver atajos de teclado">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
         </button>
@@ -617,6 +618,8 @@
           <button class="copilot-action" data-action="variants"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg></span>Análisis de variantes (event log)</button>
           <button class="copilot-action" data-action="value-map"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>Mapa de valor Lean (VA/NVA)</button>
           <button class="copilot-action" data-action="backlog"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>Backlog de iniciativas</button>
+          <button class="copilot-action" data-action="ai-pains"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="M12 2a7 7 0 0 0-7 7c0 3.5-1 4.5-2 5.5h18c-1-1-2-2-2-5.5a7 7 0 0 0-7-7z"/></svg></span>Analisis profundo de dolores (IA)</button>
+          <button class="copilot-action" data-action="autofit"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3"/><rect x="8" y="8" width="8" height="8" rx="1.5"/></svg></span>Autoajustar (verificar cruces)</button>
           <button class="copilot-action" data-action="relayout"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17h7M17.5 14v6"/></svg></span>Reorganizar diagrama (compactar)</button>
           <button class="copilot-action" data-action="merge-gateways"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h6l4 6 4-6h4"/><path d="M3 18h6l4-6"/></svg></span>Insertar compuertas de convergencia</button>
           <button class="copilot-action" data-action="exec-summary"><span class="ca-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg></span>Resumen ejecutivo</button>
@@ -692,6 +695,15 @@
         </div>
         <input id="docFileInput" type="file" accept=".txt,.md,.csv,.text,.docx,.doc,.pdf,.pptx,.ppt,.bpmn,.xml" hidden />
 
+        <div id="sourcesBox" class="sources-box" hidden>
+          <div class="src-head">
+            <span id="sourcesCount" class="src-count">0 fuentes</span>
+            <button id="btnAddSource" class="btn btn-ghost btn-mini" type="button" title="Anadir otro documento, transcripcion o diagrama">+ Anadir otra fuente</button>
+          </div>
+          <ul id="sourcesList" class="src-list"></ul>
+          <p class="src-hint">Se combinaran en un solo AS-IS. Ante contradicciones prevalece la fuente mas reciente (p. ej. la transcripcion del levantamiento sobre un diagrama antiguo).</p>
+        </div>
+
         <!-- Progreso + cancelar (para que nunca parezca colgada) -->
         <div id="ingestProgress" class="ingest-progress" hidden>
           <div class="ip-row">
@@ -716,7 +728,7 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
         <div class="ingest-actions">
           <button id="btnIngestGo" class="btn btn-primary btn-go" title="Extrae, interpreta y dibuja el proceso">
             <span class="icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/></svg></span>
-            Generar proceso
+            <span class="go-label">Generar proceso</span>
           </button>
           <button id="btnLoadSample" class="btn btn-ghost btn-mini" title="Explora los procesos de ejemplo">Ver ejemplos</button>
         </div>
@@ -750,6 +762,6 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="kpi-library.js?v=1.6.1"></script>
-  <script src="app.js?v=2.2.2"></script>
+  <script src="app.js?v=2.3.0"></script>
 </body>
 </html>

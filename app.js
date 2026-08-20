@@ -107,7 +107,7 @@
     attachAiListeners();
     updateAiUi();
     // Hook para demos/pruebas (cargadores de ejemplo)
-    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob() };
+    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob() };
   }
 
   function populateSelects() {
@@ -1116,6 +1116,90 @@
     return roundedPath([from, { x: from.x, y: my }, { x: to.x, y: my }, to], EDGE_RADIUS);
   }
 
+  // ============================================================
+  // AUTOAJUSTE — mide la calidad del diagrama y elige la mejor disposición
+  // Cuenta flechas que pisan cajas y cruces flecha-flecha sobre el ruteo REAL
+  // (el mismo que dibuja el canvas), prueba variantes de layout y aplica la
+  // que menos defectos produce. Es lo que corre el botón "Autoajustar".
+  // ============================================================
+  function _segsOfD(d) {
+    const pts = [], re = /([MLQ])\s*(-?[\d.]+)\s+(-?[\d.]+)(?:\s+(-?[\d.]+)\s+(-?[\d.]+))?/g;
+    let m;
+    while ((m = re.exec(d))) {
+      if (m[1] === 'Q') pts.push({ x: +m[4], y: +m[5] });
+      else pts.push({ x: +m[2], y: +m[3] });
+    }
+    const segs = [];
+    for (let i = 1; i < pts.length; i++) segs.push([pts[i - 1], pts[i]]);
+    return segs;
+  }
+  function _segHitsBox(a, b, n, pad) {
+    const x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x);
+    const y1 = Math.min(a.y, b.y), y2 = Math.max(a.y, b.y);
+    return x1 < n.x + n.w + pad && x2 > n.x - pad && y1 < n.y + n.h + pad && y2 > n.y - pad;
+  }
+  function _segCross(s1, s2) {
+    const isH = s => Math.abs(s[0].y - s[1].y) < 1.5, isV = s => Math.abs(s[0].x - s[1].x) < 1.5;
+    let a = s1, b = s2;
+    if (!((isH(a) && isV(b)) || (isV(a) && isH(b)))) return false;
+    if (isV(a)) { const t = a; a = b; b = t; }
+    const ax1 = Math.min(a[0].x, a[1].x), ax2 = Math.max(a[0].x, a[1].x), ay = a[0].y;
+    const bx = b[0].x, by1 = Math.min(b[0].y, b[1].y), by2 = Math.max(b[0].y, b[1].y);
+    return bx > ax1 + 1 && bx < ax2 - 1 && ay > by1 + 1 && ay < by2 - 1;
+  }
+  // Diagnóstico de calidad del diagrama actual
+  function diagramQuality() {
+    const paths = [];
+    state.edges.forEach(e => {
+      const a = getNode(e.from), b = getNode(e.to);
+      if (!a || !b) return;
+      paths.push({ segs: _segsOfD(smartEdgePath(a, b, e)), ends: [e.from, e.to] });
+    });
+    let sobreCajas = 0;
+    paths.forEach(p => state.nodes.forEach(n => {
+      if (p.ends.indexOf(n.id) >= 0) return;
+      p.segs.forEach(sg => { if (_segHitsBox(sg[0], sg[1], n, 2)) sobreCajas++; });
+    }));
+    let cruces = 0;
+    for (let i = 0; i < paths.length; i++) for (let j = i + 1; j < paths.length; j++) {
+      if (paths[i].ends.some(x => paths[j].ends.indexOf(x) >= 0)) continue;
+      paths[i].segs.forEach(s1 => paths[j].segs.forEach(s2 => { if (_segCross(s1, s2)) cruces++; }));
+    }
+    let ancho = 0, alto = 0;
+    state.nodes.forEach(n => { ancho = Math.max(ancho, n.x + n.w); alto = Math.max(alto, n.y + n.h); });
+    // Penaliza sobre todo pisar cajas; luego cruces; y un poco el exceso de ancho
+    const score = sobreCajas * 10 + cruces * 3 + Math.max(0, ancho - 3500) / 500;
+    return { sobreCajas, cruces, ancho: Math.round(ancho), alto: Math.round(alto), score };
+  }
+  // Prueba variantes de disposición y se queda con la mejor
+  function autoFitDiagram(opts) {
+    opts = opts || {};
+    if (state.nodes.length === 0) { if (!opts.silent) alert('No hay diagrama que ajustar.'); return null; }
+    const variantes = [undefined, true, false];   // wrap: auto / forzado / desactivado
+    let mejor = null;
+    variantes.forEach(w => {
+      state._wrap = w;
+      autoLayout();
+      const q = diagramQuality();
+      if (!mejor || q.score < mejor.q.score) mejor = { wrap: w, q };
+    });
+    state._wrap = mejor.wrap;
+    autoLayout();
+    const q = mejor.q;
+    if (!opts.silent) {
+      maybeFitOnLoad();
+      const L = state._lanes || {};
+      const limpio = (q.sobreCajas === 0 && q.cruces === 0);
+      copilotPost('ai',
+        `**Diagrama autoajustado.**\n\n` +
+        (limpio
+          ? `Sin flechas sobre cajas ni cruces. Disposición: ${L.wrap ? `${L.bands} bandas de hasta ${L.wrapAt} columnas` : 'una sola banda'}, ${(L.list || []).length} carriles.\n\n`
+          : `Quedan **${q.sobreCajas} flecha(s) sobre cajas** y **${q.cruces} cruce(s)**; es la mejor de ${variantes.length} disposiciones probadas. Suele deberse a varias ramas que apuntan al mismo nodo final.\n\n`) +
+        `Tamaño: ${q.ancho} × ${q.alto} px. Pulsa **deshacer** (Ctrl+Z) si prefieres la disposición anterior.`);
+    }
+    return q;
+  }
+
   // Punto medio real del recorrido (para colocar la etiqueta sin pisar cajas)
   function edgeLabelPoint(a, b, edge) {
     const ac = nodeCenter(a), bc = nodeCenter(b);
@@ -1712,6 +1796,14 @@
       case 'merge-gateways':
         copilotPost('user', 'Insertar compuertas de convergencia.');
         setTimeout(insertMergeGateways, 250);
+        break;
+      case 'ai-pains':
+        copilotPost('user', 'Analisis profundo de dolores (IA).');
+        setTimeout(aiAnalyzePains, 200);
+        break;
+      case 'autofit':
+        copilotPost('user', 'Autoajustar el diagrama.');
+        setTimeout(() => autoFitDiagram(), 220);
         break;
       case 'relayout':
         copilotPost('user', 'Reorganizar el diagrama.');
@@ -2717,6 +2809,9 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       const b = $('#btnShortcuts');
       if (b) b.classList.toggle('active', show);
     };
+    const afb = $('#btnAutoFit');
+    if (afb) afb.addEventListener('click', () => autoFitDiagram());
+
     const sbtn = $('#btnShortcuts');
     if (sbtn) sbtn.addEventListener('click', () => setShortcuts(panel.hidden));
     const sclose = $('#btnShortcutsClose');
@@ -2759,6 +2854,8 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     Promise.resolve().then(() => { historyPaused = false; resetHistory(); });
     state.meta = { name: '', industry: '', macroprocess: '', client: '', owner: '' };
     state.ficha = emptyFicha();
+    state._sources = [];
+    if (typeof renderSources === 'function') renderSources();
     state.nodes = [];
     state.edges = [];
     state.selectedNodeId = null;
@@ -5732,7 +5829,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const T_ROSA = 'EF659D';      // evento de fin
     const T_VERDE = '44B757';     // evento de inicio
     const T_NARANJA = 'E56813';   // headers de rol (swimlane)
-    const T_ARENA = 'E3E2DA';     // cajas de actividad
+    const T_ARENA = 'E4E3DD';     // cajas de actividad
     const T_TXT = '1A1A1A';
     const T_FONT = 'Lato';        // tipografía del deck de referencia
 
@@ -6056,7 +6153,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       // Helper: dibuja una L (horizontal primero, luego vertical) o solo línea recta si están alineados
       function drawOrthoEdge(slide, ax, ay, aw, ah, bx, by, bw, bh, hasArrow, label, dash) {
         // Conectores rosa magenta finos (ref. Telered: accent1 FF0054 a 0.5pt)
-        const EDGE_COLOR = dash ? 'B8879E' : 'FF0054', EDGE_W = dash ? 0.6 : 0.75;
+        const EDGE_COLOR = dash ? 'B8879E' : 'FF0054', EDGE_W = dash ? 0.5 : 0.5;
         const DASH = dash ? 'dash' : 'solid';
         // Puntos de salida/entrada en bordes (no centros)
         let sx, sy, tx, ty;
@@ -6792,7 +6889,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     if (docInput) {
       docInput.addEventListener('change', (e) => {
         const f = e.target.files[0];
-        if (f) { const n = $('#docFileName'); if (n) n.textContent = f.name; runIngest({ file: f }); }
+        if (f) { const n = $('#docFileName'); if (n) n.textContent = f.name; const ao = !!window.__addOnly; window.__addOnly = false; runIngest({ file: f, addOnly: ao }); }
         e.target.value = '';
       });
     }
@@ -6972,19 +7069,35 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         ingestProgress('Abriendo ' + source.file.name + '...', 2);
         await uiTick();
         const r = await extractFileText(source.file);
-        if (r.kind === 'bpmn') {                    // BPMN -> ya quedó dibujado
+        if (r.kind === 'bpmn' && sourcesList().length > 0) {
+          const desc = describeCurrentProcessAsText();
+          if (desc) addSource('diagrama', r.name, 'Diagrama existente del proceso:' + String.fromCharCode(10) + desc);
+          ingestProgress('Diagrama anadido como fuente', 100);
+          endIngestJob();
+          return;
+        }
+        if (r.kind === 'bpmn') {
           ingestProgress('Diagrama importado', 100);
           closeIngestModal();
           maybeFitOnLoad();
           activateTab('ficha');
-          copilotPost('ai', `**BPMN importado desde ${escapeHtml(r.name)}:** ${r.result.count} elementos (${r.result.tasks} actividades, ${r.result.gateways} compuertas, ${r.result.events} eventos) y ${r.result.flows} flujos.`);
+          copilotPost('ai', '**BPMN importado desde ' + escapeHtml(r.name) + ':** ' + r.result.count + ' elementos (' + r.result.tasks + ' actividades, ' + r.result.gateways + ' compuertas, ' + r.result.events + ' eventos) y ' + r.result.flows + ' flujos.');
           return;
         }
-        text = r.text; label = r.name;
-        $('#notesInput').value = text.length > 200000 ? text.slice(0, 200000) : text;
+        const tipo = /transcrip|audio|reunion|llamada|teams|zoom/i.test(r.name) ? 'transcripcion' : 'documento';
+        addSource(tipo, r.name, r.text);
+        if (source.addOnly) {
+          ingestProgress('Fuente anadida: ' + r.name, 100);
+          endIngestJob();
+          return;
+        }
+        text = combinedSourceText();
+        label = sourcesList().length > 1 ? (sourcesList().length + ' fuentes combinadas') : r.name;
       } else {
-        text = ($('#notesInput').value || '').trim();
-        label = 'texto pegado';
+        const pegado = ($('#notesInput').value || '').trim();
+        if (pegado && !sourcesList().some(x => x.texto === pegado)) addSource('texto', 'Texto pegado', pegado);
+        text = sourcesList().length ? combinedSourceText() : pegado;
+        label = sourcesList().length > 1 ? (sourcesList().length + ' fuentes combinadas') : 'texto pegado';
       }
       throwIfCancelled();
       if (!text) throw new Error('No hay texto que interpretar. Carga un archivo o pega el texto del proceso.');
@@ -6997,7 +7110,16 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       await uiTick();
 
       if (useAi) {
-        const spec = await aiBuildProcess(text, label, (m) => ingestProgress(m, null));
+        let roles = null;
+        const personas = detectParticipants(text);
+        if (personas.length) {
+          ingestProgress('Participantes detectados: ' + personas.length + '. Definiendo roles...', null);
+          ingestBusy(false);
+          roles = await askParticipantRoles(personas);
+          ingestBusy(true);
+          ingestProgress('Interpretando con IA...', null);
+        }
+        const spec = await aiBuildProcess(text, label, (m) => ingestProgress(m, null), { roles });
         throwIfCancelled();
         ingestProgress('Proceso generado con IA', 100);
         closeIngestModal();
@@ -7349,17 +7471,294 @@ Devuelves EXCLUSIVAMENTE un objeto JSON válido (sin texto adicional, sin markdo
 
 Reglas:
 - Exactamente un nodo "start" y al menos un "end". Nombra el inicio y el fin con un hito real.
-- Cada decisión/bifurcación es un nodo "decision" con gateway "exclusive" (o "parallel"/"inclusive" si aplica) y sus ramas etiquetadas en los edges.
+- Cada decisión/bifurcación es un nodo "decision" con el gateway correcto y sus ramas etiquetadas en los edges:
+  * "exclusive" (XOR): se toma UN solo camino según una condición. Etiqueta cada rama ("Sí"/"No", "Aprobado"/"Rechazado").
+  * "parallel" (AND): varias actividades ocurren AL MISMO TIEMPO, sin condición. NO las pongas en secuencia.
+  * "inclusive" (OR): pueden darse una o varias ramas a la vez según condiciones.
+- PARALELISMO: es un error frecuente encadenar en secuencia cosas que en realidad pasan a la vez. Marca gateway "parallel" cuando el texto diga o implique: "en paralelo", "simultáneamente", "al mismo tiempo", "mientras tanto", "en simultáneo", "a la vez", "de forma concurrente", "por su lado", "en paralelo a esto"; o cuando varias áreas distintas trabajen sobre el MISMO caso sin esperarse entre sí, o cuando el orden entre esas actividades sea indiferente para el resultado. Abre con un nodo decision gateway "parallel" (fork), conecta desde él una rama por cada actividad concurrente SIN etiqueta de condición, y cierra con otro decision gateway "parallel" (join) al que lleguen todas las ramas antes de continuar. Sólo encadena en secuencia cuando una actividad necesita el resultado de la anterior.
 - Modela loops (reprocesos) y convergencias reales del texto; no inventes pasos que el documento no menciona.
 - "owner" es el rol que ejecuta cada actividad (define los carriles). "system" es la herramienta (CRM, ERP, OnBase, etc.).
 - "notes" resume la actividad en 1-3 frases. Numeración y ruteo se derivan solos; no los pongas en labels.
 - Si el documento trae código de proceso, versión, objetivo, alcance, sistemas o glosario, rellénalos en "ficha".
 - Responde SOLO con el JSON.`;
 
-  async function aiBuildProcess(sourceText, sourceLabel, statusFn) {
+  // ============================================================
+  // FUENTES MULTIPLES
+  // Un AS-IS real casi nunca sale de un solo documento: hay un flujo antiguo,
+  // la grabacion del levantamiento y algun manual. Se acumulan aqui y la IA
+  // las fusiona en UN proceso, reconciliando lo que se contradiga.
+  // ============================================================
+  function sourcesList() { state._sources = state._sources || []; return state._sources; }
+
+  function addSource(tipo, nombre, texto) {
+    const t = String(texto || '').trim();
+    if (!t) return null;
+    const src = { id: 's' + (state.nextId++), tipo: tipo, nombre: nombre, texto: t, chars: t.length };
+    sourcesList().push(src);
+    renderSources();
+    return src;
+  }
+
+  function removeSource(id) {
+    state._sources = sourcesList().filter(s => s.id !== id);
+    renderSources();
+  }
+
+  const SRC_ICON = { documento: 'DOC', transcripcion: 'AUDIO', diagrama: 'BPMN', texto: 'TEXTO', eventlog: 'CSV' };
+
+  function renderSources() {
+    const box = $('#sourcesBox'), list = $('#sourcesList');
+    if (!box || !list) return;
+    const arr = sourcesList();
+    box.hidden = arr.length === 0;
+    list.innerHTML = arr.map(s =>
+      '<li class="src-item" data-id="' + s.id + '">' +
+        '<span class="src-tag">' + (SRC_ICON[s.tipo] || 'DOC') + '</span>' +
+        '<span class="src-name">' + escapeHtml(s.nombre) + '</span>' +
+        '<span class="src-chars">' + s.chars.toLocaleString('es-PE') + ' car.</span>' +
+        '<button class="src-del" data-id="' + s.id + '" title="Quitar esta fuente" type="button">x</button>' +
+      '</li>').join('');
+    list.querySelectorAll('.src-del').forEach(b =>
+      b.addEventListener('click', () => removeSource(b.dataset.id)));
+    const n = arr.length;
+    const lbl = $('#sourcesCount');
+    if (lbl) lbl.textContent = n === 1 ? '1 fuente lista' : n + ' fuentes listas para combinar';
+    const go = $('#btnIngestGo');
+    if (go) {
+      const span = go.querySelector('.go-label');
+      if (span) span.textContent = n > 1 ? 'Combinar ' + n + ' fuentes y generar' : 'Generar proceso';
+    }
+  }
+
+  // Describe un diagrama BPMN importado como texto, para poder fusionarlo con las demas fuentes
+  function describeCurrentProcessAsText() {
+    if (!state.nodes.length) return '';
+    const lane = (state._lanes && state._lanes.laneOf) || {};
+    const NL = String.fromCharCode(10);
+    return flowOrderNodes().map(n => {
+      const outs = state.edges.filter(e => e.from === n.id)
+        .map(e => { const t = getNode(e.to); return (e.label ? e.label + ' -> ' : '-> ') + (t ? t.label : '?'); });
+      return '- [' + n.type + '] ' + (n.label || '') +
+             ' (rol: ' + (lane[n.id] || n.owner || 'sin asignar') + ')' +
+             (n.system ? ' [sistema: ' + n.system + ']' : '') +
+             (outs.length ? ' | ' + outs.join(' ; ') : '');
+    }).join(NL);
+  }
+
+  // Une todas las fuentes en un solo texto etiquetado para la IA
+  function combinedSourceText() {
+    const arr = sourcesList();
+    const NL = String.fromCharCode(10);
+    if (arr.length === 1) return arr[0].texto;
+    const perFuente = Math.max(6000, Math.floor(MAX_AI_CHARS / Math.max(1, arr.length)));
+    return arr.map((s, i) =>
+      '=== FUENTE ' + (i + 1) + ' de ' + arr.length + ': "' + s.nombre + '" (' + s.tipo + ') ===' + NL +
+      s.texto.slice(0, perFuente)
+    ).join(NL + NL);
+  }
+
+  const MERGE_RULES = [
+    '',
+    'ESTAS COMBINANDO VARIAS FUENTES SOBRE EL MISMO PROCESO. Reglas de fusion:',
+    '- Construye UN solo proceso AS-IS consolidado, no uno por fuente.',
+    '- Si dos fuentes describen el mismo paso con distinto nombre, unificalo en una sola actividad.',
+    '- Ante contradicciones, prevalece lo que describa la operacion ACTUAL (una transcripcion de levantamiento reciente pesa mas que un diagrama o manual antiguo).',
+    '- Un paso que aparece solo en el diagrama/manual antiguo y que la transcripcion dice que ya no se hace: NO lo incluyas.',
+    '- Un paso que menciona la transcripcion y no esta en el diagrama antiguo: SI inclúyelo (es la actualizacion).',
+    '- En "notes" de cada actividad, cuando una fuente aporte un detalle relevante, indica brevemente de donde sale.'
+  ].join(String.fromCharCode(10));
+
+  // ============================================================
+  // ANALISIS DE PAINS CON IA
+  // Dos salidas separadas a proposito:
+  //  (a) dolores EVIDENCIADOS en el flujo -> se anclan a su actividad
+  //  (b) dolores TIPICOS del sector -> hipotesis a validar, nunca se mezclan
+  // ============================================================
+  const PAINS_SYSTEM = [
+    'Eres un consultor senior de procesos (estilo MBB). Analizas un proceso ya modelado y detectas sus dolores.',
+    '',
+    'Devuelves EXCLUSIVAMENTE un JSON valido con esta forma:',
+    '{',
+    '  "detectados": [ { "nodo": "<id exacto del nodo>", "categoria": "rework|wait|handoff|manual|control|data|compliance|cost",',
+    '                    "descripcion": "<el dolor concreto, 1 frase>", "evidencia": "<que del proceso lo demuestra>",',
+    '                    "severidad": 1-5, "frecuencia": 1-5, "impacto": "<consecuencia de negocio en 1 frase>" } ],',
+    '  "sectoriales": [ { "titulo": "<dolor tipico del sector>", "descripcion": "<en que consiste>",',
+    '                     "donde": "<en que parte de ESTE proceso podria aparecer>",',
+    '                     "senal": "<que preguntar o medir para confirmarlo>", "severidad": 1-5 } ]',
+    '}',
+    '',
+    'Reglas:',
+    '- "detectados": SOLO lo que se desprende del proceso modelado (handoffs entre roles, reprocesos/loops, pasos manuales, controles duplicados, esperas, reingreso de datos, cuellos por volumen/tiempo, dependencia de una sola persona, falta de trazabilidad, retrabajos por documentacion incompleta). Cada uno DEBE citar evidencia real y apuntar a un "nodo" existente. Se exhaustivo: revisa TODAS las actividades, no solo las obvias.',
+    '- "sectoriales": dolores frecuentes en la industria indicada que este proceso NO evidencia pero podrian existir. Son HIPOTESIS a validar con el cliente, nunca hallazgos. Maximo 6.',
+    '- Nunca inventes evidencia. Si un dolor no se sostiene con el modelo, va en "sectoriales".',
+    '- Responde SOLO con el JSON.'
+  ].join(String.fromCharCode(10));
+
+  function processDigestForAi() {
+    const lane = (state._lanes && state._lanes.laneOf) || {};
+    const NL = String.fromCharCode(10);
+    const lineas = flowOrderNodes().map(n => {
+      const outs = state.edges.filter(e => e.from === n.id)
+        .map(e => { const t = getNode(e.to); return (e.label ? e.label + ' -> ' : '-> ') + (t ? t.label : '?'); });
+      return [
+        'id=' + n.id,
+        'tipo=' + n.type + (n.gatewayType ? '/' + n.gatewayType : ''),
+        'actividad=' + (n.label || ''),
+        'rol=' + (lane[n.id] || n.owner || 'sin asignar'),
+        n.system ? 'sistema=' + n.system : '',
+        n.executionType ? 'ejecucion=' + n.executionType : '',
+        n.time ? 'min=' + n.time : '',
+        n.volume ? 'vol/mes=' + n.volume : '',
+        n.notes ? 'detalle=' + String(n.notes).replace(/\s+/g, ' ').slice(0, 220) : '',
+        outs.length ? 'salidas: ' + outs.join(' | ') : ''
+      ].filter(Boolean).join(' - ');
+    });
+    return [
+      'PROCESO: ' + (state.meta.name || 'sin nombre'),
+      'INDUSTRIA: ' + (state.meta.industry || 'no indicada'),
+      'MACROPROCESO: ' + (state.meta.macroprocess || 'no indicado'),
+      'ROLES/CARRILES: ' + ((state._lanes && state._lanes.list) || []).join(', '),
+      '', 'ACTIVIDADES:', lineas.join(NL)
+    ].join(NL);
+  }
+
+  async function aiAnalyzePains() {
+    if (state.nodes.length === 0) { alert('No hay proceso que analizar.'); return; }
+    if (!aiReady()) {
+      if (confirm('El analisis profundo de dolores usa la IA (Claude). Aun no configuraste tu API key. Abrir Ajustes de IA?')) openAiSettings();
+      return;
+    }
+    copilotPost('ai', '_Analizando el proceso en busca de dolores..._');
+    let data;
+    try {
+      const raw = await callClaude(processDigestForAi(), { system: PAINS_SYSTEM, effort: 'high', maxTokens: 8000 });
+      data = parseJsonLoose(raw);
+    } catch (e) {
+      copilotPost('ai', '**No se pudo completar el analisis:** ' + e.message);
+      return;
+    }
+    let nuevos = 0;
+    (data.detectados || []).forEach(d => {
+      const n = getNode(d.nodo);
+      if (!n) return;
+      n.pains = n.pains || [];
+      const dup = n.pains.some(x => (x.description || '').toLowerCase() === String(d.descripcion || '').toLowerCase());
+      if (dup) return;
+      n.pains.push({
+        id: 'p' + (state.nextId++),
+        category: d.categoria || 'manual',
+        description: d.descripcion || '',
+        evidence: d.evidencia || '',
+        impact: d.impacto || '',
+        severity: Math.max(1, Math.min(5, +d.severidad || 3)),
+        frequency: Math.max(1, Math.min(5, +d.frecuencia || 3)),
+        source: 'ia'
+      });
+      nuevos++;
+    });
+    state._sectorPains = (data.sectoriales || []).slice(0, 8);
+    persist(); render(); runLinter();
+
+    const top = [];
+    state.nodes.forEach(n => (n.pains || []).forEach(x => top.push({ n: n, x: x })));
+    top.sort((a, b) => (b.x.severity * b.x.frequency) - (a.x.severity * a.x.frequency));
+    const NL = String.fromCharCode(10);
+    let msg = '**' + nuevos + ' dolor(es) detectados en el flujo** (con evidencia del propio proceso):' + NL + NL;
+    top.slice(0, 8).forEach(t => {
+      msg += '- **' + escapeHtml(t.n.label) + '** - ' + escapeHtml(t.x.description) +
+             '  _(sev ' + t.x.severity + ' x frec ' + t.x.frequency + ' = **' + (t.x.severity * t.x.frequency) + '**)_' + NL +
+             (t.x.evidence ? '  - Evidencia: ' + escapeHtml(t.x.evidence) + NL : '') +
+             (t.x.impact ? '  - Impacto: ' + escapeHtml(t.x.impact) + NL : '');
+    });
+    if (state._sectorPains.length) {
+      msg += NL + '---' + NL + NL + '**Hipotesis del sector - NO detectadas en este flujo, a validar con el cliente:**' + NL + NL;
+      state._sectorPains.forEach((h, i) => {
+        msg += (i + 1) + '. **' + escapeHtml(h.titulo || '') + '** - ' + escapeHtml(h.descripcion || '') + NL +
+               (h.donde ? '   - Donde mirar: ' + escapeHtml(h.donde) + NL : '') +
+               (h.senal ? '   - Como confirmarlo: ' + escapeHtml(h.senal) + NL : '');
+      });
+      msg += NL + '_Estas NO se agregaron al diagrama: son preguntas para el levantamiento, no hallazgos._';
+    }
+    copilotPost('ai', msg);
+    activateTab('pains');
+  }
+
+  // ============================================================
+  // PARTICIPANTES DE LA TRANSCRIPCION
+  // En transcripciones de Teams/Zoom cada linea viene como "Nombre: texto".
+  // Detectamos esos nombres, pedimos el ROL de cada persona y se lo damos a
+  // la IA para que los carriles del flujo sean roles reales, no nombres.
+  // ============================================================
+  function detectParticipants(text) {
+    const counts = {};
+    const lines = String(text || '').split(/\r?\n/);
+    const re = /^\s*(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?([A-ZÁÉÍÓÚÑ][\wÀ-ſ.'-]+(?:\s+[A-ZÁÉÍÓÚÑ][\wÀ-ſ.'-]+){0,3})\s*(?:\(([^)]{2,40})\))?\s*:\s*\S/;
+    const RUIDO = new Set(['nota','notas','ejemplo','objetivo','alcance','proceso','paso','pasos','resumen',
+      'observacion','conclusion','importante','atencion','sistema','sistemas','actividad','actividades',
+      'responsable','responsables','fecha','tema','agenda','http','https','nota1','anexo']);
+    lines.forEach(l => {
+      const m = l.match(re);
+      if (!m) return;
+      const nombre = m[1].trim();
+      if (nombre.length < 3 || nombre.length > 48) return;
+      const first = nombre.toLowerCase().split(/\s+/)[0];
+      if (RUIDO.has(first.normalize('NFD').replace(/[̀-ͯ]/g, ''))) return;
+      if (/^\d/.test(nombre)) return;
+      counts[nombre] = counts[nombre] || { nombre, veces: 0, pista: '' };
+      counts[nombre].veces++;
+      if (m[2] && !counts[nombre].pista) counts[nombre].pista = m[2].trim();
+    });
+    return Object.values(counts).filter(p => p.veces >= 2)
+      .sort((a, b) => b.veces - a.veces).slice(0, 12);
+  }
+
+  // Modal: pide el rol de cada persona detectada. Devuelve promesa con el mapeo.
+  function askParticipantRoles(participantes) {
+    return new Promise(resolve => {
+      const esc = x => String(x == null ? '' : x).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+      const filas = participantes.map((p, i) => `
+        <tr>
+          <td class="pt-name">${esc(p.nombre)}<span class="pt-count">${p.veces} intervenciones</span></td>
+          <td><input type="text" class="pt-role" data-i="${i}" list="rolesComunes"
+                     placeholder="¿Qué rol cumple?" value="${esc(p.pista)}" /></td>
+        </tr>`).join('');
+      const html = `
+        <p class="panel-hint">Detecté <b>${participantes.length} persona(s)</b> en la transcripción. Indica el <b>rol</b> de cada una: la IA usará el rol (no el nombre) como <b>carril</b> del flujo, que es lo correcto en un proceso.</p>
+        <datalist id="rolesComunes">
+          <option value="Analista"><option value="Jefe de área"><option value="Gerente">
+          <option value="Supervisor"><option value="Asesor comercial"><option value="Back office">
+          <option value="Call center"><option value="Operaciones"><option value="Riesgos">
+          <option value="Legal / Cumplimiento"><option value="Tecnología"><option value="Finanzas">
+          <option value="Recursos Humanos"><option value="Cliente"><option value="Proveedor">
+        </datalist>
+        <table class="pt-table"><tbody>${filas}</tbody></table>
+        <p class="ai-hint">Deja en blanco a quien no participe en el proceso (p. ej. el consultor que facilita la reunión): se omitirá.</p>`;
+      openModal('👥 ¿Quién es quién en la reunión?', html, () => {
+        const mapa = {};
+        document.querySelectorAll('#modalBody .pt-role').forEach(inp => {
+          const rol = (inp.value || '').trim();
+          if (rol) mapa[participantes[+inp.dataset.i].nombre] = rol;
+        });
+        resolve(mapa);
+      });
+      const ok = $('#modalOk'); if (ok) ok.textContent = 'Usar estos roles';
+      const cancel = $('#modalCancel');
+      if (cancel) { cancel.textContent = 'Omitir'; const prev = cancel.onclick; cancel.onclick = (e) => { resolve({}); if (prev) prev(e); }; }
+    });
+  }
+
+  async function aiBuildProcess(sourceText, sourceLabel, statusFn, opts) {
     const setStatus = statusFn || (() => {});
     setStatus('⏳ Interpretando con IA… (puede tardar unos segundos)');
-    const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, MAX_AI_CHARS)}`;
+    let roles = '';
+    if (opts && opts.roles && Object.keys(opts.roles).length) {
+      const NL = String.fromCharCode(10);
+      roles = NL + NL + '=== QUIEN ES QUIEN (usa el ROL como owner/carril, nunca el nombre) ===' + NL +
+        Object.entries(opts.roles).map(function(e){ return e[0] + ' = ' + e[1]; }).join(NL) + NL +
+        'Persona no listada: no la conviertas en carril; asigna la actividad al rol que corresponda por contexto.';
+    }
+    const merge = (sourcesList().length > 1) ? MERGE_RULES : '';
+    const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.${merge}${roles}\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, MAX_AI_CHARS)}`;
     const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: 16000 });
     const spec = parseJsonLoose(raw);
     buildProcessFromAiSpec(spec, sourceLabel);
@@ -7457,6 +7856,9 @@ Reglas:
     // Botón único: "Generar proceso" (usa el texto pegado)
     const go = $('#btnIngestGo');
     if (go) go.addEventListener('click', () => runIngest(null));
+
+    const addSrc = $('#btnAddSource');
+    if (addSrc) addSrc.addEventListener('click', () => { window.__addOnly = true; $('#docFileInput').click(); });
 
     const cancel = $('#btnIngestCancel');
     if (cancel) cancel.addEventListener('click', cancelIngestJob);

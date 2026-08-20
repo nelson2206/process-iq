@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v2.6.0 — cero solapamientos de texto en el PPTX
+> **Última actualización:** v2.7.0 — flujo en escalera; el PPTX usa el 92 % del alto
 
 ---
 

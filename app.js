@@ -5974,7 +5974,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     // celdas tan estrechas que las preguntas de los gateways se partían en 3-4
     // líneas y se pisaban. Con 4 el deck crece 2 láminas y los solapes caen a 0.
     const ranksPerSlice = Math.max(3, Math.min(densidadAlta ? 4 : 6, totalRanks));
-    const slicesCount = Math.ceil(totalRanks / ranksPerSlice);
+    let slicesCount = Math.ceil(totalRanks / ranksPerSlice);   // recalculado por el plan en escalera
     const colWInches_calc = drawableW_calc / ranksPerSlice;
     // Scale per slice: cada slice cubre ranksPerSlice ranks, ocupa drawableW_calc inches
     const srcColW = state._lanes?.colW || 220;
@@ -5990,7 +5990,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const MK_GLYPH = { subprocess: '⊞', loop: '↻', multiinstance: '|||', 'multiinstance-seq': '☰' };
 
     // Función helper: dibuja un slice del proceso en un slide
-    function drawProcessSlice(slide, sliceIdx, rankStart, rankEnd) {
+    function drawProcessSlice(slide, sliceIdx, bandas) {
+      const rankStart = bandas[0].ini;
+      const rankEnd = bandas[bandas.length - 1].fin;
       // Header estilo Telered: título vino + kicker gris uppercase, sin barras
       const subtitle = slicesCount > 1 ? ` (${sliceIdx + 1}/${slicesCount})` : '';
       mChrome(slide,
@@ -6018,75 +6020,101 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const offX = 0.4 + ((SLIDE_DRAW_W - 0.6) - sliceW * sliceScale) / 2;
       const offY = DRAW_TOP + (SLIDE_DRAW_H - sliceH * sliceScale) / 2;
 
-      const lanesInSlice = [...new Set(nodesInSlice.map(n => state._lanes?.laneOf?.[n.id] || 'Por asignar'))];
-      const orderedLanes = laneList.filter(l => lanesInSlice.includes(l));
-      const orderedLanes2 = orderedLanes;  // alias
+      // ───── FILAS = banda × carril ─────
+      // Cada banda repite los carriles de SU tramo de columnas. Una fila vacía
+      // no se dibuja: es justo el hueco que antes se desperdiciaba.
+      const filas = [];
+      bandas.forEach((bi, bIdx) => {
+        bi.lanes.forEach(laneName => {
+          filas.push({ banda: bIdx, ini: bi.ini, fin: bi.fin, lane: laneName });
+        });
+      });
+      const filaIdxOf = (n) => {
+        const r = ranks[n.id] || 0;
+        const ln = (state._lanes && state._lanes.laneOf && state._lanes.laneOf[n.id]) || 'Por asignar';
+        return filas.findIndex(f => r >= f.ini && r < f.fin && f.lane === ln);
+      };
 
       // ───── Conectores de página DENTRO del carril blanco ─────
       // Hasta v2.6.0 el círculo iba en x=0,21 y el carril empieza en x=0,4: el
       // conector quedaba flotando sobre el fondo Cerámica y no se leía a qué
       // actor pertenecía. Ahora se le reserva un pasillo dentro del carril,
       // justo después del chip de rol, y sólo cuando ese tramo tiene conectores.
+      // Con escalera, un conector puede saltar de banda dentro de la MISMA
+      // lámina, así que el pasillo se reserva por salto de banda, no de lámina.
+      const enSlide = (r) => r >= rankStart && r < rankEnd;
+      const saltaBanda = (ra, rb) => Math.floor(ra / ranksPorBanda) !== Math.floor(rb / ranksPorBanda);
       const hayEntradaIzq = state.edges.some(e => {
         const ra = ranks[e.from], rb = ranks[e.to];
-        return ra != null && rb != null && ra < rankStart && rb >= rankStart && rb < rankEnd;
+        return ra != null && rb != null && enSlide(rb) && saltaBanda(ra, rb);
       });
       const haySalidaDer = state.edges.some(e => {
         const ra = ranks[e.from], rb = ranks[e.to];
-        return ra != null && rb != null && ra >= rankStart && ra < rankEnd && rb >= rankEnd;
+        return ra != null && rb != null && enSlide(ra) && saltaBanda(ra, rb);
       });
       const GUT_IZQ = hayEntradaIzq ? 1.05 : 0.55;   // 0,55 = chip de rol
       const GUT_DER = haySalidaDer ? 0.60 : 0.05;
       const CONN_X_IZQ = 0.4 + (0.44 + GUT_IZQ) / 2;                  // centro del pasillo
       const CONN_X_DER = 0.4 + (SLIDE_DRAW_W - 0.4) - GUT_DER / 2;
 
-      // ───── Grid de celdas: cada nodo en su rank-column × lane-row ─────
-      const sliceColCount = rankEnd - rankStart;
+      // ───── Grid de celdas: cada nodo en su columna-de-banda × fila ─────
+      const sliceColCount = ranksPorBanda;
       const cellInnerW = (SLIDE_DRAW_W - 0.4 - GUT_IZQ - GUT_DER) / sliceColCount;
       const CELL_GAP_X = 0.18;
       const cellWFinal = cellInnerW - CELL_GAP_X;
 
-      // Cuántos nodos comparten cada celda (rank × lane). Se necesita ANTES de
-      // repartir el alto: un carril que apila 3 nodos necesita más sitio que uno
-      // que sólo tiene 1, y hasta v2.5.1 todos recibían exactamente lo mismo.
-      const laneIdxOf = (n) => orderedLanes2.indexOf(state._lanes?.laneOf?.[n.id] || 'Por asignar');
+      // Cuántos nodos comparten cada celda (fila × columna dentro de su banda)
       const cellCount = {}, cellIdx = {};
-      const keyOf = (n) => laneIdxOf(n) + '|' + ((ranks[n.id] || 0) - rankStart);
+      const colOf = (n) => (ranks[n.id] || 0) - (filas[filaIdxOf(n)] || { ini: 0 }).ini;
+      const keyOf = (n) => filaIdxOf(n) + '|' + colOf(n);
       nodesInSlice.forEach(n => { const k = keyOf(n); cellCount[k] = (cellCount[k] || 0) + 1; });
 
-      // ───── Reparto de carriles PROPORCIONAL al contenido ─────
-      // Filas que necesita cada carril = máximo de nodos apilados en una celda.
-      const filasCarril = orderedLanes2.map((_, li) => {
+      // ───── Alto de cada fila, proporcional a lo que apila ─────
+      const apilaFila = filas.map((_, fi) => {
         let m = 1;
-        Object.keys(cellCount).forEach(k => { if (+k.split('|')[0] === li) m = Math.max(m, cellCount[k]); });
+        Object.keys(cellCount).forEach(k => { if (+k.split('|')[0] === fi) m = Math.max(m, cellCount[k]); });
         return m;
       });
-      // Una fila extra no cuesta el doble (comparten márgenes): pesa 0.85.
-      const pesosCarril = filasCarril.map(f => 1 + (f - 1) * 0.85);
-      const sumaPesos = pesosCarril.reduce((a, b) => a + b, 0) || 1;
-      const altoUtil = SLIDE_DRAW_H - 0.2;
       const MIN_LANE_H = 0.82;          // mínimo para que quepa el chip de rol
-      let laneH = pesosCarril.map(p => altoUtil * p / sumaPesos);
-      // Sube los carriles por debajo del mínimo restando de los que van holgados
-      for (let it = 0; it < 5; it++) {
-        const deficit = laneH.reduce((a, h) => a + Math.max(0, MIN_LANE_H - h), 0);
-        if (deficit < 0.001) break;
-        const holgura = laneH.reduce((a, h) => a + Math.max(0, h - MIN_LANE_H), 0);
-        if (holgura < 0.001) break;
-        laneH = laneH.map(h => h < MIN_LANE_H ? MIN_LANE_H : h - (h - MIN_LANE_H) * (deficit / holgura));
-      }
-      const laneY = [];
-      { let acc = DRAW_TOP; laneH.forEach(h => { laneY.push(acc); acc += h; }); }
+      let laneH = apilaFila.map(f => MIN_LANE_H + (f - 1) * 0.62);
 
-      // Render swimlanes (bandas + chip de rol a la izquierda)
+      // ───── (C) Si sobra alto, se agranda en vez de dejar aire muerto ─────
+      // El patrón fija la caja en 0,531"; aquí se permite crecer hasta 1,45x
+      // cuando la lámina va holgada, a cambio de legibilidad en proyección.
+      const gapsTotales = GAP_BANDA * Math.max(0, bandas.length - 1);
+      const altoContenido = laneH.reduce((a, h) => a + h, 0) + gapsTotales;
+      const escala = Math.max(1, Math.min(1.45, (ALTO_UTIL - gapsTotales) / Math.max(0.01, altoContenido - gapsTotales)));
+      laneH = laneH.map(h => h * escala);
+      // La tipografia acompana a la caja: de nada sirve una caja mas grande con
+      // el texto igual de pequeno. Se topa en 11 pt para no romper la jerarquia
+      // con el titulo de 24 pt.
+      const FONT_NODE_S = Math.min(11, Math.round(FONT_NODE * escala * 10) / 10);
+
+      // ───── (D) Si aun así sobra, se centra el bloque; no se estira ─────
+      const altoFinal = laneH.reduce((a, h) => a + h, 0) + gapsTotales;
+      const topInicial = DRAW_TOP + Math.max(0, (ALTO_UTIL - altoFinal) / 2);
+      const laneY = [];
+      {
+        let acc = topInicial, bandaPrev = filas.length ? filas[0].banda : 0;
+        filas.forEach((f, i) => {
+          if (f.banda !== bandaPrev) { acc += GAP_BANDA; bandaPrev = f.banda; }
+          laneY.push(acc); acc += laneH[i];
+        });
+      }
+
+      // Render de filas (carril blanco + chip de rol a la izquierda)
       const LANE_HEADER_W = 0.42;  // ancho visible del chip (ref. patrón: 0.472in)
-      if (orderedLanes.length > 0) {
-        orderedLanes.forEach((laneName, lidx) => {
+      if (filas.length > 0) {
+        filas.forEach((fila, lidx) => {
+          const laneName = fila.lane;
           const ly = laneY[lidx], lh = laneH[lidx];
+          const primeraDeBanda = lidx === 0 || filas[lidx - 1].banda !== fila.banda;
           // Carril blanco: es el contenedor sobre el fondo Gris Cerámica
           slide.addShape('rect', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: lh,
             fill: { color: 'FFFFFF' }, line: { type: 'none' } });
-          if (lidx > 0) {
+          // Separador sólo ENTRE carriles de la misma banda: entre bandas ya hay
+          // un hueco de fondo Cerámica, que es la señal de "aquí baja el flujo".
+          if (lidx > 0 && !primeraDeBanda) {
             slide.addShape('line', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: 0,
               line: { color: M_SEP, width: 1 } });
           }
@@ -6114,6 +6142,19 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       // Alto real que necesita una etiqueta. Hasta v2.5.1 era fijo (0,3") y las
       // preguntas de 3 líneas desbordaban sobre la figura de abajo.
       // 0,50 es el ancho medio de carácter en ForFuture Sans respecto al cuerpo.
+      // El catalogo EXECUTION_TYPES trae su propia paleta (azul, violeta,
+      // ambar...) porque lo comparte con el lienzo. En el entregable se traduce
+      // a los accents oficiales del tema Minsait, sin tocar el catalogo.
+      const EXEC_A_MINSAIT = {
+        '6B7280': '926979', '1E5BAA': '00B0BD', '1E7E34': '44B757',
+        '6D28D9': '8661F5', 'B45309': 'E56813', '92600A': 'E56813',
+        'B91C1C': 'A40037', '78350F': '926979', 'A16207': 'E56813'
+      };
+      function colorExec(hex) {
+        const k = String(hex || '').replace('#', '').toUpperCase();
+        return EXEC_A_MINSAIT[k] || M_PRUNO;
+      }
+
       function altoEtiqueta(txt, ancho, fs) {
         const lineas = Math.max(1, Math.ceil(String(txt || '').length * fs * 0.50 / 72 / Math.max(ancho, 0.3)));
         return Math.max(0.2, lineas * fs * 1.25 / 72);
@@ -6130,7 +6171,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       }
       function apartaEtiqArista(x, y, w, h) {
         let yy = y;
-        for (let i = 0; i < 12; i++) {
+        // 24 intentos y no 12: con la escalera cabe mas contenido por lamina y
+        // la busqueda corta se quedaba sin hueco en las bandas densas.
+        for (let i = 0; i < 24; i++) {
           const choca = etiqAristaUsadas.some(u =>
             Math.abs(u.x - x) < (u.w + w) / 2 && Math.abs(u.y - yy) < (u.h + h) / 2);
           if (!choca) break;
@@ -6153,16 +6196,17 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           return { w: d, h: d };
         }
         return {
-          w: Math.min(cellWFinal, 1.30),                      // ref: 1.303
-          h: Math.min(alto * 0.42, 0.58)                      // ref: 0.531
+          w: Math.min(cellWFinal, 1.30 * escala),             // ref: 1.303
+          h: Math.min(alto * 0.42, 0.58 * escala)             // ref: 0.531
         };
       }
 
       // Posiciones
       const nodeBoxes = new Map();
       nodesInSlice.forEach(n => {
-        const li = laneIdxOf(n);
-        const r = (ranks[n.id] || 0) - rankStart;
+        const li = filaIdxOf(n);
+        if (li < 0) return;
+        const r = colOf(n);
         const key = li + '|' + r;
         const total = cellCount[key];
         const idx = (cellIdx[key] = (cellIdx[key] === undefined ? 0 : cellIdx[key] + 1));
@@ -6220,13 +6264,13 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           // Label debajo del círculo
           if (n.label && n.label !== 'Inicio') {
             slide.addText(n.label, {
-              x: b.x - 0.3, y: b.y + b.h + 0.02, w: b.w + 0.6, h: altoEtiqueta(n.label, b.w + 0.6, FONT_NODE),
-              fontSize: FONT_NODE, color: M_PRUNO, align: 'center', valign: 'top',
+              x: b.x - 0.3, y: b.y + b.h + 0.02, w: b.w + 0.6, h: altoEtiqueta(n.label, b.w + 0.6, FONT_NODE_S),
+              fontSize: FONT_NODE_S, color: M_PRUNO, align: 'center', valign: 'top',
               fontFace: T_FONT, wrap: true, autoFit: false
             });
           } else if (n.label === 'Inicio') {
             slide.addText('Inicio', { x: b.x - 0.3, y: b.y + b.h + 0.02, w: b.w + 0.6, h: 0.25,
-              fontSize: FONT_NODE, color: M_PRUNO, align: 'center', fontFace: T_FONT });
+              fontSize: FONT_NODE_S, color: M_PRUNO, align: 'center', fontFace: T_FONT });
           }
         } else if (n.type === 'task' || n.type === 'system') {
           // ── Tarea BPMN: chip de tipo + código (arriba), label (abajo) ──
@@ -6239,7 +6283,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             // Marcador BPMN: chip de color con la inicial del tipo (USR, RCV, SRV...)
             slide.addShape('roundRect', {
               x: b.x + 0.05, y: b.y + 0.05, w: 0.42, h: 0.17,
-              fill: { color: exec.color.replace('#', '') }, line: { type: 'none' }, rectRadius: 0.03
+              fill: { color: colorExec(exec.color) }, line: { type: 'none' }, rectRadius: 0.03
             });
             slide.addText((exec.codePrefix || 'ACT'), {
               x: b.x + 0.05, y: b.y + 0.05, w: 0.42, h: 0.17,
@@ -6250,7 +6294,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           if (hasCode) {
             slide.addText('[' + n.activityCode + ']', {
               x: b.x + (exec ? 0.5 : 0.08), y: b.y + 0.04, w: b.w - 0.55, h: 0.18,
-              fontSize: 7, bold: true, color: (exec ? exec.color.replace('#', '') : '6B7280'),
+              fontSize: 7, bold: true, color: (exec ? colorExec(exec.color) : GRAY),
               align: 'left', valign: 'middle', fontFace: T_FONT
             });
           }
@@ -6259,7 +6303,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const topPad = (!compact && (hasCode || exec)) ? 0.22 : 0.03;
           slide.addText(n.label || '', {
             x: b.x + 0.04, y: b.y + topPad, w: b.w - 0.08, h: b.h - topPad - 0.03 - (hasMarker ? 0.16 : 0),
-            fontSize: compact ? 7.5 : FONT_NODE, align: 'center', valign: 'middle',
+            fontSize: compact ? 7.5 : FONT_NODE_S, align: 'center', valign: 'middle',
             color: T_TXT, fontFace: T_FONT, wrap: true, autoFit: false
           });
           // Marcador de actividad BPMN en la base (centro inferior)
@@ -6286,8 +6330,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             fontSize: 20, bold: true, color: M_PRUNO, align: 'center', valign: 'middle', fontFace: T_FONT
           });
           slide.addText(n.label || '', {
-            x: b.x - 0.3, y: b.y + b.h + 0.01, w: b.w + 0.6, h: altoEtiqueta(n.label, b.w + 0.6, FONT_NODE),
-            fontSize: FONT_NODE, align: 'center', valign: 'top', color: M_PRUNO, fontFace: T_FONT, wrap: true, autoFit: false
+            x: b.x - 0.3, y: b.y + b.h + 0.01, w: b.w + 0.6, h: altoEtiqueta(n.label, b.w + 0.6, FONT_NODE_S),
+            fontSize: FONT_NODE_S, align: 'center', valign: 'top', color: M_PRUNO, fontFace: T_FONT, wrap: true, autoFit: false
           });
         } else if (n.type === 'decision') {
           // Gateway exclusivo formato Telered: diamante vino con "x" blanca,
@@ -6304,7 +6348,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           // Documento / data: label centrado
           slide.addText(n.label || '', {
             x: b.x + 0.08, y: b.y + 0.04, w: b.w - 0.16, h: b.h - 0.08,
-            fontSize: FONT_NODE, align: 'center', valign: 'middle',
+            fontSize: FONT_NODE_S, align: 'center', valign: 'middle',
             color: M_PRUNO, fontFace: T_FONT, wrap: true, autoFit: false
           });
         }
@@ -6437,20 +6481,31 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         const a = state.nodes.find(x => x.id === e.from);
         const b = state.nodes.find(x => x.id === e.to);
         if (!a || !b) return;
+        // Un salto de BANDA se dibuja como conector con letra aunque los dos
+        // nodos estén en la misma lámina: una flecha cruzando el escalón
+        // ensuciaría el diagrama. Y si el salto es dentro de la lámina hay que
+        // pintar LOS DOS extremos, por eso no es un if/else encadenado.
         const aIn = nodeBoxes.has(a.id);
         const bIn = nodeBoxes.has(b.id);
         if (!aIn && !bIn) return;
-        if (aIn && bIn) {
+        const rA = ranks[a.id], rB = ranks[b.id];
+        const cruzaBanda = rA != null && rB != null && saltaBanda(rA, rB);
+        if (aIn && bIn && !cruzaBanda) {
           const ba = nodeBoxes.get(a.id), bb = nodeBoxes.get(b.id);
           const lA = state._lanes && state._lanes.laneOf ? state._lanes.laneOf[a.id] : null;
           const lB = state._lanes && state._lanes.laneOf ? state._lanes.laneOf[b.id] : null;
           const isMsg = lA && lB && lA !== lB && a.type !== 'start' && b.type !== 'end';
           drawOrthoEdge(slide, ba.x, ba.y, ba.w, ba.h, bb.x, bb.y, bb.w, bb.h, true, e.label, isMsg);
-        } else if (aIn && !bIn) {
+          return;
+        }
+        if (aIn) {
           // Off-page derecha — letra única por arista
           const ba = nodeBoxes.get(a.id);
           const letter = edgeLetters[e.id] || '?';
-          const targetSlice = Math.floor((ranks[b.id]||0) / ranksPerSlice) + 1;
+          const targetSlice = laminaDeRank(ranks[b.id] || 0);
+          // Si el salto es a otra banda de ESTA misma lamina, la referencia
+          // no es un numero de lamina sino "sigue abajo".
+          const marcaDer = targetSlice === sliceIdx + 1 ? '↓' : ('→ ' + targetSlice);
           const cx = CONN_X_DER;
           const sy = ba.y + ba.h / 2;
           const cy = reservaOffPage(offPageDer, sy);
@@ -6470,13 +6525,15 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
           // Rótulo corto bajo el círculo: la letra ya está dentro, "Conector C"
           // sobraba y sus 2 pulgadas de ancho pisaban las cajas vecinas.
-          slide.addText(`→ ${targetSlice}`, { x: cx - 0.2, y: cy + 0.19, w: 0.4, h: 0.16,
+          slide.addText(marcaDer, { x: cx - 0.2, y: cy + 0.19, w: 0.4, h: 0.16,
             fontSize: 7, color: GRAY, italic: true, align: 'center' });
-        } else if (!aIn && bIn) {
-          // Off-page izquierda — misma letra que el origen
+        }
+        if (bIn) {
+          // Entrada por la izquierda — misma letra que el origen
           const bb = nodeBoxes.get(b.id);
           const letter = edgeLetters[e.id] || '?';
-          const sourceSlice = Math.floor((ranks[a.id]||0) / ranksPerSlice) + 1;
+          const sourceSlice = laminaDeRank(ranks[a.id] || 0);
+          const marcaIzq = sourceSlice === sliceIdx + 1 ? '↑' : ('← ' + sourceSlice);
           const cx = CONN_X_IZQ;
           const ty = bb.y + bb.h / 2;
           const cy = reservaOffPage(offPageIzq, ty);
@@ -6493,7 +6550,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             slide.addShape('line', { x: cx + 0.18, y: ty, w: Math.max(bb.x - cx - 0.18, 0.01), h: 0.01,
               line: { color: '926979', width: 0.85, endArrowType: 'triangle' } });
           }
-          slide.addText(`← ${sourceSlice}`, { x: cx - 0.19, y: cy + 0.19, w: 0.38, h: 0.16,
+          slide.addText(marcaIzq, { x: cx - 0.19, y: cy + 0.19, w: 0.38, h: 0.16,
             fontSize: 7, color: GRAY, italic: true, align: 'center' });
         }
       });
@@ -6505,26 +6562,73 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       }
     }
 
-    // Asigna letra única (A, B, C, …) a cada arista que cruza slides
+    // ════════════════════════════════════════════════════════════
+    // PLANIFICACIÓN EN ESCALERA
+    // Un tramo de 4 columnas con un solo actor ocupaba una lámina entera y
+    // usaba el 30-48 % del alto. Ahora las columnas se envuelven en BANDAS
+    // apiladas: cada banda repite los carriles de su tramo y continúa la
+    // secuencia. Se empaquetan tantas bandas como quepan en el alto útil.
+    // ════════════════════════════════════════════════════════════
+    const ranksPorBanda = ranksPerSlice;
+    const ALTO_UTIL = SLIDE_DRAW_H - 0.2;
+    const ALTO_FILA = 0.95;      // medido: contenido real 0,54-0,65" + aire
+    const GAP_BANDA = 0.12;      // respiro entre bandas
+
+    const totalBandas = Math.ceil(totalRanks / ranksPorBanda);
+    const bandaInfo = [];
+    for (let b = 0; b < totalBandas; b++) {
+      const ini = b * ranksPorBanda, fin = Math.min(totalRanks, (b + 1) * ranksPorBanda);
+      const lanes = new Set(); const porCelda = {}; let maxApil = 1;
+      state.nodes.forEach(n => {
+        const r = ranks[n.id];
+        if (r == null || r < ini || r >= fin) return;
+        const ln = (state._lanes && state._lanes.laneOf && state._lanes.laneOf[n.id]) || 'Por asignar';
+        lanes.add(ln);
+        const k = ln + '|' + r;
+        porCelda[k] = (porCelda[k] || 0) + 1;
+        maxApil = Math.max(maxApil, porCelda[k]);
+      });
+      const filas = Math.max(1, lanes.size);
+      bandaInfo.push({ ini, fin,
+        lanes: laneList.filter(l => lanes.has(l)),
+        alto: filas * ALTO_FILA + (maxApil - 1) * 0.55 });
+    }
+
+    // Empaqueta bandas en láminas hasta agotar el alto útil
+    const laminasPlan = [];
+    {
+      let cur = [], acc = 0;
+      bandaInfo.forEach(bi => {
+        const coste = bi.alto + (cur.length ? GAP_BANDA : 0);
+        if (cur.length && acc + coste > ALTO_UTIL) { laminasPlan.push(cur); cur = []; acc = 0; }
+        acc += coste;
+        cur.push(bi);
+      });
+      if (cur.length) laminasPlan.push(cur);
+    }
+    slicesCount = laminasPlan.length;
+
+    // Las laminas ya no son de tamano fijo: hace falta un mapa rango -> lamina
+    const laminaDeBanda = {};
+    laminasPlan.forEach((bs, li) => bs.forEach(bi => { laminaDeBanda[bi.ini] = li + 1; }));
+    const laminaDeRank = (r) => laminaDeBanda[Math.floor(r / ranksPorBanda) * ranksPorBanda] || 1;
+
+    // Letra única por arista que salta de BANDA (cubre también el salto de lámina)
     const edgeLetters = {};
     let letterIdx = 0;
     const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     state.edges.forEach(e => {
       const ra = ranks[e.from], rb = ranks[e.to];
       if (ra === undefined || rb === undefined) return;
-      const sa = Math.floor(ra / ranksPerSlice), sb = Math.floor(rb / ranksPerSlice);
-      if (sa !== sb) {
+      if (Math.floor(ra / ranksPorBanda) !== Math.floor(rb / ranksPorBanda)) {
         edgeLetters[e.id] = LETTERS[letterIdx % 26];
         letterIdx++;
       }
     });
 
-    // Genera N slides según slicesCount
     for (let si = 0; si < slicesCount; si++) {
-      const rankStart = si * ranksPerSlice;
-      const rankEnd = Math.min(totalRanks, (si + 1) * ranksPerSlice);
       const slide = pres.addSlide();
-      drawProcessSlice(slide, si, rankStart, rankEnd);
+      drawProcessSlice(slide, si, laminasPlan[si]);
     }
 
     // ============ SLIDE: PUNTOS IMPORTANTES (formato Telered: octágono negro) ============

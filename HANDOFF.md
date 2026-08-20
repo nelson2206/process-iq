@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v2.5.0 — sistema visual Minsait aplicado al export PPTX
+> **Última actualización:** v2.6.0 — cero solapamientos de texto en el PPTX
 
 ---
 
@@ -72,8 +72,15 @@ Todo el camino de IA se validó con `fetch` interceptado. **Nunca se hizo una ll
 → *Siguiente paso:* configurar la key en el botón de ajustes → *Probar conexión* → ingerir un documento real y revisar la calidad del flujo generado.
 
 **3. Ruteo A-star con evasión de obstáculos**
-El autoajuste dejó **3 flechas sobre cajas y 10 cruces** en Venta de Lotes (33 nodos). Causa: tres decisiones distintas apuntan al mismo nodo *Fin* y comparten la misma "autopista".
+Medido sobre el PPTX de Venta de Lotes en v2.6.0: **18 cruces flecha-flecha y 4 flechas
+sobre cajas** en las 6 láminas de flujo. Es lo ÚNICO que queda: los solapamientos de
+texto ya están en cero. Causa: varias decisiones apuntan al mismo destino y comparten
+la misma "autopista" horizontal.
 → *Siguiente paso:* ruteo ortogonal sobre grilla con A-star y canales reservados por arista.
+
+> Ojo con la prioridad: hasta v2.5.1 se creía que el ruteo era el problema principal
+> del PPTX. Al medirlo resultó ser el 26 % de los defectos; el 74 % era texto que se
+> pisaba. Eso se corrigió en v2.6.0 sin tocar el ruteo. Medir antes de invertir.
 
 ### Media
 

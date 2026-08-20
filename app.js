@@ -5965,7 +5965,15 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const drawableW_calc = SLIDE_DRAW_W - 0.6;
     // Menos ranks por slide cuando hay muchos actores (lanes) → cajas más grandes y legibles
     const numLanesAll = (lanesData?.list || []).length;
-    const ranksPerSlice = Math.max(3, Math.min(numLanesAll > 5 ? 4 : 6, totalRanks));
+    // Densidad por lámina. Las decisiones son las que más espacio de texto piden
+    // (su pregunta va fuera del rombo y ocupa 2-3 líneas), así que un proceso con
+    // muchos gateways necesita columnas más anchas, no más columnas.
+    const numDecisiones = state.nodes.filter(n => n.type === 'decision').length;
+    const densidadAlta = numLanesAll > 5 || numDecisiones >= 5;
+    // 4 columnas y no 6: medido sobre Venta de Lotes, 6 columnas dejaba las
+    // celdas tan estrechas que las preguntas de los gateways se partían en 3-4
+    // líneas y se pisaban. Con 4 el deck crece 2 láminas y los solapes caen a 0.
+    const ranksPerSlice = Math.max(3, Math.min(densidadAlta ? 4 : 6, totalRanks));
     const slicesCount = Math.ceil(totalRanks / ranksPerSlice);
     const colWInches_calc = drawableW_calc / ranksPerSlice;
     // Scale per slice: cada slice cubre ranksPerSlice ranks, ocupa drawableW_calc inches
@@ -6010,85 +6018,146 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const offX = 0.4 + ((SLIDE_DRAW_W - 0.6) - sliceW * sliceScale) / 2;
       const offY = DRAW_TOP + (SLIDE_DRAW_H - sliceH * sliceScale) / 2;
 
-      // Render swimlanes (bandas + labels izquierda)
       const lanesInSlice = [...new Set(nodesInSlice.map(n => state._lanes?.laneOf?.[n.id] || 'Por asignar'))];
       const orderedLanes = laneList.filter(l => lanesInSlice.includes(l));
-      if (orderedLanes.length > 0) {
-        const laneRowH = (SLIDE_DRAW_H - 0.2) / orderedLanes.length;
-        const LANE_HEADER_W = 0.42;  // chip vertical estrecho (ref. Telered: 0.47in)
-        orderedLanes.forEach((laneName, lidx) => {
-          const ly = DRAW_TOP + lidx * laneRowH;
-          // Carril blanco con línea separadora arena (formato Telered), no bandas grises
-          slide.addShape('rect', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: laneRowH,
-            fill: { color: 'FFFFFF' }, line: { type: 'none' } });
-          if (lidx > 0) {
-            slide.addShape('line', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: 0,
-              line: { color: M_SEP, width: 1 } });
-          }
-          // Chip de rol: barra estrecha con margen (ref: 0.47in ancho x ~1.3in alto)
-          const chipH = Math.min(laneRowH - 0.18, 1.45);
-          const chipY = ly + (laneRowH - chipH) / 2;
-          slide.addShape('rect', { x: 0.42, y: chipY, w: LANE_HEADER_W, h: chipH,
-            fill: { color: T_NARANJA }, line: { type: 'none' } });
-          slide.addText(laneName, {
-            x: 0.42, y: chipY, w: LANE_HEADER_W, h: chipH,
-            fontSize: 8, bold: false, color: M_PRUNO,
-            align: 'center', valign: 'middle', fontFace: T_FONT,
-            rotate: 270, wrap: false
-          });
-        });
-      }
+      const orderedLanes2 = orderedLanes;  // alias
 
       // ───── Grid de celdas: cada nodo en su rank-column × lane-row ─────
       const sliceColCount = rankEnd - rankStart;
       const cellInnerW = (SLIDE_DRAW_W - 0.4 - 0.6) / sliceColCount;  // resta header vertical (0.5) + márgenes
       const CELL_GAP_X = 0.18;
       const cellWFinal = cellInnerW - CELL_GAP_X;
-      const orderedLanes2 = orderedLanes;  // alias
-      const laneRowH2 = (SLIDE_DRAW_H - 0.2) / orderedLanes2.length;
+
+      // Cuántos nodos comparten cada celda (rank × lane). Se necesita ANTES de
+      // repartir el alto: un carril que apila 3 nodos necesita más sitio que uno
+      // que sólo tiene 1, y hasta v2.5.1 todos recibían exactamente lo mismo.
+      const laneIdxOf = (n) => orderedLanes2.indexOf(state._lanes?.laneOf?.[n.id] || 'Por asignar');
+      const cellCount = {}, cellIdx = {};
+      const keyOf = (n) => laneIdxOf(n) + '|' + ((ranks[n.id] || 0) - rankStart);
+      nodesInSlice.forEach(n => { const k = keyOf(n); cellCount[k] = (cellCount[k] || 0) + 1; });
+
+      // ───── Reparto de carriles PROPORCIONAL al contenido ─────
+      // Filas que necesita cada carril = máximo de nodos apilados en una celda.
+      const filasCarril = orderedLanes2.map((_, li) => {
+        let m = 1;
+        Object.keys(cellCount).forEach(k => { if (+k.split('|')[0] === li) m = Math.max(m, cellCount[k]); });
+        return m;
+      });
+      // Una fila extra no cuesta el doble (comparten márgenes): pesa 0.85.
+      const pesosCarril = filasCarril.map(f => 1 + (f - 1) * 0.85);
+      const sumaPesos = pesosCarril.reduce((a, b) => a + b, 0) || 1;
+      const altoUtil = SLIDE_DRAW_H - 0.2;
+      const MIN_LANE_H = 0.82;          // mínimo para que quepa el chip de rol
+      let laneH = pesosCarril.map(p => altoUtil * p / sumaPesos);
+      // Sube los carriles por debajo del mínimo restando de los que van holgados
+      for (let it = 0; it < 5; it++) {
+        const deficit = laneH.reduce((a, h) => a + Math.max(0, MIN_LANE_H - h), 0);
+        if (deficit < 0.001) break;
+        const holgura = laneH.reduce((a, h) => a + Math.max(0, h - MIN_LANE_H), 0);
+        if (holgura < 0.001) break;
+        laneH = laneH.map(h => h < MIN_LANE_H ? MIN_LANE_H : h - (h - MIN_LANE_H) * (deficit / holgura));
+      }
+      const laneY = [];
+      { let acc = DRAW_TOP; laneH.forEach(h => { laneY.push(acc); acc += h; }); }
+
+      // Render swimlanes (bandas + chip de rol a la izquierda)
+      const LANE_HEADER_W = 0.42;  // ancho visible del chip (ref. patrón: 0.472in)
+      if (orderedLanes.length > 0) {
+        orderedLanes.forEach((laneName, lidx) => {
+          const ly = laneY[lidx], lh = laneH[lidx];
+          // Carril blanco: es el contenedor sobre el fondo Gris Cerámica
+          slide.addShape('rect', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: lh,
+            fill: { color: 'FFFFFF' }, line: { type: 'none' } });
+          if (lidx > 0) {
+            slide.addShape('line', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: 0,
+              line: { color: M_SEP, width: 1 } });
+          }
+          // Chip de rol. El patrón Minsait define la caja ANCHA (1,252 x 0,472)
+          // y la rota 270 grados. Si se define estrecha, PowerPoint maqueta el
+          // texto en los 0,42" ANTES de rotar y lo desborda por arriba y abajo.
+          const chipL = Math.max(0.6, Math.min(lh - 0.14, 1.45));   // longitud visible (vertical)
+          const chipBox = {
+            x: (0.42 + LANE_HEADER_W / 2) - chipL / 2,
+            y: (ly + lh / 2) - LANE_HEADER_W / 2,
+            w: chipL, h: LANE_HEADER_W, rotate: 270
+          };
+          slide.addShape('rect', Object.assign({}, chipBox, {
+            fill: { color: T_NARANJA }, line: { type: 'none' } }));
+          slide.addText(laneName, Object.assign({}, chipBox, {
+            fontSize: 8, bold: false, color: M_PRUNO, align: 'center', valign: 'middle',
+            fontFace: T_FONT, wrap: false, fit: 'shrink' }));
+        });
+      }
 
       // Tamaños por tipo, ahora EN PROPORCIÓN a la celda disponible
       // Proporciones calcadas del deck de referencia (Telered slides 40-41):
       // actividad 1.13x0.53in, diamante 0.31in, eventos 0.30in. Se topan contra
       // la celda disponible para que nunca desborden en procesos densos.
-      function cellSize(n) {
+      // Alto real que necesita una etiqueta. Hasta v2.5.1 era fijo (0,3") y las
+      // preguntas de 3 líneas desbordaban sobre la figura de abajo.
+      // 0,50 es el ancho medio de carácter en ForFuture Sans respecto al cuerpo.
+      function altoEtiqueta(txt, ancho, fs) {
+        const lineas = Math.max(1, Math.ceil(String(txt || '').length * fs * 0.50 / 72 / Math.max(ancho, 0.3)));
+        return Math.max(0.2, lineas * fs * 1.25 / 72);
+      }
+
+      // Anticolisión de etiquetas de arista: dos flechas paralelas y cercanas
+      // escribían su rótulo en el mismo punto ("Solicita descuento" sobre
+      // "Acepta"). Se aparta la segunda en vertical.
+      const etiqAristaUsadas = [];
+      function sembrarCajasEnAnticolision() {
+        nodeBoxes.forEach(function (b) {
+          etiqAristaUsadas.push({ x: b.x + b.w / 2, y: b.y, w: b.w, h: b.h });
+        });
+      }
+      function apartaEtiqArista(x, y, w, h) {
+        let yy = y;
+        for (let i = 0; i < 12; i++) {
+          const choca = etiqAristaUsadas.some(u =>
+            Math.abs(u.x - x) < (u.w + w) / 2 && Math.abs(u.y - yy) < (u.h + h) / 2);
+          if (!choca) break;
+          yy += (i % 2 === 0 ? -1 : 1) * (h + 0.03) * Math.ceil((i + 1) / 2);
+        }
+        etiqAristaUsadas.push({ x: x, y: yy, w: w, h: h });
+        return yy;
+      }
+
+      // Ahora cada carril tiene SU alto, así que el tamaño se topa contra el
+      // carril del nodo, no contra un alto único para todos.
+      function cellSize(n, lh) {
+        const alto = lh || Math.min.apply(null, laneH);
         if (n.type === 'start' || n.type === 'end' || n.type === 'intermediate') {
-          const d = Math.min(0.32, cellWFinal * 0.5, laneRowH2 * 0.35);
+          const d = Math.min(0.32, cellWFinal * 0.5, alto * 0.35);
           return { w: d, h: d };
         }
         if (n.type === 'decision') {
-          const d = Math.min(0.34, cellWFinal * 0.5, laneRowH2 * 0.35);
+          const d = Math.min(0.34, cellWFinal * 0.5, alto * 0.35);
           return { w: d, h: d };
         }
         return {
-          w: Math.min(cellWFinal, 1.30),                      // ref: 1.12-1.14
-          h: Math.min(laneRowH2 * 0.42, 0.58)                 // ref: 0.53
+          w: Math.min(cellWFinal, 1.30),                      // ref: 1.303
+          h: Math.min(alto * 0.42, 0.58)                      // ref: 0.531
         };
       }
 
       // Posiciones
       const nodeBoxes = new Map();
-      // Cuántos nodos comparten cada celda (rank × lane): se necesita ANTES de
-      // posicionar para repartirlos centrados y sin que las etiquetas se pisen.
-      const cellCount = {}, cellIdx = {};
-      const keyOf = (n) => orderedLanes2.indexOf(state._lanes?.laneOf?.[n.id] || 'Por asignar') + '|' + ((ranks[n.id] || 0) - rankStart);
-      nodesInSlice.forEach(n => { const k = keyOf(n); cellCount[k] = (cellCount[k] || 0) + 1; });
       nodesInSlice.forEach(n => {
-        const li = orderedLanes2.indexOf(state._lanes?.laneOf?.[n.id] || 'Por asignar');
+        const li = laneIdxOf(n);
         const r = (ranks[n.id] || 0) - rankStart;
         const key = li + '|' + r;
         const total = cellCount[key];
         const idx = (cellIdx[key] = (cellIdx[key] === undefined ? 0 : cellIdx[key] + 1));
-        const sz = cellSize(n);
+        const lh = laneH[li], ly = laneY[li];
+        const sz = cellSize(n, lh);
         const cellX = 0.4 + 0.55 + r * cellInnerW + (cellInnerW - sz.w) / 2;
-        const ly = DRAW_TOP + li * laneRowH2;
-        let cellY = ly + (laneRowH2 - sz.h) / 2;
+        let cellY = ly + (lh - sz.h) / 2;
         if (total > 1) {
           // Paso que incluye la etiqueta bajo la figura (decisiones/eventos la
           // llevan debajo) para que dos nodos apilados no se solapen el texto.
           const labelBelow = (n.type === 'decision' || n.type === 'start' || n.type === 'end' || n.type === 'intermediate');
-          const step = Math.min((laneRowH2 - 0.1) / total, sz.h + (labelBelow ? 0.42 : 0.12));
-          cellY = ly + (laneRowH2 - (total - 1) * step - sz.h) / 2 + idx * step;
+          const step = Math.min((lh - 0.1) / total, sz.h + (labelBelow ? 0.52 : 0.12));
+          cellY = ly + (lh - (total - 1) * step - sz.h) / 2 + idx * step;
         }
         nodeBoxes.set(n.id, { x: cellX, y: cellY, w: sz.w, h: sz.h, cx: cellX + sz.w/2, cy: cellY + sz.h/2 });
       });
@@ -6133,7 +6202,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           // Label debajo del círculo
           if (n.label && n.label !== 'Inicio') {
             slide.addText(n.label, {
-              x: b.x - 0.3, y: b.y + b.h + 0.02, w: b.w + 0.6, h: 0.3,
+              x: b.x - 0.3, y: b.y + b.h + 0.02, w: b.w + 0.6, h: altoEtiqueta(n.label, b.w + 0.6, FONT_NODE),
               fontSize: FONT_NODE, color: M_PRUNO, align: 'center', valign: 'top',
               fontFace: T_FONT, wrap: true, autoFit: false
             });
@@ -6199,7 +6268,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             fontSize: 20, bold: true, color: M_PRUNO, align: 'center', valign: 'middle', fontFace: T_FONT
           });
           slide.addText(n.label || '', {
-            x: b.x - 0.3, y: b.y + b.h + 0.01, w: b.w + 0.6, h: 0.3,
+            x: b.x - 0.3, y: b.y + b.h + 0.01, w: b.w + 0.6, h: altoEtiqueta(n.label, b.w + 0.6, FONT_NODE),
             fontSize: FONT_NODE, align: 'center', valign: 'top', color: M_PRUNO, fontFace: T_FONT, wrap: true, autoFit: false
           });
         } else if (n.type === 'decision') {
@@ -6210,7 +6279,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: T_FONT
           });
           slide.addText(n.label || '', {
-            x: b.x - 0.45, y: b.y + b.h + 0.01, w: b.w + 0.9, h: 0.3,
+            x: b.x - 0.45, y: b.y + b.h + 0.01, w: b.w + 0.9, h: altoEtiqueta(n.label, b.w + 0.9, 9),
             fontSize: 9, bold: true, align: 'center', valign: 'top', color: T_VINO, fontFace: T_FONT, wrap: true, autoFit: false
           });
         } else {
@@ -6264,7 +6333,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             seg(enX, ty, 0.01, dy - ty, false, false, true);                                  // sube
             seg(Math.min(enX, tx), ty, Math.abs(tx - enX) || 0.01, 0.01, hasArrow, tx < enX); // entra
             if (label) {
-              slide.addText(label, { x: (exX + enX) / 2 - 0.4, y: dy - 0.20, w: 0.8, h: 0.18,
+              slide.addText(label, { x: (exX + enX) / 2 - 0.4, y: apartaEtiqArista((exX + enX) / 2, dy - 0.20, 0.8, 0.18), w: 0.8, h: 0.18,
                 fontSize: FONT_EDGE, color: T_TXT, align: 'center', fontFace: T_FONT });
             }
             return;
@@ -6276,7 +6345,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           });
           if (label) {
             slide.addText(label, {
-              x: (sx + tx) / 2 - 0.35, y: sy - 0.15, w: 0.7, h: 0.22,
+              x: (sx + tx) / 2 - 0.35, y: apartaEtiqArista((sx + tx) / 2, sy - 0.15, 0.7, 0.22), w: 0.7, h: 0.22,
               fontSize: FONT_EDGE, color: T_TXT, align: 'center',
               fontFace: T_FONT, italic: false
             });
@@ -6294,7 +6363,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           });
           if (label) {
             slide.addText(label, {
-              x: sx + 0.05, y: (sy + ty) / 2 - 0.11, w: 0.7, h: 0.22,
+              x: sx + 0.05, y: apartaEtiqArista(sx + 0.4, (sy + ty) / 2 - 0.11, 0.7, 0.22), w: 0.7, h: 0.22,
               fontSize: FONT_EDGE, color: T_TXT, align: 'left',
               fontFace: T_FONT, italic: false
             });
@@ -6320,12 +6389,30 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           });
           if (label) {
             slide.addText(label, {
-              x: Math.min(sx, cornerX) + Math.abs(cornerX - sx) / 2 - 0.35, y: sy - 0.18, w: 0.7, h: 0.22,
+              x: Math.min(sx, cornerX) + Math.abs(cornerX - sx) / 2 - 0.35, y: apartaEtiqArista(Math.min(sx, cornerX) + Math.abs(cornerX - sx) / 2, sy - 0.18, 0.7, 0.22), w: 0.7, h: 0.22,
               fontSize: FONT_EDGE, color: T_TXT, align: 'center',
               fontFace: T_FONT, italic: false
             });
           }
         }
+      }
+
+      // Conectores de página: dos aristas que salen a la misma altura ponían su
+      // círculo y su rótulo en la misma coordenada y quedaban ilegibles. Cada
+      // columna (izquierda y derecha) reserva su altura y aparta al siguiente.
+      sembrarCajasEnAnticolision();
+      const offPageDer = [], offPageIzq = [];
+      const OFF_PAGE_SEP = 0.58;   // circulo (0,36) + rotulo debajo (0,16) + aire
+      function reservaOffPage(usadas, y) {
+        let cy = y;
+        for (let intento = 0; intento < 24; intento++) {
+          if (!usadas.some(u => Math.abs(u - cy) < OFF_PAGE_SEP)) break;
+          cy += OFF_PAGE_SEP;
+          // Si se sale por abajo, vuelve arriba y sigue buscando hacia arriba
+          if (cy > DRAW_TOP + SLIDE_DRAW_H - 0.25) cy = y - OFF_PAGE_SEP * (intento + 1);
+        }
+        usadas.push(cy);
+        return cy;
       }
 
       state.edges.forEach(e => {
@@ -6348,29 +6435,50 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const targetSlice = Math.floor((ranks[b.id]||0) / ranksPerSlice) + 1;
           const cx = SLIDE_DRAW_W - 0.15;
           const sy = ba.y + ba.h / 2;
-          slide.addShape('line', { x: ba.x + ba.w, y: sy, w: Math.max(cx - (ba.x + ba.w), 0.01), h: 0.01,
-            line: { color: '926979', width: 0.85 } });
-          slide.addShape('ellipse', { x: cx - 0.18, y: sy - 0.18, w: 0.36, h: 0.36,
+          const cy = reservaOffPage(offPageDer, sy);
+          // Si el círculo tuvo que apartarse, se llega en tres tramos ortogonales
+          const xJog = cx - 0.62;
+          if (Math.abs(cy - sy) > 0.01) {
+            slide.addShape('line', { x: ba.x + ba.w, y: sy, w: Math.max(xJog - (ba.x + ba.w), 0.01), h: 0.01, line: { color: '926979', width: 0.85 } });
+            slide.addShape('line', { x: xJog, y: Math.min(sy, cy), w: 0.01, h: Math.abs(cy - sy), line: { color: '926979', width: 0.85 } });
+            slide.addShape('line', { x: xJog, y: cy, w: 0.44, h: 0.01, line: { color: '926979', width: 0.85 } });
+          } else {
+            slide.addShape('line', { x: ba.x + ba.w, y: sy, w: Math.max(cx - 0.18 - (ba.x + ba.w), 0.01), h: 0.01,
+              line: { color: '926979', width: 0.85 } });
+          }
+          slide.addShape('ellipse', { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
             fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 } });
-          slide.addText(letter, { x: cx - 0.18, y: sy - 0.18, w: 0.36, h: 0.36,
+          slide.addText(letter, { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
             fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
-          slide.addText(`Conector ${letter} → slide ${targetSlice}`, { x: cx - 2.0, y: sy + 0.22, w: 2.0, h: 0.18,
-            fontSize: 7, color: GRAY, italic: true, align: 'right' });
+          // Rótulo corto bajo el círculo: la letra ya está dentro, "Conector C"
+          // sobraba y sus 2 pulgadas de ancho pisaban las cajas vecinas.
+          slide.addText(`→ ${targetSlice}`, { x: cx - 0.2, y: cy + 0.19, w: 0.4, h: 0.16,
+            fontSize: 7, color: GRAY, italic: true, align: 'center' });
         } else if (!aIn && bIn) {
           // Off-page izquierda — misma letra que el origen
           const bb = nodeBoxes.get(b.id);
           const letter = edgeLetters[e.id] || '?';
           const sourceSlice = Math.floor((ranks[a.id]||0) / ranksPerSlice) + 1;
-          const cx = 0.15;
+          // 0,21 y no 0,15: con 0,15 el circulo empezaba en x=-0,03 y la lamina
+          // lo cortaba. Asi queda dentro y sin tocar el chip de rol (x=0,42).
+          const cx = 0.21;
           const ty = bb.y + bb.h / 2;
-          slide.addShape('ellipse', { x: cx - 0.18, y: ty - 0.18, w: 0.36, h: 0.36,
+          const cy = reservaOffPage(offPageIzq, ty);
+          const xJog = cx + 0.62;
+          slide.addShape('ellipse', { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
             fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 } });
-          slide.addText(letter, { x: cx - 0.18, y: ty - 0.18, w: 0.36, h: 0.36,
+          slide.addText(letter, { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
             fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
-          slide.addShape('line', { x: cx + 0.18, y: ty, w: Math.max(bb.x - cx - 0.18, 0.01), h: 0.01,
-            line: { color: '926979', width: 0.85, endArrowType: 'triangle' } });
-          slide.addText(`Conector ${letter} ← slide ${sourceSlice}`, { x: cx, y: ty + 0.22, w: 2.0, h: 0.18,
-            fontSize: 7, color: GRAY, italic: true, align: 'left' });
+          if (Math.abs(cy - ty) > 0.01) {
+            slide.addShape('line', { x: cx + 0.18, y: cy, w: Math.max(xJog - cx - 0.18, 0.01), h: 0.01, line: { color: '926979', width: 0.85 } });
+            slide.addShape('line', { x: xJog, y: Math.min(ty, cy), w: 0.01, h: Math.abs(cy - ty), line: { color: '926979', width: 0.85 } });
+            slide.addShape('line', { x: xJog, y: ty, w: Math.max(bb.x - xJog, 0.01), h: 0.01, line: { color: '926979', width: 0.85, endArrowType: 'triangle' } });
+          } else {
+            slide.addShape('line', { x: cx + 0.18, y: ty, w: Math.max(bb.x - cx - 0.18, 0.01), h: 0.01,
+              line: { color: '926979', width: 0.85, endArrowType: 'triangle' } });
+          }
+          slide.addText(`← ${sourceSlice}`, { x: cx - 0.19, y: cy + 0.19, w: 0.38, h: 0.16,
+            fontSize: 7, color: GRAY, italic: true, align: 'center' });
         }
       });
 
@@ -6642,7 +6750,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         sl.addShape('rect', { x: 0.5, y, w: 0.4, h: 1.7, fill: { color: MAGENTA } });
         sl.addText(`#${i + 1}`, { x: 0.5, y, w: 0.4, h: 1.7, fontSize: 18, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
         sl.addShape('rect', { x: 1, y, w: 11.8, h: 1.7, fill: { color: 'FFFFFF' }, line: { color: 'D0CEC1', width: 0.5 } });
-        sl.addText(p.activity || '—', { x: 1.2, y: y + 0.1, w: 9, h: 0.4, fontSize: 14, bold: true, color: DARK });
+        sl.addText(p.activity || '—', { x: 1.2, y: y + 0.1, w: 8.6, h: 0.4, fontSize: 14, bold: true, color: DARK });
         sl.addText(`Sev ${p.severity} · Frec ${p.frequency} · Score ${p.severity * p.frequency}`, { x: 10, y: y + 0.1, w: 2.6, h: 0.4, fontSize: 11, color: MAGENTA, align: 'right', bold: true });
         sl.addText(`Situación observada: ${p.description}`, { x: 1.2, y: y + 0.5, w: 11.4, h: 0.4, fontSize: 11, color: DARK, fontFace: T_FONT });
         const cat = (window.PAIN_CATEGORIES.find(c => c.id === p.category) || {}).label || p.category;

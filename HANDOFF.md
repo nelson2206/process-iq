@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v2.4.0 · commit `65010e6`
+> **Última actualización:** v2.5.0 — sistema visual Minsait aplicado al export PPTX
 
 ---
 
@@ -89,7 +89,7 @@ Se mitigó cediendo el hilo cada 3 páginas, pero la extracción **sigue en el h
 
 ### Baja
 
-**7. PPTX desde plantilla real** — hoy el formato se replica por código; se podría partir del `.pptx` real como template.
+**7. PPTX desde plantilla real** *(mitigado en v2.5.0)* — hoy el formato se replica por código; se podría partir del `.pptx` real como template.
 
 **8. OCR para PDF escaneado** — hoy solo avisa de que hace falta OCR.
 
@@ -147,20 +147,38 @@ Endpoint y cabeceras:
 - `C:\Users\nebernal\Downloads\Ejemplo de flujos.pptx` — **plantilla actual**
 - `C:\Users\nebernal\OneDrive - Indra\Grp_T_Telered_IA - General\02. Gobierno IA\03. Gobierno robusto\202606_Documento_Trabajo_Gobierno_IA_Telered.pptx` (slides 40-41)
 
-**Medidas en pulgadas, extraídas del XML de la plantilla:**
+**Medidas en pulgadas, extraídas del XML de la plantilla** (verificadas contra
+`theme2.xml`, `slideMaster2.xml`, `slideLayout18.xml` y `slide2.xml`):
 
 | Elemento | Medida | Color |
 |---|---|---|
-| Caja actividad | 1,13 x 0,53 | `E4E3DD` |
-| Diamante (gateway) | 0,31 x 0,31 | `4F062A` (vino) |
-| Círculo inicio | 0,30 x 0,30 | `44B757` (verde) |
-| Círculo fin | 0,30 x 0,30 | `F05C95` / `EF659D` (rosa) |
-| Chip de rol (rotado 270 grados) | 0,47 ancho x 1,3 alto | `E56813` (naranja) |
-| Conectores | 0,5 pt | `FF0054` (magenta) |
-| Separador de carril | 1 pt | `E3E2DA` |
-| Tipografía | 8 pt cajas / 9 pt etiquetas | **Lato** |
+| Caja actividad | 1,303 x 0,531 · `roundRect` adj 5882 | `E4E3DD` |
+| Diamante (gateway) | 0,315 x 0,315 | `4F062A` (Pruno) |
+| Círculo inicio | 0,297 | `44B757` (accent2) |
+| Círculo fin | 0,297 | `F05C95` |
+| Chip de rol (rotado 270 grados) | 1,252 ancho x 0,472 alto | `F7C29E` (accent4 lumMod 40 / lumOff 60) |
+| Conectores | 0,5 pt | `FF0054` (accent1) |
+| Separador de carril | 1 pt | `D0CEC1` (bg2 lumMod 90) |
+| Panel del flujo | `octagon` adj 2000 sobre el fondo | `FFFFFF` |
+| Tipografía | 8,5 pt cajas / 8 pt etiquetas | **ForFuture Sans** |
 
-**Tema del deck:** dk1 `4F062A` · lt2 `E3E2DA` · accent1 `FF0054` · accent2 `44B757` · accent4 `E56813` · accent6 `EF659D`
+**Chrome corporativo (layout18):** antetítulo `x 0,367 · y 0,354 · w 12,6` ·
+título `y 0,6` a 28 pt Pruno · pie `y 7,001` · nº de lámina `x 12,547 · y 7,001`.
+**Portada (layout42):** wordmark `minsait` en `x 0,421 · y 6,692 · 1,963 x 0,39`;
+`An Indra company` en `x 8,843 · y 6,931`.
+
+**Tema del deck:** dk1 `4F062A` (Pruno) · dk2 `260717` (Pruno Oscuro) ·
+lt1 `FFFFFF` · lt2 `E3E2DA` (Gris Cerámica) · accent1 `FF0054` (Fucsia) ·
+accent2 `44B757` · accent3 `8661F5` · accent4 `E56813` · accent5 `00B0BD` ·
+accent6 `EF659D` · folHlink `A40037`. Fuente mayor y menor: **ForFuture Sans**.
+
+> ⚠️ **ForFuture Sans no es una fuente de sistema.** En un equipo Minsait se ve
+> correcta; fuera de la organización PowerPoint la sustituye. No es un defecto
+> del export.
+
+**Logotipos:** los tres wordmarks oficiales (`minsait` oscuro, `minsait` blanco,
+`An Indra company`) están embebidos en `app.js` como data URI base64,
+extraídos de `image9/11/8.png` de la propia plantilla. Pesan ~2 KB en total.
 
 **Ficha de proceso — referencia:** `PR-DU-COM-02 Venta de Lotes Urbanos` (Grupo Centenario), 12 bloques. Está codificada como demo: `ProcessIQ.loadFichaVentaLotes()`.
 

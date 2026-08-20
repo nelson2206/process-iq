@@ -5831,29 +5831,101 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     pres.title = state.meta.name || 'ProcessIQ Diagnóstico';
     pres.author = 'Minsait Business Consulting';
 
-    const MAGENTA = 'FF4713';
-    const DARK = '232323';
-    const GRAY = '7A7A7A';
+    // ============================================================
+    // SISTEMA VISUAL MINSAIT
+    // Extraido del patron corporativo real (theme2.xml de la plantilla
+    // "Ejemplo de flujos.pptx"): dk1 Pruno, dk2 Pruno Oscuro, lt2 Gris
+    // Ceramica, accent1 Fucsia, tipografia ForFuture Sans.
+    // Jerarquia obligatoria: Ceramica + Pruno + Blanco dominan (80-90%);
+    // el Fucsia solo resalta (5-10%) y nunca es fondo.
+    // ============================================================
+    const M_PRUNO = '4F062A';      // dk1  - titulos y texto
+    const M_PRUNO_OSC = '260717';  // dk2  - portada y separadores de seccion
+    const M_CERAMICA = 'E3E2DA';   // lt2  - fondo de las slides de contenido
+    const M_BLANCO = 'FFFFFF';     // lt1  - contenedores: cards, carriles, tablas
+    const M_FUCSIA = 'FF0054';     // accent1 - resaltados
+    const M_SEP = 'D0CEC1';        // bg2 al 90% de luminancia - separadores
+    const M_CHIP_ROL = 'F7C29E';   // accent4 lumMod 40/lumOff 60 - chip de rol
+    const M_TEAL = '00B0BD';       // accent5 - eventos intermedios BPMN
+
+    const MAGENTA = M_FUCSIA;      // acentos y resaltados
+    const DARK = M_PRUNO;          // texto de cuerpo
+    const GRAY = '926979';         // Pruno al 55% sobre Ceramica - texto secundario
     // ── Paleta "formato Telered" (referencia: slides 40-41 Gobierno IA) ──
-    const T_VINO = '4F062A';      // decisiones (diamante) y títulos
-    const T_AZUL = '004481';      // acentos corporativos
-    const T_ROSA = 'EF659D';      // evento de fin
-    const T_VERDE = '44B757';     // evento de inicio
-    const T_NARANJA = 'E56813';   // headers de rol (swimlane)
-    const T_ARENA = 'E4E3DD';     // cajas de actividad
-    const T_TXT = '1A1A1A';
-    const T_FONT = 'Lato';        // tipografía del deck de referencia
+    const T_VINO = M_PRUNO;       // decisiones (diamante) y titulos
+    const T_AZUL = M_TEAL;        // eventos intermedios y artefactos
+    const T_ROSA = 'F05C95';      // evento de fin (valor exacto del patron)
+    const T_VERDE = '44B757';     // accent2 - evento de inicio
+    const T_NARANJA = M_CHIP_ROL; // chip de rol del swimlane
+    const T_ARENA = 'E4E3DD';     // cajas de actividad (fill del patron)
+    const T_TXT = M_PRUNO;        // texto dentro de las cajas
+    const T_FONT = 'ForFuture Sans';   // tipografia corporativa Minsait
+
+    // ---- Logotipos oficiales, extraidos de la plantilla corporativa ----
+    const LOGO_MINSAIT = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAI0AAAAcCAMAAAEcvfznAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAGSUExURQAAABY3Rhc5RhMzRhg6Rhg5RRc5RQAAVQ8uPRg3RBg5RhY5Rhc3RBg5RRc4Qxc5RBU5RRc1QRY3Rhg2Rxc5RhY4Qxg4Qxg4Rhc4Rhc3RBk5Rhc6Rg01QxQ2QhI2Pxg5RRU5RgAcOBg5RQ4qOBc5RBk6Rxg3RQAAABU2RRc4RBg5Rxc3RxMxRBQ3QRY3Qhg2RhY3SBQ4RAwzPxc3RBIkNhErRhg6RBY0Qws3Qg83RxY4RQAuLhY5RhY3RBY3RRg4Rhk4RBI4QgAZGRg3Rhk4RRUqKgkxRAAqKhg3RBg5RBY3RBY5RBUqPxY2RgAkSBg5Rhg3Rhg5Rxc4RQAAABEzRBk4RgAqVRg3Rhg5Rhc4RBk6RwwwPAA4OBg2RQAAAAAAPxU3RBc5RRg4RRg4RRk4RRg5Rhg5Rxg3Rg8vPxc4RQsuOQsuRQAtPBY5RRY3QhY4Rhc6Rhc3RhY3QhY4RBcuRRY3RBY2RRc3RRc3Rhg5RRI3RBc5RQAzMxg4RRY5Rhg4RAAAABg5QQAkNgAfPxk5Rhg5RQC4VugAAACGdFJOUwBl6yi934QDIXv67GHnbbprK/eS6C29vffF/s4TPRzROgl9EqT/3AJUjfSvGjMuXi4/FPgOHWgiFyCLC+vu7sd6Gwrp/AwaBp3bTs0McAfIisiiBB7LBtP+2P4VCakBBLMW3Ig78PDzEPgWFhGpF8u84UVkC4Znzs6/KaUF/MyoAx8OCNb9Lx2w0QAAAAlwSFlzAAAOwwAADsMBx2+oZAAAAu5JREFUSEvNV4dSFEEQbXPOOSvaoqhnzgEVc1bOrBjOiDljOBWV/7bT3Ezj7LFVUCWPovu9Nz29w+zc7QJZIAL9YGAV+mXuQlQA06yiH8jjJlWoK1FLQdYiZakF3cIaVhNwTawjxtMdyCtdNFSg7Vp59dN4WFol0b7kGjnb27oAOtYd1oJKhWO86imZAzAj8RRRb1KhhnmKqLWGwwA1IvvXDBKh1yHEm5Q+40WRE1paWoR8AJiCy4UCHMFZxi7hacnvarWaEBQyVtr5A6OpLmneVgpxNLJGKrQs1WknCCxwolBCpq7QspT0YXTjJIqZukLLUuyzLY5G1kgFFgqIpOsJnrEbREYL6zVLxgaFIWjBGOI2C3AuxV2I60XSGdRD+AS+4AFhADsQW5X9RHwmhI6eHEI+gzWo4mX4g0dpl7p0p6rVql4AsQ+m4gmhM+G5jnJs7Kg6FYKtyWr2iAieXJ85fhPWaRLwAscgIrXoU4zKtrwkxp/BYGiKZd7/d6TL/Gyd8jT65CLi3ahccmUSfXIjALOZuQJNytPokxshPKL1ZOrSssxwEpXtpLT/ILNbaqivPI0+xYhtgVnQIRV6ytRJfP7ASl0yItZ9ZpuZ/fB1mv47hscqAobxajrlzjF+A1wxinjOhu3OplPoafjATPxoHmGkWYj03hHQZ1acrg+DxDAtDuIrNeEkO6tNLHMr9n9AneruKF3T8M/GijcNqpdgnE8bEBLp6C9jAHMQRxkFOOanp4pWY4wQeOp14EbJY/CrZEZ3Yb88bSacqqM+mAVhAPG7kgTl+uVp2dn51cAIvtEPN5gSlOuXp2VnF6xGMHkhr+mpqXL98rTs7GarEbQGr1y/PC07e8DVwAozEfdKFhT2y9NmwqmCU6yZ8RjXSn6bmPML+/XgdGP+msXCqfze0HlZdQbg+D0i183bTXwx5fd8mgr76SvyOLzt3LyQRgZ1iu5Urxa9Tr6K+R8cRk942MfvYga/njP2sXgBfwF1nZmw5THkrgAAAABJRU5ErkJggg==';
+    const LOGO_MINSAIT_INV = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEQAAAANCAMAAAFQnQiyAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAA/UExURQAAAPn6+vT09vz8/OLm5tzj4/j5+fr7++Xq6vv7/P39/f////j6+sjO08zMzP39/f7+/v39/ezv8f///+zs7FwUCFMAAAAVdFJOUwD5XeVIJfv7Wffv/3QvCvl3/qcCDlmbnJsAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAC/SURBVChTlVGLEoIwDJtvZQr4+P9vNW0y6YSdmIO0TbOyo2lCxtsbBYyKkNnZOQMoxw7UHzPynL8OEi46nS6hKCiK4sYnWf4LPFMuh0vEY0znloDgbmOFySz3tKUT7M9EUoWH+nhcZMFECJaU9iumNCy2DjZ8L15atrylf6ABmIZZN2egU0S7SLJUWVEsvjRKfI7Fh5eyEqJCHvFvgKphax/02arDMNdbQxxWxw5DVMiNIX6Np5FnuhUN15zS4Q3/WQjdF2+ZcQAAAABJRU5ErkJggg==';
+
+    // ---- Chrome corporativo (medidas en pulgadas del patron oficial) ----
+    const PIE_DOC = state.meta.name || 'Diagnostico de proceso';
+    const PIE_FECHA = new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    let _sldNo = 1;   // la portada es la 1
+
+    // Viste una slide ya creada: fondo, antetitulo, titulo, pie, logo y numero.
+    // Coordenadas calcadas de slideLayout18/slideMaster2 del patron Minsait.
+    function mChrome(sl, titulo, antetitulo) {
+      sl.background = { color: M_CERAMICA };
+      _sldNo++;
+      if (antetitulo) {
+        sl.addText(String(antetitulo).toUpperCase(), {
+          x: 0.367, y: 0.354, w: 12.6, h: 0.2, fontSize: 9, bold: true,
+          color: M_FUCSIA, fontFace: T_FONT, charSpacing: 1.4, valign: 'middle'
+        });
+      }
+      if (titulo) {
+        sl.addText(titulo, {
+          x: 0.367, y: 0.6, w: 12.6, h: 0.44, fontSize: 24, color: M_PRUNO,
+          fontFace: T_FONT, valign: 'top', wrap: false, fit: 'shrink'
+        });
+      }
+      sl.addText('MINSAIT  |  ' + PIE_DOC + '  |  ' + PIE_FECHA, {
+        x: 0.367, y: 6.99, w: 7.93, h: 0.18, fontSize: 7, color: GRAY, fontFace: T_FONT
+      });
+      sl.addImage({ data: LOGO_MINSAIT, x: 11.35, y: 6.96, w: 0.94, h: 0.186 });
+      sl.addText(String(_sldNo), {
+        x: 12.547, y: 6.96, w: 0.42, h: 0.2, fontSize: 8, color: GRAY,
+        fontFace: T_FONT, align: 'right'
+      });
+      return sl;
+    }
+
+    // Crea una slide de contenido ya vestida con el patron Minsait
+    function mSlide(titulo, antetitulo) { return mChrome(pres.addSlide(), titulo, antetitulo); }
+
+    // Contenedor blanco (regla Minsait: el blanco es contenedor, nunca fondo)
+    function mPanel(sl, x, y, w, h) {
+      sl.addShape('rect', { x: x, y: y, w: w, h: h, fill: { color: M_BLANCO }, line: { type: 'none' } });
+    }
 
     // ============ SLIDE 1: PORTADA ============
+    // Portada segun el patron Minsait: fondo Pruno Oscuro, filete Fucsia,
+    // titulo dominante y el logotipo corporativo abajo a la izquierda.
     const s1 = pres.addSlide();
-    s1.background = { color: 'FFFFFF' };
-    s1.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.6, fill: { color: DARK } });
-    s1.addShape('rect', { x: 0, y: 0.6, w: 13.33, h: 0.08, fill: { color: MAGENTA } });
-    s1.addText('Minsait Business Consulting · Perú', { x: 0.4, y: 0.12, w: 8, h: 0.4, fontSize: 12, color: 'FFFFFF', fontFace: 'Calibri', bold: true });
-    s1.addText('ProcessIQ', { x: 0.5, y: 1.6, w: 12, h: 1.2, fontSize: 54, color: DARK, fontFace: 'Calibri Light', bold: true });
-    s1.addText(state.meta.name || 'Diagnóstico de Proceso', { x: 0.5, y: 2.9, w: 12, h: 0.8, fontSize: 28, color: MAGENTA, fontFace: 'Calibri' });
-    s1.addText(`Industria: ${state.meta.industry || '—'}    ·    Macroproceso: ${state.meta.macroprocess || '—'}`, { x: 0.5, y: 3.8, w: 12, h: 0.5, fontSize: 16, color: GRAY, fontFace: 'Calibri' });
-    s1.addText('Documento confidencial — uso interno', { x: 0.5, y: 6.9, w: 12, h: 0.3, fontSize: 10, color: GRAY, italic: true });
+    s1.background = { color: M_PRUNO_OSC };
+    s1.addShape('rect', { x: 0.367, y: 2.42, w: 1.6, h: 0.06, fill: { color: M_FUCSIA } });
+    s1.addText('PROCESSIQ  ·  BUSINESS CONSULTING', {
+      x: 0.367, y: 1.08, w: 8, h: 0.28, fontSize: 10, bold: true,
+      color: M_FUCSIA, fontFace: T_FONT, charSpacing: 1.6 });
+    s1.addText(state.meta.name || 'Diagnóstico de proceso', {
+      x: 0.367, y: 2.66, w: 9.4, h: 1.8, fontSize: 40, color: M_BLANCO,
+      fontFace: T_FONT, valign: 'top' });
+    s1.addText(`Industria: ${state.meta.industry || '—'}   ·   Macroproceso: ${state.meta.macroprocess || '—'}`, {
+      x: 0.367, y: 4.83, w: 9.4, h: 0.32, fontSize: 13, color: M_CERAMICA, fontFace: T_FONT });
+    s1.addText(`${state.meta.client || 'Business Consulting'}. ${PIE_FECHA}`, {
+      x: 0.367, y: 5.31, w: 9.4, h: 0.24, fontSize: 11, color: M_CERAMICA, fontFace: T_FONT });
+    s1.addImage({ data: LOGO_MINSAIT_INV, x: 0.421, y: 6.69, w: 1.963, h: 0.39 });
+    s1.addText('Documento confidencial — uso interno', {
+      x: 8.3, y: 6.93, w: 4.6, h: 0.24, fontSize: 8, color: M_CERAMICA,
+      fontFace: T_FONT, align: 'right' });
 
     // ============ SLIDE(S): DIAGRAMA — split en múltiples para legibilidad ============
     // Fuente adaptativa: 8pt si hay muchos actores (lanes pequeñas), 9pt si no.
@@ -5861,7 +5933,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const FONT_EDGE = 7;            // tamaño del label de aristas
     const MIN_NODE_W_IN = 0.95;     // ancho mín de nodo en pulgadas para legibilidad a 9pt
     const SLIDE_DRAW_W = 12.6;      // ancho disponible para dibujo
-    const SLIDE_DRAW_H = 6.0;       // alto disponible
+    const SLIDE_DRAW_H = 5.55;      // alto util bajo el titulo corporativo
+    const DRAW_TOP = 1.12;          // el patron Minsait abre el contenido en y=1.095
 
     // Mapeo de owners → lanes para los slides (reutiliza state._lanes)
     const lanesData = state._lanes || null;
@@ -5903,7 +5976,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     // Estilo Telered: actividades arena sin borde, diamante vino, inicio verde, fin rosa
     const shapeKind = { task: 'rect', system: 'rect', decision: 'diamond', start: 'ellipse', end: 'ellipse', intermediate: 'ellipse', document: 'rect', data: 'parallelogram' };
     const shapeFill = { task: T_ARENA, system: T_ARENA, decision: T_VINO, start: T_VERDE, end: T_ROSA, intermediate: 'FFFFFF', document: T_ARENA, data: T_ARENA };
-    const shapeBorder = { task: 'D0CEC4', system: '9AA4AE', decision: T_VINO, start: T_VERDE, end: T_ROSA, intermediate: T_AZUL, document: T_AZUL, data: T_AZUL };
+    const shapeBorder = { task: 'D0CEC1', system: '9AA4AE', decision: T_VINO, start: T_VERDE, end: T_ROSA, intermediate: T_AZUL, document: T_AZUL, data: T_AZUL };
     // Glyph unicode por subtipo de evento BPMN (render confiable en PowerPoint; Calibri/Segoe fallback)
     const EV_GLYPH = { message: '✉', timer: '⌛', error: '⚡', signal: '▲' };
     const MK_GLYPH = { subprocess: '⊞', loop: '↻', multiinstance: '|||', 'multiinstance-seq': '☰' };
@@ -5911,15 +5984,12 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     // Función helper: dibuja un slice del proceso en un slide
     function drawProcessSlice(slide, sliceIdx, rankStart, rankEnd) {
       // Header estilo Telered: título vino + kicker gris uppercase, sin barras
-      slide.background = { color: 'FFFFFF' };
       const subtitle = slicesCount > 1 ? ` (${sliceIdx + 1}/${slicesCount})` : '';
-      slide.addText(`Flujo del proceso: ${state.meta.name || 'As-Is'}${subtitle}`, {
-        x: 0.4, y: 0.12, w: 12.5, h: 0.4, fontSize: 18, color: T_VINO, bold: true, fontFace: T_FONT });
-      slide.addText(((state.meta.macroprocess || 'PROCESO') + ' · ' + (state.meta.client || state.meta.industry || 'MINSAIT')).toUpperCase(), {
-        x: 0.4, y: 0.52, w: 12.5, h: 0.25, fontSize: 10, color: GRAY, fontFace: T_FONT, charSpacing: 2 });
-      // Pie de página del deck de referencia
-      slide.addText(`MINSAIT · ${(state.meta.client || 'Business Consulting').toUpperCase()} · ${state.meta.name || ''} · ${new Date().toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}`, {
-        x: 0.4, y: 7.15, w: 12.5, h: 0.25, fontSize: 8, color: GRAY, fontFace: T_FONT });
+      mChrome(slide,
+        `Flujo del proceso: ${state.meta.name || 'As-Is'}${subtitle}`,
+        (state.meta.macroprocess || 'PROCESO') + '  ·  ' + (state.meta.client || state.meta.industry || 'MINSAIT'));
+
+
 
       // Filtra nodos en el rango de ranks del slice
       const nodesInSlice = state.nodes.filter(n => {
@@ -5938,7 +6008,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const sliceH = Math.max(1, sMaxY - sMinY);
       const sliceScale = Math.min(SLIDE_DRAW_H / sliceH, (SLIDE_DRAW_W - 0.6) / sliceW);
       const offX = 0.4 + ((SLIDE_DRAW_W - 0.6) - sliceW * sliceScale) / 2;
-      const offY = 0.9 + (SLIDE_DRAW_H - sliceH * sliceScale) / 2;
+      const offY = DRAW_TOP + (SLIDE_DRAW_H - sliceH * sliceScale) / 2;
 
       // Render swimlanes (bandas + labels izquierda)
       const lanesInSlice = [...new Set(nodesInSlice.map(n => state._lanes?.laneOf?.[n.id] || 'Por asignar'))];
@@ -5947,13 +6017,13 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         const laneRowH = (SLIDE_DRAW_H - 0.2) / orderedLanes.length;
         const LANE_HEADER_W = 0.42;  // chip vertical estrecho (ref. Telered: 0.47in)
         orderedLanes.forEach((laneName, lidx) => {
-          const ly = 0.9 + lidx * laneRowH;
+          const ly = DRAW_TOP + lidx * laneRowH;
           // Carril blanco con línea separadora arena (formato Telered), no bandas grises
           slide.addShape('rect', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: laneRowH,
             fill: { color: 'FFFFFF' }, line: { type: 'none' } });
           if (lidx > 0) {
             slide.addShape('line', { x: 0.4, y: ly, w: SLIDE_DRAW_W - 0.4, h: 0,
-              line: { color: T_ARENA, width: 1 } });
+              line: { color: M_SEP, width: 1 } });
           }
           // Chip de rol: barra estrecha con margen (ref: 0.47in ancho x ~1.3in alto)
           const chipH = Math.min(laneRowH - 0.18, 1.45);
@@ -5962,7 +6032,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             fill: { color: T_NARANJA }, line: { type: 'none' } });
           slide.addText(laneName, {
             x: 0.42, y: chipY, w: LANE_HEADER_W, h: chipH,
-            fontSize: 8, bold: true, color: 'FFFFFF',
+            fontSize: 8, bold: false, color: M_PRUNO,
             align: 'center', valign: 'middle', fontFace: T_FONT,
             rotate: 270, wrap: false
           });
@@ -6011,7 +6081,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         const idx = (cellIdx[key] = (cellIdx[key] === undefined ? 0 : cellIdx[key] + 1));
         const sz = cellSize(n);
         const cellX = 0.4 + 0.55 + r * cellInnerW + (cellInnerW - sz.w) / 2;
-        const ly = 0.9 + li * laneRowH2;
+        const ly = DRAW_TOP + li * laneRowH2;
         let cellY = ly + (laneRowH2 - sz.h) / 2;
         if (total > 1) {
           // Paso que incluye la etiqueta bajo la figura (decisiones/eventos la
@@ -6031,7 +6101,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         const shapeOpts = {
           x: b.x, y: b.y, w: b.w, h: b.h,
           fill: { color: shapeFill[n.type] || 'FFFFFF' },
-          line: { color: shapeBorder[n.type] || '414141', width: 1 }
+          line: { color: shapeBorder[n.type] || '4F062A', width: 1 }
         };
         if (kind === 'rect') shapeOpts.rectRadius = 0.08;
         slide.addShape(kind, shapeOpts);
@@ -6064,12 +6134,12 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           if (n.label && n.label !== 'Inicio') {
             slide.addText(n.label, {
               x: b.x - 0.3, y: b.y + b.h + 0.02, w: b.w + 0.6, h: 0.3,
-              fontSize: FONT_NODE, color: '232323', align: 'center', valign: 'top',
+              fontSize: FONT_NODE, color: M_PRUNO, align: 'center', valign: 'top',
               fontFace: T_FONT, wrap: true, autoFit: false
             });
           } else if (n.label === 'Inicio') {
             slide.addText('Inicio', { x: b.x - 0.3, y: b.y + b.h + 0.02, w: b.w + 0.6, h: 0.25,
-              fontSize: FONT_NODE, color: '232323', align: 'center', fontFace: 'Calibri' });
+              fontSize: FONT_NODE, color: M_PRUNO, align: 'center', fontFace: T_FONT });
           }
         } else if (n.type === 'task' || n.type === 'system') {
           // ── Tarea BPMN: chip de tipo + código (arriba), label (abajo) ──
@@ -6086,7 +6156,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             });
             slide.addText((exec.codePrefix || 'ACT'), {
               x: b.x + 0.05, y: b.y + 0.05, w: 0.42, h: 0.17,
-              fontSize: 6.5, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: 'Calibri'
+              fontSize: 6.5, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: T_FONT
             });
           }
           // Código de actividad junto al chip
@@ -6094,7 +6164,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             slide.addText('[' + n.activityCode + ']', {
               x: b.x + (exec ? 0.5 : 0.08), y: b.y + 0.04, w: b.w - 0.55, h: 0.18,
               fontSize: 7, bold: true, color: (exec ? exec.color.replace('#', '') : '6B7280'),
-              align: 'left', valign: 'middle', fontFace: 'Calibri'
+              align: 'left', valign: 'middle', fontFace: T_FONT
             });
           }
           // Label centrado en el espacio inferior (deja hueco para el marcador si lo hay)
@@ -6109,7 +6179,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           if (hasMarker) {
             slide.addText(MK_GLYPH[n.marker], {
               x: b.x, y: b.y + b.h - 0.20, w: b.w, h: 0.18,
-              fontSize: 9, color: '5B6472', align: 'center', valign: 'middle', fontFace: 'Calibri', bold: true
+              fontSize: 9, color: GRAY, align: 'center', valign: 'middle', fontFace: T_FONT, bold: true
             });
           }
           // Evento de borde BPMN (boundary): círculo en la esquina inferior-izquierda
@@ -6118,19 +6188,19 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             const interrupting = (typeof n.boundary === 'object') ? n.boundary.interrupting !== false : true;
             const bd = 0.19, bbx = b.x - bd * 0.45, bby = b.y + b.h - bd * 0.55;
             slide.addShape('ellipse', { x: bbx, y: bby, w: bd, h: bd,
-              fill: { color: 'FEF7E0' }, line: { color: 'B45309', width: 1, dashType: interrupting ? 'solid' : 'dash' } });
+              fill: { color: 'FBE1CF' }, line: { color: 'E56813', width: 1, dashType: interrupting ? 'solid' : 'dash' } });
             slide.addText(EV_GLYPH[bt] || '⌛', { x: bbx, y: bby, w: bd, h: bd,
-              fontSize: 7, color: 'B45309', align: 'center', valign: 'middle' });
+              fontSize: 7, color: 'E56813', align: 'center', valign: 'middle' });
           }
         } else if (n.type === 'decision' && (n.gatewayType === 'parallel' || n.gatewayType === 'inclusive')) {
           // Gateway paralelo/inclusivo: marca (＋/○) al centro + label debajo
           slide.addText(n.gatewayType === 'parallel' ? '+' : 'O', {
             x: b.x, y: b.y, w: b.w, h: b.h,
-            fontSize: 20, bold: true, color: 'C68400', align: 'center', valign: 'middle', fontFace: 'Calibri'
+            fontSize: 20, bold: true, color: M_PRUNO, align: 'center', valign: 'middle', fontFace: T_FONT
           });
           slide.addText(n.label || '', {
             x: b.x - 0.3, y: b.y + b.h + 0.01, w: b.w + 0.6, h: 0.3,
-            fontSize: FONT_NODE, align: 'center', valign: 'top', color: '232323', fontFace: T_FONT, wrap: true, autoFit: false
+            fontSize: FONT_NODE, align: 'center', valign: 'top', color: M_PRUNO, fontFace: T_FONT, wrap: true, autoFit: false
           });
         } else if (n.type === 'decision') {
           // Gateway exclusivo formato Telered: diamante vino con "x" blanca,
@@ -6148,13 +6218,13 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           slide.addText(n.label || '', {
             x: b.x + 0.08, y: b.y + 0.04, w: b.w - 0.16, h: b.h - 0.08,
             fontSize: FONT_NODE, align: 'center', valign: 'middle',
-            color: '232323', fontFace: T_FONT, wrap: true, autoFit: false
+            color: M_PRUNO, fontFace: T_FONT, wrap: true, autoFit: false
           });
         }
         // Badge owner inferido (esquina sup-derecha para no chocar con el chip)
         if (n._inferredOwner) {
           slide.addShape('ellipse', { x: b.x + b.w - 0.14, y: b.y - 0.06, w: 0.20, h: 0.20,
-            fill: { color: 'B45309' }, line: { color: 'FFFFFF', width: 1 } });
+            fill: { color: 'E56813' }, line: { color: 'FFFFFF', width: 1 } });
           slide.addText('!', { x: b.x + b.w - 0.14, y: b.y - 0.06, w: 0.20, h: 0.20,
             fontSize: 11, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
         }
@@ -6279,7 +6349,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const cx = SLIDE_DRAW_W - 0.15;
           const sy = ba.y + ba.h / 2;
           slide.addShape('line', { x: ba.x + ba.w, y: sy, w: Math.max(cx - (ba.x + ba.w), 0.01), h: 0.01,
-            line: { color: '666666', width: 0.85 } });
+            line: { color: '926979', width: 0.85 } });
           slide.addShape('ellipse', { x: cx - 0.18, y: sy - 0.18, w: 0.36, h: 0.36,
             fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 } });
           slide.addText(letter, { x: cx - 0.18, y: sy - 0.18, w: 0.36, h: 0.36,
@@ -6298,7 +6368,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           slide.addText(letter, { x: cx - 0.18, y: ty - 0.18, w: 0.36, h: 0.36,
             fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
           slide.addShape('line', { x: cx + 0.18, y: ty, w: Math.max(bb.x - cx - 0.18, 0.01), h: 0.01,
-            line: { color: '666666', width: 0.85, endArrowType: 'triangle' } });
+            line: { color: '926979', width: 0.85, endArrowType: 'triangle' } });
           slide.addText(`Conector ${letter} ← slide ${sourceSlice}`, { x: cx, y: ty + 0.22, w: 2.0, h: 0.18,
             fontSize: 7, color: GRAY, italic: true, align: 'left' });
         }
@@ -6307,7 +6377,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       // Nota de conectores: a la derecha, para no pisar el pie de página
       if (slicesCount > 1) {
         slide.addText('Los círculos magenta indican continuidad entre slides.',
-          { x: 8.0, y: 7.15, w: 4.9, h: 0.2, fontSize: 7.5, color: GRAY, italic: true, align: 'right', fontFace: T_FONT });
+          { x: 8.0, y: 6.66, w: 4.9, h: 0.2, fontSize: 7.5, color: GRAY, italic: true, align: 'right', fontFace: T_FONT });
       }
     }
 
@@ -6344,69 +6414,62 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           .forEach(n => bullets.push(`${n.label}: ${n.notes.split('\n')[0]}`));
       }
       if (!bullets.length) return;   // sin contenido, no agregamos el slide
-      const sl = pres.addSlide();
-      sl.background = { color: 'FFFFFF' };
-      sl.addText(`Flujo del proceso: ${state.meta.name || ''} — puntos importantes`, {
-        x: 0.4, y: 0.12, w: 12.5, h: 0.4, fontSize: 18, color: T_VINO, bold: true, fontFace: T_FONT });
-      // Octágono negro con título rosa y bullets blancos, como el panel del deck de referencia
-      sl.addShape('octagon', { x: 2.6, y: 1.1, w: 8.1, h: 5.4, fill: { color: '000000' }, line: { type: 'none' } });
-      sl.addText('Puntos importantes', { x: 3.2, y: 1.5, w: 7, h: 0.5, fontSize: 20, bold: true, color: T_ROSA, fontFace: T_FONT });
+      const sl = mSlide(`Flujo del proceso: ${state.meta.name || ''} — puntos importantes`, 'Diagnóstico');
+      // Panel de mensaje destacado: Pruno Oscuro, como los separadores del patron
+      sl.addShape('rect', { x: 2.6, y: 1.25, w: 8.1, h: 5.2, fill: { color: M_PRUNO_OSC }, line: { type: 'none' } });
+      sl.addShape('rect', { x: 3.2, y: 1.62, w: 1.2, h: 0.05, fill: { color: M_FUCSIA } });
+      sl.addText('Puntos importantes', { x: 3.2, y: 1.85, w: 7, h: 0.5, fontSize: 20, bold: false, color: M_BLANCO, fontFace: T_FONT });
       sl.addText(bullets.map((b, i) => ({
         text: b, options: { bullet: true, breakLine: i < bullets.length - 1, paraSpaceAfter: 10 }
       })), { x: 3.2, y: 2.2, w: 6.9, h: 3.9, fontSize: 13, color: 'FFFFFF', fontFace: T_FONT, valign: 'top' });
-      sl.addText(`MINSAIT · ${(state.meta.client || 'Business Consulting').toUpperCase()} · ${new Date().toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}`, {
-        x: 0.4, y: 7.15, w: 12.5, h: 0.25, fontSize: 8, color: GRAY, fontFace: T_FONT });
     })();
 
     // ============ SLIDE: LEYENDA BPMN ============
     (function addLegendSlide() {
       const sl = pres.addSlide();
-      sl.background = { color: 'FFFFFF' };
-      sl.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-      sl.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-      sl.addText('Leyenda · Nomenclatura BPMN 2.0', { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+      mChrome(sl, 'Leyenda · Nomenclatura BPMN 2.0', 'Notación');
 
       const colX = [0.5, 4.9, 9.3];
       const headers = ['Formas y flujos', 'Eventos (círculos)', 'Gateways y marcadores'];
-      headers.forEach((h, i) => sl.addText(h, { x: colX[i], y: 0.75, w: 4.0, h: 0.3, fontSize: 12, bold: true, color: MAGENTA, fontFace: 'Calibri' }));
+      headers.forEach((h, i) => sl.addText(h, { x: colX[i], y: 0.75, w: 4.0, h: 0.3, fontSize: 12, bold: true, color: MAGENTA, fontFace: T_FONT }));
 
       // helper para una fila de leyenda: icono dibujado por callback + texto
       function row(cx, cy, drawIcon, text) {
         drawIcon(cx, cy);
-        sl.addText(text, { x: cx + 0.7, y: cy - 0.07, w: 3.3, h: 0.34, fontSize: 9.5, color: '232323', valign: 'middle', fontFace: 'Calibri', wrap: true });
+        sl.addText(text, { x: cx + 0.7, y: cy - 0.07, w: 3.3, h: 0.34, fontSize: 9.5, color: M_PRUNO, valign: 'middle', fontFace: T_FONT, wrap: true });
       }
       const ICON = 0.42;
 
       // ── Columna 1: formas y flujos ──
       let y = 1.2; const x1 = colX[0];
-      row(x1, y, (cx, cy) => sl.addShape('rect', { x: cx, y: cy - ICON/2, w: 0.6, h: ICON, fill: { color: 'FFFFFF' }, line: { color: '414141', width: 1 }, rectRadius: 0.05 }), 'Actividad / tarea'); y += 0.55;
-      row(x1, y, (cx, cy) => sl.addShape('rect', { x: cx, y: cy - ICON/2, w: 0.6, h: ICON, fill: { color: 'ECEFF1' }, line: { color: '37474F', width: 1 }, rectRadius: 0.05 }), 'Tarea de sistema'); y += 0.55;
-      row(x1, y, (cx, cy) => sl.addShape('diamond', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FFF8E1' }, line: { color: 'F9A825', width: 1 } }), 'Decisión / gateway'); y += 0.55;
-      row(x1, y, (cx, cy) => sl.addShape('rect', { x: cx, y: cy - ICON/2, w: 0.6, h: ICON, fill: { color: 'E3F2FD' }, line: { color: '1565C0', width: 1 } }), 'Documento'); y += 0.55;
-      row(x1, y, (cx, cy) => sl.addShape('parallelogram', { x: cx, y: cy - ICON/2, w: 0.6, h: ICON, fill: { color: 'F3E5F5' }, line: { color: '6A1B9A', width: 1 } }), 'Datos / registro'); y += 0.55;
-      row(x1, y, (cx, cy) => sl.addShape('line', { x: cx, y: cy, w: 0.6, h: 0.01, line: { color: '666666', width: 1.5, endArrowType: 'triangle' } }), 'Flujo de secuencia'); y += 0.5;
-      row(x1, y, (cx, cy) => sl.addShape('line', { x: cx, y: cy, w: 0.6, h: 0.01, line: { color: '666666', width: 1.5, dashType: 'dash', endArrowType: 'triangle' } }), 'Flujo de mensaje (entre carriles)');
+      row(x1, y, (cx, cy) => sl.addShape('rect', { x: cx, y: cy - ICON/2, w: 0.6, h: ICON, fill: { color: 'FFFFFF' }, line: { color: '4F062A', width: 1 }, rectRadius: 0.05 }), 'Actividad / tarea'); y += 0.55;
+      row(x1, y, (cx, cy) => sl.addShape('rect', { x: cx, y: cy - ICON/2, w: 0.6, h: ICON, fill: { color: 'F9F9F8' }, line: { color: '4F062A', width: 1 }, rectRadius: 0.05 }), 'Tarea de sistema'); y += 0.55;
+      row(x1, y, (cx, cy) => sl.addShape('diamond', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FBE1CF' }, line: { color: 'E56813', width: 1 } }), 'Decisión / gateway'); y += 0.55;
+      row(x1, y, (cx, cy) => sl.addShape('rect', { x: cx, y: cy - ICON/2, w: 0.6, h: ICON, fill: { color: 'BFFBFF' }, line: { color: '00B0BD', width: 1 } }), 'Documento'); y += 0.55;
+      row(x1, y, (cx, cy) => sl.addShape('parallelogram', { x: cx, y: cy - ICON/2, w: 0.6, h: ICON, fill: { color: 'E7DFFD' }, line: { color: '8661F5', width: 1 } }), 'Datos / registro'); y += 0.55;
+      row(x1, y, (cx, cy) => sl.addShape('line', { x: cx, y: cy, w: 0.6, h: 0.01, line: { color: '926979', width: 1.5, endArrowType: 'triangle' } }), 'Flujo de secuencia'); y += 0.5;
+      row(x1, y, (cx, cy) => sl.addShape('line', { x: cx, y: cy, w: 0.6, h: 0.01, line: { color: '926979', width: 1.5, dashType: 'dash', endArrowType: 'triangle' } }), 'Flujo de mensaje (entre carriles)');
 
       // ── Columna 2: eventos ──
       y = 1.2; const x2 = colX[1];
-      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'E8F5E9' }, line: { color: '2E7D32', width: 1 } }); sl.addText('✉', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 9, align: 'center', valign: 'middle', color: '2E7D32' }); }, 'Inicio (✉ mensaje)'); y += 0.55;
-      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FEF7E0' }, line: { color: 'B45309', width: 1 } }); sl.addShape('ellipse', { x: cx+0.04, y: cy - ICON/2+0.04, w: ICON-0.08, h: ICON-0.08, fill: { type: 'none' }, line: { color: 'B45309', width: 0.75 } }); sl.addText('⌛', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 8, align: 'center', valign: 'middle', color: 'B45309' }); }, 'Intermedio (⌛ timer · doble anillo)'); y += 0.55;
-      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FFEBEE' }, line: { color: 'C62828', width: 1.5 } }); sl.addText('⚡', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 9, align: 'center', valign: 'middle', color: 'C62828' }); }, 'Fin (⚡ error)'); y += 0.55;
-      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FEF7E0' }, line: { color: 'B45309', width: 1 } }); sl.addText('▲', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 9, align: 'center', valign: 'middle', color: 'B45309', bold: true }); }, 'Señal ▲ (broadcast 1→N)'); y += 0.55;
-      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FFEBEE' }, line: { color: 'C62828', width: 1.5 } }); sl.addShape('ellipse', { x: cx+ICON*0.28, y: cy - ICON/2+ICON*0.28, w: ICON*0.44, h: ICON*0.44, fill: { color: 'C62828' }, line: { type: 'none' } }); }, 'Terminación ⬤ (corta la instancia)'); y += 0.55;
-      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FEF7E0' }, line: { color: 'B45309', width: 1, dashType: 'dash' } }); sl.addText('⌛', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 8, align: 'center', valign: 'middle', color: 'B45309' }); }, 'De borde (SLA/excepción sobre tarea)'); y += 0.55;
-      sl.addText('Contorno = catch (recibe) · Relleno = throw (lanza) · Punteado = no interrumpe', { x: x2, y: y + 0.05, w: 4.0, h: 0.5, fontSize: 8.5, italic: true, color: GRAY, fontFace: 'Calibri', wrap: true });
+      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'D9F1DD' }, line: { color: M_FUCSIA, width: 1 } }); sl.addText('✉', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 9, align: 'center', valign: 'middle', color: M_FUCSIA }); }, 'Inicio (✉ mensaje)'); y += 0.55;
+      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FBE1CF' }, line: { color: 'E56813', width: 1 } }); sl.addShape('ellipse', { x: cx+0.04, y: cy - ICON/2+0.04, w: ICON-0.08, h: ICON-0.08, fill: { type: 'none' }, line: { color: 'E56813', width: 0.75 } }); sl.addText('⌛', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 8, align: 'center', valign: 'middle', color: 'E56813' }); }, 'Intermedio (⌛ timer · doble anillo)'); y += 0.55;
+      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FFBAD1' }, line: { color: 'A40037', width: 1.5 } }); sl.addText('⚡', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 9, align: 'center', valign: 'middle', color: 'A40037' }); }, 'Fin (⚡ error)'); y += 0.55;
+      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FBE1CF' }, line: { color: 'E56813', width: 1 } }); sl.addText('▲', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 9, align: 'center', valign: 'middle', color: 'E56813', bold: true }); }, 'Señal ▲ (broadcast 1→N)'); y += 0.55;
+      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FFBAD1' }, line: { color: 'A40037', width: 1.5 } }); sl.addShape('ellipse', { x: cx+ICON*0.28, y: cy - ICON/2+ICON*0.28, w: ICON*0.44, h: ICON*0.44, fill: { color: 'A40037' }, line: { type: 'none' } }); }, 'Terminación ⬤ (corta la instancia)'); y += 0.55;
+      row(x2, y, (cx, cy) => { sl.addShape('ellipse', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FBE1CF' }, line: { color: 'E56813', width: 1, dashType: 'dash' } }); sl.addText('⌛', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 8, align: 'center', valign: 'middle', color: 'E56813' }); }, 'De borde (SLA/excepción sobre tarea)'); y += 0.55;
+      sl.addText('Contorno = catch (recibe) · Relleno = throw (lanza) · Punteado = no interrumpe', { x: x2, y: y + 0.05, w: 4.0, h: 0.5, fontSize: 8.5, italic: true, color: GRAY, fontFace: T_FONT, wrap: true });
 
       // ── Columna 3: gateways y marcadores ──
       y = 1.2; const x3 = colX[2];
-      row(x3, y, (cx, cy) => { sl.addShape('diamond', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FFF8E1' }, line: { color: 'F9A825', width: 1 } }); sl.addText('✕', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 9, align: 'center', valign: 'middle', color: 'C68400', bold: true }); }, 'Gateway exclusivo XOR (un camino)'); y += 0.55;
-      row(x3, y, (cx, cy) => { sl.addShape('diamond', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FFF8E1' }, line: { color: 'F9A825', width: 1 } }); sl.addText('+', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 12, align: 'center', valign: 'middle', color: 'C68400', bold: true }); }, 'Gateway paralelo AND (fork/join)'); y += 0.55;
-      row(x3, y, (cx, cy) => { sl.addShape('diamond', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FFF8E1' }, line: { color: 'F9A825', width: 1 } }); sl.addText('O', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 9, align: 'center', valign: 'middle', color: 'C68400', bold: true }); }, 'Gateway inclusivo OR (uno o varios)'); y += 0.6;
-      row(x3, y, (cx, cy) => sl.addText('⊞', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 13, align: 'center', valign: 'middle', color: '5B6472', bold: true }), 'Marcador: ⊞ subproceso'); y += 0.5;
-      row(x3, y, (cx, cy) => sl.addText('↻', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 13, align: 'center', valign: 'middle', color: '5B6472', bold: true }), 'Marcador: ↻ loop (cíclica)'); y += 0.5;
-      row(x3, y, (cx, cy) => sl.addText('|||', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 12, align: 'center', valign: 'middle', color: '5B6472', bold: true }), 'Marcador: ‖ multi-instancia');
+      row(x3, y, (cx, cy) => { sl.addShape('diamond', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FBE1CF' }, line: { color: 'E56813', width: 1 } }); sl.addText('✕', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 9, align: 'center', valign: 'middle', color: M_PRUNO, bold: true }); }, 'Gateway exclusivo XOR (un camino)'); y += 0.55;
+      row(x3, y, (cx, cy) => { sl.addShape('diamond', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FBE1CF' }, line: { color: 'E56813', width: 1 } }); sl.addText('+', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 12, align: 'center', valign: 'middle', color: M_PRUNO, bold: true }); }, 'Gateway paralelo AND (fork/join)'); y += 0.55;
+      row(x3, y, (cx, cy) => { sl.addShape('diamond', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fill: { color: 'FBE1CF' }, line: { color: 'E56813', width: 1 } }); sl.addText('O', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 9, align: 'center', valign: 'middle', color: M_PRUNO, bold: true }); }, 'Gateway inclusivo OR (uno o varios)'); y += 0.6;
+      row(x3, y, (cx, cy) => sl.addText('⊞', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 13, align: 'center', valign: 'middle', color: GRAY, bold: true }), 'Marcador: ⊞ subproceso'); y += 0.5;
+      row(x3, y, (cx, cy) => sl.addText('↻', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 13, align: 'center', valign: 'middle', color: GRAY, bold: true }), 'Marcador: ↻ loop (cíclica)'); y += 0.5;
+      row(x3, y, (cx, cy) => sl.addText('|||', { x: cx, y: cy - ICON/2, w: ICON, h: ICON, fontSize: 12, align: 'center', valign: 'middle', color: GRAY, bold: true }), 'Marcador: ‖ multi-instancia');
 
-      sl.addText('Las tareas llevan un chip de color con su tipo BPMN (USR/SRV/MAN/RCV/BOT/IA) y código [USR-01].', { x: 0.5, y: 6.7, w: 12.3, h: 0.3, fontSize: 9, italic: true, color: GRAY, fontFace: 'Calibri', align: 'center' });
+      sl.addText('Las tareas llevan un chip de color con su tipo BPMN (USR/SRV/MAN/RCV/BOT/IA) y código [USR-01].', { x: 0.5, y: 6.62, w: 12.3, h: 0.3, fontSize: 9, italic: true, color: GRAY, fontFace: T_FONT, align: 'center' });
     })();
 
     // Backwards compat: s2 alias para slides posteriores que lo usen (no aplica más)
@@ -6416,10 +6479,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const allPains = [];
     state.nodes.forEach(n => (n.pains || []).forEach(p => allPains.push({ ...p, activity: n.label })));
     const s3 = pres.addSlide();
-    s3.background = { color: 'FFFFFF' };
-    s3.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-    s3.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-    s3.addText('Pain points identificados', { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+    mChrome(s3, 'Pain points identificados', 'Diagnóstico');
 
     if (allPains.length === 0) {
       s3.addText('No se han capturado pain points en este levantamiento.', { x: 0.5, y: 3.5, w: 12, h: 0.5, fontSize: 16, color: GRAY, italic: true, align: 'center' });
@@ -6437,15 +6497,12 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         const cat = (window.PAIN_CATEGORIES.find(c => c.id === p.category) || {}).label || p.category;
         rows.push([p.activity || '—', cat, p.description, String(p.severity), String(p.frequency), String(p.severity * p.frequency)]);
       });
-      s3.addTable(rows, { x: 0.4, y: 0.8, w: 12.5, fontSize: 10, fontFace: 'Calibri', border: { type: 'solid', color: 'CCCCCC', pt: 0.5 } });
+      s3.addTable(rows, { x: 0.4, y: 1.15, w: 12.5, fontSize: 10, fontFace: T_FONT, color: M_PRUNO, border: { type: 'solid', color: M_SEP, pt: 0.5 } });
     }
 
     // ============ SLIDE 4: KPIs ============
     const s4 = pres.addSlide();
-    s4.background = { color: 'FFFFFF' };
-    s4.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-    s4.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-    s4.addText('KPIs sugeridos (benchmark de industria)', { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+    mChrome(s4, 'KPIs sugeridos (benchmark de industria)', 'Medición');
 
     const kpiVals = state._kpiValues || {};
     // Prioriza KPIs capturados por el cliente; complementa con sugeridos
@@ -6469,8 +6526,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       if (cap) {
         kpiRows.push([
           k.name, k.unit, k.benchmark,
-          { text: cap.value, options: { bold: true, color: 'C62828' } },
-          { text: cap.gap || '—', options: { align: 'center', bold: true, color: 'C62828' } },
+          { text: cap.value, options: { bold: true, color: 'A40037' } },
+          { text: cap.gap || '—', options: { align: 'center', bold: true, color: 'A40037' } },
           cap.source || `${k.industry} · ${k.macroprocess}`
         ]);
       } else {
@@ -6482,8 +6539,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         ]);
       }
     });
-    s4.addTable(kpiRows, { x: 0.4, y: 0.8, w: 12.5, fontSize: 9, fontFace: 'Calibri', border: { type: 'solid', color: 'CCCCCC', pt: 0.5 } });
-    s4.addText(`${capturedKpis.length} KPIs capturados con data del cliente · ${suggestedKpis.length} sugeridos por industria. Benchmarks de fuentes públicas (APQC, SBS, Indecopi, OSINERGMIN, sectoriales).`, { x: 0.4, y: 6.9, w: 12.5, h: 0.3, fontSize: 9, color: GRAY, italic: true });
+    s4.addTable(kpiRows, { x: 0.4, y: 1.15, w: 12.5, fontSize: 9, fontFace: T_FONT, color: M_PRUNO, border: { type: 'solid', color: M_SEP, pt: 0.5 } });
+    s4.addText(`${capturedKpis.length} KPIs capturados con data del cliente · ${suggestedKpis.length} sugeridos por industria. Benchmarks de fuentes públicas (APQC, SBS, Indecopi, OSINERGMIN, sectoriales).`, { x: 0.4, y: 6.62, w: 12.5, h: 0.3, fontSize: 9, color: GRAY, italic: true });
 
     // ============ SLIDE: AS-IS vs TO-BE (si existe to-be) ============
     // Snapshot ambos views para comparar
@@ -6492,30 +6549,24 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
 
     if (tobeData && tobeData.nodes && tobeData.nodes.length > 0 && asisData && asisData.nodes.length > 0) {
       const sl = pres.addSlide();
-      sl.background = { color: 'FFFFFF' };
-      sl.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-      sl.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-      sl.addText('Comparativo As-Is vs To-Be', { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+      mChrome(sl, 'Comparativo As-Is vs To-Be', 'Rediseño');
 
       // Render mini-diagramas en dos columnas
-      renderMiniDiagram(sl, asisData, 0.4, 1.0, 6.2, 5.5, 'AS-IS', GRAY);
-      renderMiniDiagram(sl, tobeData, 6.8, 1.0, 6.2, 5.5, 'TO-BE', MAGENTA);
+      renderMiniDiagram(sl, asisData, 0.4, 1.2, 6.2, 5.5, 'AS-IS', GRAY);
+      renderMiniDiagram(sl, tobeData, 6.8, 1.2, 6.2, 5.5, 'TO-BE', MAGENTA);
 
       // Tabla de cambios
       const deltas = computeDeltas(asisData, tobeData);
       sl.addText('Cambios clave', { x: 0.4, y: 6.6, w: 12.5, h: 0.3, fontSize: 12, color: MAGENTA, bold: true });
       sl.addText(
         `+ ${deltas.added} actividades nuevas    ·    − ${deltas.removed} eliminadas    ·    ⟳ ${deltas.changed} modificadas    ·    Δ tipos: ${deltas.typeChanges}`,
-        { x: 0.4, y: 6.9, w: 12.5, h: 0.3, fontSize: 11, color: DARK, fontFace: 'Calibri' });
+        { x: 0.4, y: 6.62, w: 12.5, h: 0.3, fontSize: 11, color: DARK, fontFace: T_FONT });
     }
 
     // ============ SLIDE: SIPOC (si existe) ============
     if (state._sipoc) {
       const sl = pres.addSlide();
-      sl.background = { color: 'FFFFFF' };
-      sl.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-      sl.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-      sl.addText('SIPOC — alcance del proceso', { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+      mChrome(sl, 'SIPOC — alcance del proceso', 'Alcance');
       const cols = ['suppliers', 'inputs', 'process', 'outputs', 'customers'];
       const headers = ['Supplier', 'Input', 'Process', 'Output', 'Customer'];
       const colW = 2.5;
@@ -6524,8 +6575,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         sl.addText(h, { x: 0.4 + i * colW, y: 1, w: colW - 0.1, h: 0.5, fontSize: 14, color: 'FFFFFF', bold: true, align: 'center', valign: 'middle' });
       });
       cols.forEach((c, i) => {
-        sl.addShape('rect', { x: 0.4 + i * colW, y: 1.55, w: colW - 0.1, h: 5, fill: { color: 'F8F8F8' }, line: { color: 'CCCCCC', width: 0.5 } });
-        sl.addText(state._sipoc[c] || '—', { x: 0.5 + i * colW, y: 1.7, w: colW - 0.3, h: 4.7, fontSize: 11, color: DARK, valign: 'top', fontFace: 'Calibri' });
+        sl.addShape('rect', { x: 0.4 + i * colW, y: 1.55, w: colW - 0.1, h: 5, fill: { color: 'FFFFFF' }, line: { color: 'D0CEC1', width: 0.5 } });
+        sl.addText(state._sipoc[c] || '—', { x: 0.5 + i * colW, y: 1.7, w: colW - 0.3, h: 4.7, fontSize: 11, color: DARK, valign: 'top', fontFace: T_FONT });
       });
     }
 
@@ -6535,10 +6586,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const roles = [...new Set(Object.values(state._raci).flatMap(r => Object.keys(r)))];
       if (tasks.length > 0 && roles.length > 0) {
         const sl = pres.addSlide();
-        sl.background = { color: 'FFFFFF' };
-        sl.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-        sl.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-        sl.addText('Matriz RACI', { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+        mChrome(sl, 'Matriz RACI', 'Gobierno');
         const raciRows = [[
           { text: 'Actividad', options: { bold: true, color: 'FFFFFF', fill: { color: DARK } } },
           ...roles.map(r => ({ text: r, options: { bold: true, color: 'FFFFFF', fill: { color: DARK }, align: 'center' } }))
@@ -6546,8 +6594,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         tasks.slice(0, 14).forEach(t => {
           raciRows.push([t.label, ...roles.map(r => ({ text: (state._raci[t.id][r] || ''), options: { align: 'center', bold: true } }))]);
         });
-        sl.addTable(raciRows, { x: 0.4, y: 0.8, w: 12.5, fontSize: 10, fontFace: 'Calibri', border: { type: 'solid', color: 'CCCCCC', pt: 0.5 } });
-        sl.addText('R = Responsable · A = Accountable · C = Consultado · I = Informado', { x: 0.4, y: 6.9, w: 12, h: 0.3, fontSize: 9, color: GRAY, italic: true });
+        sl.addTable(raciRows, { x: 0.4, y: 1.15, w: 12.5, fontSize: 10, fontFace: T_FONT, color: M_PRUNO, border: { type: 'solid', color: M_SEP, pt: 0.5 } });
+        sl.addText('R = Responsable · A = Accountable · C = Consultado · I = Informado', { x: 0.4, y: 6.62, w: 12, h: 0.3, fontSize: 9, color: GRAY, italic: true });
       }
     }
 
@@ -6557,20 +6605,17 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const fmtN = (n) => isFinite(n) ? n.toLocaleString('es-PE', { maximumFractionDigits: 1 }) : '—';
       const fmtCur = (n) => isFinite(n) ? n.toLocaleString('es-PE', { style: 'currency', currency: 'PEN', maximumFractionDigits: 0 }) : '—';
       const sl = pres.addSlide();
-      sl.background = { color: 'FFFFFF' };
-      sl.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-      sl.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-      sl.addText('Cuantificación del proceso (data-driven)', { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+      mChrome(sl, 'Cuantificación del proceso (data-driven)', 'Diagnóstico');
 
       const tiles = [
-        { label: 'FTE actual', value: fmtN(r.fteCurrent), fill: 'F8F8F8', color: DARK },
-        { label: 'FTE to-be', value: fmtN(r.fteToBe), fill: 'F8F8F8', color: DARK },
-        { label: 'Costo mensual', value: fmtCur(r.monthlyCost), fill: 'F8F8F8', color: DARK },
+        { label: 'FTE actual', value: fmtN(r.fteCurrent), fill: 'FFFFFF', color: DARK },
+        { label: 'FTE to-be', value: fmtN(r.fteToBe), fill: 'FFFFFF', color: DARK },
+        { label: 'Costo mensual', value: fmtCur(r.monthlyCost), fill: 'FFFFFF', color: DARK },
         { label: 'Ahorro anual estimado', value: fmtCur(r.annualSavings), fill: MAGENTA, color: 'FFFFFF' }
       ];
       tiles.forEach((t, i) => {
         const x = 0.5 + i * 3.1;
-        sl.addShape('rect', { x, y: 1.2, w: 2.9, h: 2.2, fill: { color: t.fill }, line: { color: 'CCCCCC', width: 0.5 } });
+        sl.addShape('rect', { x, y: 1.2, w: 2.9, h: 2.2, fill: { color: t.fill }, line: { color: 'D0CEC1', width: 0.5 } });
         sl.addText(t.label, { x, y: 1.3, w: 2.9, h: 0.4, fontSize: 12, color: t.color, align: 'center', bold: true });
         sl.addText(t.value, { x, y: 1.8, w: 2.9, h: 1.3, fontSize: 28, color: t.color, align: 'center', valign: 'middle', bold: true });
       });
@@ -6582,51 +6627,45 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         `• FTE to-be aplica reducción objetivo del ${Math.round((1 - r.fteToBe / Math.max(r.fteCurrent, 0.0001)) * 100)}%.\n` +
         `• Lead time del flujo (suma lineal): ${fmtN(r.leadTimeChain)} minutos.\n` +
         `• Cifras estimativas; refinar con muestreo de tiempos en sitio.`,
-        { x: 0.5, y: 4.4, w: 12, h: 2.5, fontSize: 12, color: DARK, fontFace: 'Calibri', paraSpaceAfter: 4 }
+        { x: 0.5, y: 4.4, w: 12, h: 2.5, fontSize: 12, color: DARK, fontFace: T_FONT, paraSpaceAfter: 4 }
       );
     }
 
     // ============ SLIDE: NARRATIVA DE PAINS (top 3) ============
     if (allPains.length > 0) {
       const sl = pres.addSlide();
-      sl.background = { color: 'FFFFFF' };
-      sl.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-      sl.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-      sl.addText('Lectura ejecutiva de los pain points', { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+      mChrome(sl, 'Lectura ejecutiva de los pain points', 'Diagnóstico');
 
       const top3 = allPains.sort((a, b) => (b.severity * b.frequency) - (a.severity * a.frequency)).slice(0, 3);
       top3.forEach((p, i) => {
         const y = 1.1 + i * 1.85;
         sl.addShape('rect', { x: 0.5, y, w: 0.4, h: 1.7, fill: { color: MAGENTA } });
         sl.addText(`#${i + 1}`, { x: 0.5, y, w: 0.4, h: 1.7, fontSize: 18, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
-        sl.addShape('rect', { x: 1, y, w: 11.8, h: 1.7, fill: { color: 'F8F8F8' }, line: { color: 'CCCCCC', width: 0.5 } });
+        sl.addShape('rect', { x: 1, y, w: 11.8, h: 1.7, fill: { color: 'FFFFFF' }, line: { color: 'D0CEC1', width: 0.5 } });
         sl.addText(p.activity || '—', { x: 1.2, y: y + 0.1, w: 9, h: 0.4, fontSize: 14, bold: true, color: DARK });
         sl.addText(`Sev ${p.severity} · Frec ${p.frequency} · Score ${p.severity * p.frequency}`, { x: 10, y: y + 0.1, w: 2.6, h: 0.4, fontSize: 11, color: MAGENTA, align: 'right', bold: true });
-        sl.addText(`Situación observada: ${p.description}`, { x: 1.2, y: y + 0.5, w: 11.4, h: 0.4, fontSize: 11, color: DARK, fontFace: 'Calibri' });
+        sl.addText(`Situación observada: ${p.description}`, { x: 1.2, y: y + 0.5, w: 11.4, h: 0.4, fontSize: 11, color: DARK, fontFace: T_FONT });
         const cat = (window.PAIN_CATEGORIES.find(c => c.id === p.category) || {}).label || p.category;
-        sl.addText(`Riesgo: ${painImplication(p)}`, { x: 1.2, y: y + 0.9, w: 11.4, h: 0.4, fontSize: 11, color: DARK, fontFace: 'Calibri' });
-        sl.addText(`Recomendación: ${painRecommendation(p)}`, { x: 1.2, y: y + 1.3, w: 11.4, h: 0.4, fontSize: 11, color: '2E7D32', bold: true, fontFace: 'Calibri' });
+        sl.addText(`Riesgo: ${painImplication(p)}`, { x: 1.2, y: y + 0.9, w: 11.4, h: 0.4, fontSize: 11, color: DARK, fontFace: T_FONT });
+        sl.addText(`Recomendación: ${painRecommendation(p)}`, { x: 1.2, y: y + 1.3, w: 11.4, h: 0.4, fontSize: 11, color: M_FUCSIA, bold: true, fontFace: T_FONT });
       });
     }
 
     // ============ SLIDE: MATRIZ IMPACTO-ESFUERZO ============
     if (allPains.length > 0) {
       const sl = pres.addSlide();
-      sl.background = { color: 'FFFFFF' };
-      sl.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-      sl.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-      sl.addText('Matriz Impacto-Esfuerzo de oportunidades', { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+      mChrome(sl, 'Matriz Impacto-Esfuerzo de oportunidades', 'Priorización');
 
       const px = 0.5, py = 0.9, pw = 7, ph = 6;
       // Cuadrantes
-      sl.addShape('rect', { x: px, y: py, w: pw / 2, h: ph / 2, fill: { color: 'E8F5E9' }, line: { color: 'CCCCCC', width: 0.5 } });
-      sl.addShape('rect', { x: px + pw / 2, y: py, w: pw / 2, h: ph / 2, fill: { color: 'E3F2FD' }, line: { color: 'CCCCCC', width: 0.5 } });
-      sl.addShape('rect', { x: px, y: py + ph / 2, w: pw / 2, h: ph / 2, fill: { color: 'F5F5F5' }, line: { color: 'CCCCCC', width: 0.5 } });
-      sl.addShape('rect', { x: px + pw / 2, y: py + ph / 2, w: pw / 2, h: ph / 2, fill: { color: 'FFEBEE' }, line: { color: 'CCCCCC', width: 0.5 } });
-      sl.addText('QUICK WINS', { x: px, y: py + 0.05, w: pw / 2, h: 0.3, fontSize: 11, color: '2E7D32', bold: true, align: 'center' });
-      sl.addText('PROYECTOS ESTRATÉGICOS', { x: px + pw / 2, y: py + 0.05, w: pw / 2, h: 0.3, fontSize: 11, color: '1565C0', bold: true, align: 'center' });
-      sl.addText('FILL-INS', { x: px, y: py + ph - 0.35, w: pw / 2, h: 0.3, fontSize: 11, color: '666666', bold: true, align: 'center' });
-      sl.addText('RECONSIDERAR', { x: px + pw / 2, y: py + ph - 0.35, w: pw / 2, h: 0.3, fontSize: 11, color: 'C62828', bold: true, align: 'center' });
+      sl.addShape('rect', { x: px, y: py, w: pw / 2, h: ph / 2, fill: { color: 'D9F1DD' }, line: { color: 'D0CEC1', width: 0.5 } });
+      sl.addShape('rect', { x: px + pw / 2, y: py, w: pw / 2, h: ph / 2, fill: { color: 'BFFBFF' }, line: { color: 'D0CEC1', width: 0.5 } });
+      sl.addShape('rect', { x: px, y: py + ph / 2, w: pw / 2, h: ph / 2, fill: { color: 'FFFFFF' }, line: { color: 'D0CEC1', width: 0.5 } });
+      sl.addShape('rect', { x: px + pw / 2, y: py + ph / 2, w: pw / 2, h: ph / 2, fill: { color: 'FFBAD1' }, line: { color: 'D0CEC1', width: 0.5 } });
+      sl.addText('QUICK WINS', { x: px, y: py + 0.05, w: pw / 2, h: 0.3, fontSize: 11, color: M_FUCSIA, bold: true, align: 'center' });
+      sl.addText('PROYECTOS ESTRATÉGICOS', { x: px + pw / 2, y: py + 0.05, w: pw / 2, h: 0.3, fontSize: 11, color: '00B0BD', bold: true, align: 'center' });
+      sl.addText('FILL-INS', { x: px, y: py + ph - 0.35, w: pw / 2, h: 0.3, fontSize: 11, color: '926979', bold: true, align: 'center' });
+      sl.addText('RECONSIDERAR', { x: px + pw / 2, y: py + ph - 0.35, w: pw / 2, h: 0.3, fontSize: 11, color: 'A40037', bold: true, align: 'center' });
 
       const effortMap = { system: 4, regulatory: 5, control: 3, data: 3, handoff: 2, manual: 2, wait: 2, rework: 2 };
       const sorted = allPains.slice().sort((a, b) => (b.severity * b.frequency) - (a.severity * a.frequency));
@@ -6643,16 +6682,13 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       // Leyenda derecha
       sl.addText('Top oportunidades', { x: 8, y: 0.9, w: 5, h: 0.4, fontSize: 14, color: MAGENTA, bold: true });
       sorted.slice(0, 10).forEach((p, i) => {
-        sl.addText(`${i + 1}. ${p.activity}: ${p.description}`, { x: 8, y: 1.4 + i * 0.45, w: 5, h: 0.4, fontSize: 9, color: DARK, fontFace: 'Calibri' });
+        sl.addText(`${i + 1}. ${p.activity}: ${p.description}`, { x: 8, y: 1.4 + i * 0.45, w: 5, h: 0.4, fontSize: 9, color: DARK, fontFace: T_FONT });
       });
     }
 
     // ============ SLIDE 5: DIAGNÓSTICO ============
     const s5 = pres.addSlide();
-    s5.background = { color: 'FFFFFF' };
-    s5.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.5, fill: { color: DARK } });
-    s5.addShape('rect', { x: 0, y: 0.5, w: 0.15, h: 7, fill: { color: MAGENTA } });
-    s5.addText('Diagnóstico ejecutivo y palancas de reingeniería', { x: 0.4, y: 0.1, w: 12, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+    mChrome(s5, 'Diagnóstico ejecutivo y palancas de reingeniería', 'Conclusiones');
 
     const handoffs = countHandoffs();
     const manual = state.nodes.filter(n => n.type === 'task' && !n.system).length;
@@ -6664,7 +6700,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       `• ${manual} actividades sin sistema soporte (candidatas a automatización)\n` +
       `• ${allPains.length} pain points (${critPains} críticos, severidad ≥ 4)\n` +
       `• ${state.edges.filter(e => true).length} transiciones modeladas`,
-      { x: 0.5, y: 1.4, w: 6, h: 2.5, fontSize: 13, color: DARK, fontFace: 'Calibri', paraSpaceAfter: 4 }
+      { x: 0.5, y: 1.4, w: 6, h: 2.5, fontSize: 13, color: DARK, fontFace: T_FONT, paraSpaceAfter: 4 }
     );
 
     s5.addText('Palancas de reingeniería', { x: 7, y: 0.9, w: 6, h: 0.4, fontSize: 18, color: MAGENTA, bold: true });
@@ -6674,7 +6710,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       '3. Reglas de decisión codificadas (DMN)\n' +
       '4. Self-service en captura\n' +
       '5. Tablero KPIs en tiempo real',
-      { x: 7, y: 1.4, w: 6, h: 2.5, fontSize: 13, color: DARK, fontFace: 'Calibri', paraSpaceAfter: 4 }
+      { x: 7, y: 1.4, w: 6, h: 2.5, fontSize: 13, color: DARK, fontFace: T_FONT, paraSpaceAfter: 4 }
     );
 
     s5.addText('Impacto estimado', { x: 0.5, y: 4.5, w: 12, h: 0.4, fontSize: 18, color: MAGENTA, bold: true });
@@ -6687,23 +6723,19 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const t3 = sim ? `Ahorro anual\n${fmtCur(sim.annualSavings)}` : 'Errores\n-60%';
     const t4 = sim ? `Costo actual/mes\n${fmtCur(sim.monthlyCost)}` : 'CSAT/NPS\n+10 a +20 pts';
 
-    s5.addShape('rect', { x: 0.5, y: 5.1, w: 2.9, h: 1.5, fill: { color: 'F8F8F8' }, line: { color: 'CCCCCC', width: 0.5 } });
+    s5.addShape('rect', { x: 0.5, y: 5.1, w: 2.9, h: 1.5, fill: { color: 'FFFFFF' }, line: { color: 'D0CEC1', width: 0.5 } });
     s5.addText(t1, { x: 0.5, y: 5.1, w: 2.9, h: 1.5, fontSize: 13, color: DARK, align: 'center', valign: 'middle', bold: true });
-    s5.addShape('rect', { x: 3.55, y: 5.1, w: 2.9, h: 1.5, fill: { color: 'F8F8F8' }, line: { color: 'CCCCCC', width: 0.5 } });
+    s5.addShape('rect', { x: 3.55, y: 5.1, w: 2.9, h: 1.5, fill: { color: 'FFFFFF' }, line: { color: 'D0CEC1', width: 0.5 } });
     s5.addText(t2, { x: 3.55, y: 5.1, w: 2.9, h: 1.5, fontSize: 13, color: DARK, align: 'center', valign: 'middle', bold: true });
-    s5.addShape('rect', { x: 6.6, y: 5.1, w: 2.9, h: 1.5, fill: { color: 'F8F8F8' }, line: { color: 'CCCCCC', width: 0.5 } });
+    s5.addShape('rect', { x: 6.6, y: 5.1, w: 2.9, h: 1.5, fill: { color: 'FFFFFF' }, line: { color: 'D0CEC1', width: 0.5 } });
     s5.addText(t3, { x: 6.6, y: 5.1, w: 2.9, h: 1.5, fontSize: 13, color: DARK, align: 'center', valign: 'middle', bold: true });
     s5.addShape('rect', { x: 9.65, y: 5.1, w: 2.9, h: 1.5, fill: { color: MAGENTA }, line: { color: MAGENTA, width: 0.5 } });
     s5.addText(t4, { x: 9.65, y: 5.1, w: 2.9, h: 1.5, fontSize: 13, color: 'FFFFFF', align: 'center', valign: 'middle', bold: true });
 
-    if (sim) s5.addText('Cifras calculadas por el simulador con tiempos y volúmenes capturados en cada actividad.', { x: 0.5, y: 6.75, w: 12, h: 0.25, fontSize: 9, color: GRAY, italic: true });
+    if (sim) s5.addText('Cifras calculadas por el simulador con tiempos y volúmenes capturados en cada actividad.', { x: 0.5, y: 6.62, w: 12, h: 0.25, fontSize: 9, color: GRAY, italic: true });
 
     // ============ SLIDE FINAL: 1-PAGER EJECUTIVO PARA CEO/CFO ============
-    const sf = pres.addSlide();
-    sf.background = { color: 'FFFFFF' };
-    sf.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.7, fill: { color: MAGENTA } });
-    sf.addText('Diagnóstico ejecutivo · 1-pager', { x: 0.4, y: 0.15, w: 12, h: 0.5, fontSize: 20, color: 'FFFFFF', bold: true });
-    sf.addText(state.meta.name || 'Proceso', { x: 0.4, y: 0.85, w: 12, h: 0.4, fontSize: 14, color: DARK, italic: true });
+    const sf = mSlide('Diagnóstico ejecutivo · 1-pager', state.meta.name || 'Proceso');
 
     // Numerador grande (5 bullets clave)
     const top3Pains = allPains.slice().sort((a, b) => (b.severity * b.frequency) - (a.severity * a.frequency)).slice(0, 3);
@@ -6726,35 +6758,35 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       : `${window.KPI_LIBRARY.filter(k => !state.meta.industry || k.industry === state.meta.industry || k.industry === 'Transversal').slice(0,5).length} KPIs sugeridos por industria.\nFalta capturar valor actual del cliente.`;
 
     // Bloque 1: Carga & impacto
-    sf.addShape('rect', { x: 0.4, y: 1.4, w: 6.2, h: 2.6, fill: { color: 'F8F8F8' }, line: { color: 'CCCCCC', width: 0.5 } });
-    sf.addText('📊 Carga e impacto', { x: 0.6, y: 1.5, w: 6, h: 0.4, fontSize: 14, color: MAGENTA, bold: true });
-    sf.addText(carga, { x: 0.6, y: 1.9, w: 6, h: 2, fontSize: 12, color: DARK, fontFace: 'Calibri' });
+    sf.addShape('rect', { x: 0.4, y: 1.4, w: 6.2, h: 2.6, fill: { color: 'FFFFFF' }, line: { color: 'D0CEC1', width: 0.5 } });
+    sf.addText('Carga e impacto', { x: 0.6, y: 1.5, w: 6, h: 0.4, fontSize: 14, color: MAGENTA, bold: true });
+    sf.addText(carga, { x: 0.6, y: 1.9, w: 6, h: 2, fontSize: 12, color: DARK, fontFace: T_FONT });
 
     // Bloque 2: KPIs & benchmarks
-    sf.addShape('rect', { x: 6.8, y: 1.4, w: 6.2, h: 2.6, fill: { color: 'F8F8F8' }, line: { color: 'CCCCCC', width: 0.5 } });
-    sf.addText('🎯 KPIs y gap sectorial', { x: 7, y: 1.5, w: 6, h: 0.4, fontSize: 14, color: MAGENTA, bold: true });
-    sf.addText(kpisTxt, { x: 7, y: 1.9, w: 6, h: 2, fontSize: 12, color: DARK, fontFace: 'Calibri' });
+    sf.addShape('rect', { x: 6.8, y: 1.4, w: 6.2, h: 2.6, fill: { color: 'FFFFFF' }, line: { color: 'D0CEC1', width: 0.5 } });
+    sf.addText('KPIs y gap sectorial', { x: 7, y: 1.5, w: 6, h: 0.4, fontSize: 14, color: MAGENTA, bold: true });
+    sf.addText(kpisTxt, { x: 7, y: 1.9, w: 6, h: 2, fontSize: 12, color: DARK, fontFace: T_FONT });
 
     // Bloque 3: Top 3 pains
-    sf.addShape('rect', { x: 0.4, y: 4.1, w: 6.2, h: 2.4, fill: { color: '#FFF3E0' }, line: { color: 'CCCCCC', width: 0.5 } });
-    sf.addText('🚨 Top 3 dolores del proceso', { x: 0.6, y: 4.2, w: 6, h: 0.4, fontSize: 14, color: '#E65100', bold: true });
-    sf.addText(painsTxt, { x: 0.6, y: 4.6, w: 6, h: 1.8, fontSize: 11, color: DARK, fontFace: 'Calibri' });
+    sf.addShape('rect', { x: 0.4, y: 4.1, w: 6.2, h: 2.4, fill: { color: 'FBE1CF' }, line: { color: 'D0CEC1', width: 0.5 } });
+    sf.addText('Top 3 dolores del proceso', { x: 0.6, y: 4.2, w: 6, h: 0.4, fontSize: 14, color: 'E56813', bold: true });
+    sf.addText(painsTxt, { x: 0.6, y: 4.6, w: 6, h: 1.8, fontSize: 11, color: DARK, fontFace: T_FONT });
 
     // Bloque 4: Quick wins
-    sf.addShape('rect', { x: 6.8, y: 4.1, w: 6.2, h: 2.4, fill: { color: '#E8F5E9' }, line: { color: 'CCCCCC', width: 0.5 } });
-    sf.addText('⚡ Quick wins (0-3 meses)', { x: 7, y: 4.2, w: 6, h: 0.4, fontSize: 14, color: '#2E7D32', bold: true });
-    sf.addText(qwTxt, { x: 7, y: 4.6, w: 6, h: 1.8, fontSize: 11, color: DARK, fontFace: 'Calibri' });
+    sf.addShape('rect', { x: 6.8, y: 4.1, w: 6.2, h: 2.4, fill: { color: 'D9F1DD' }, line: { color: 'D0CEC1', width: 0.5 } });
+    sf.addText('Quick wins (0-3 meses)', { x: 7, y: 4.2, w: 6, h: 0.4, fontSize: 14, color: '44B757', bold: true });
+    sf.addText(qwTxt, { x: 7, y: 4.6, w: 6, h: 1.8, fontSize: 11, color: DARK, fontFace: T_FONT });
 
     // Footer: siguiente paso
-    sf.addShape('rect', { x: 0.4, y: 6.7, w: 12.6, h: 0.55, fill: { color: DARK } });
-    sf.addText('SIGUIENTE PASO  ›  Validar hallazgos con sponsor · Priorizar en matriz Impacto-Esfuerzo · Construir business case', { x: 0.5, y: 6.7, w: 12.5, h: 0.55, fontSize: 11, color: 'FFFFFF', bold: true, valign: 'middle' });
+    sf.addShape('rect', { x: 0.4, y: 6.28, w: 12.6, h: 0.5, fill: { color: DARK } });
+    sf.addText('SIGUIENTE PASO  ›  Validar hallazgos con sponsor · Priorizar en matriz Impacto-Esfuerzo · Construir business case', { x: 0.5, y: 6.28, w: 12.5, h: 0.5, fontSize: 11, color: 'FFFFFF', bold: true, valign: 'middle' });
 
     pres.writeFile({ fileName: filename('pptx') });
   }
 
   // Helper: renderiza un mini-diagrama dentro de un slide PPTX en un área dada.
   function renderMiniDiagram(slide, data, x, y, w, h, label, accentColor) {
-    slide.addShape('rect', { x, y, w, h, fill: { color: 'FAFAFA' }, line: { color: 'CCCCCC', width: 0.5 } });
+    slide.addShape('rect', { x, y, w, h, fill: { color: 'FAFAFA' }, line: { color: 'D0CEC1', width: 0.5 } });
     slide.addText(label, { x, y, w, h: 0.35, fontSize: 12, color: accentColor, bold: true, align: 'center' });
     if (!data.nodes.length) {
       slide.addText('(vacío)', { x, y: y + h / 2 - 0.2, w, h: 0.4, fontSize: 14, color: '999999', italic: true, align: 'center' });
@@ -6773,8 +6805,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const offY = y + padTop + (dstH - srcH * scale) / 2;
 
     const shapeKind = { task: 'rect', system: 'rect', decision: 'diamond', start: 'ellipse', end: 'ellipse', document: 'rect', data: 'parallelogram' };
-    const shapeFill = { task: 'FFFFFF', system: 'ECEFF1', decision: 'FFF8E1', start: 'E8F5E9', end: 'FFEBEE', document: 'E3F2FD', data: 'F3E5F5' };
-    const shapeBorder = { task: '414141', system: '37474F', decision: 'F9A825', start: '2E7D32', end: 'C62828', document: '1565C0', data: '6A1B9A' };
+    const shapeFill = { task: 'FFFFFF', system: 'F9F9F8', decision: 'FBE1CF', start: 'D9F1DD', end: 'FFBAD1', document: 'BFFBFF', data: 'E7DFFD' };
+    const shapeBorder = { task: '4F062A', system: '4F062A', decision: 'E56813', start: '44B757', end: 'A40037', document: '00B0BD', data: '8661F5' };
 
     data.nodes.forEach(n => {
       const nx = offX + (n.x - minX) * scale;
@@ -6783,11 +6815,11 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       slide.addShape(shapeKind[n.type] || 'rect', {
         x: nx, y: ny, w: nw, h: nh,
         fill: { color: shapeFill[n.type] || 'FFFFFF' },
-        line: { color: shapeBorder[n.type] || '414141', width: 0.8 }
+        line: { color: shapeBorder[n.type] || '4F062A', width: 0.8 }
       });
       slide.addText(n.label || '', {
         x: nx, y: ny, w: nw, h: nh, fontSize: 6,
-        align: 'center', valign: 'middle', color: '232323', fontFace: 'Calibri'
+        align: 'center', valign: 'middle', color: M_PRUNO, fontFace: T_FONT
       });
     });
     data.edges.forEach(e => {
@@ -6801,7 +6833,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       slide.addShape('line', {
         x: Math.min(p1x, p2x), y: Math.min(p1y, p2y),
         w: Math.max(Math.abs(dx), 0.01), h: Math.max(Math.abs(dy), 0.01),
-        line: { color: '666666', width: 0.5, endArrowType: 'triangle' },
+        line: { color: '926979', width: 0.5, endArrowType: 'triangle' },
         flipH: dx < 0, flipV: dy < 0
       });
     });

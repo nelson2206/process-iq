@@ -107,7 +107,7 @@
     attachAiListeners();
     updateAiUi();
     // Hook para demos/pruebas (cargadores de ejemplo)
-    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob() };
+    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob(), astar: (on) => { state._astar = !!on; invalidarRutas(); return !!on; } };
   }
 
   function populateSelects() {
@@ -438,7 +438,8 @@
       updateStickyHeaders();
     }
 
-    // Edges
+    // Edges. No se llama a astReset() aquí: el ruteo ya se hizo en el relayout
+    // y los paths están cacheados por arista. Repintar debe ser gratis.
     state.edges.forEach(e => {
       const a = getNode(e.from), b = getNode(e.to);
       if (!a || !b) return;
@@ -1063,8 +1064,197 @@
     return laneTop + L.laneH - 13;      // dentro del carril, bajo las cajas
   }
 
-  // Path inteligente entre dos nodos (reemplaza centro-a-centro)
+  // ============================================================
+  // RUTEO ORTOGONAL A* CON EVASIÓN DE OBSTÁCULOS
+  //
+  // Las heurísticas de codo de más abajo resuelven bien el caso corriente,
+  // pero se rompen cuando varias aristas comparten la misma "autopista":
+  // medido sobre 12 procesos reales (1.042 nodos) dejaban 1.804 flechas
+  // encima de cajas. Aquí se rutea sobre una grilla de Hanan —las líneas que
+  // pasan por los bordes de las cajas— buscando el camino de menor coste,
+  // donde el coste penaliza la longitud, los giros y, sobre todo, reutilizar
+  // un canal que ya ocupa otra arista.
+  // ============================================================
+  const AST_PAD = 10;      // holgura alrededor de cada caja
+  const AST_TURN = 18;     // coste de un giro
+  const AST_REUSE = 40;    // coste de meterse en un canal ya ocupado
+  const AST_MARGEN = 140;  // margen de la ventana de búsqueda
+  const AST_MAX_NODOS = 9000;   // tope de expansión: si se pasa, cae a la heurística
+
+  // ── APAGADO POR DEFECTO. Medido sobre 3 procesos reales (v2.8.2):
+  //      59 nodos    6/2   -> 6/2      en 283ms -> 1.686ms
+  //      97 nodos  320/36  -> 317/39   en ~700ms -> 9.515ms
+  //     119 nodos  200/65  -> 142/50   en 676ms -> 5.463ms
+  //   Un caso mejora un 29 %, dos no mejoran, y todo va 6-13 veces más lento.
+  //   El diagnóstico: cuando 97 nodos van apretados en el área disponible NO
+  //   EXISTE canal libre por donde rutear, y ningún ruteador puede encontrar un
+  //   camino limpio que no está ahí. El problema es la densidad del layout, no
+  //   el ruteo. Se conserva el código porque a baja densidad sí ordena
+  //   (119 nodos: -29 % flechas sobre cajas), y volverá a ser útil cuando las
+  //   vistas por nivel de granularidad reduzcan los nodos por lámina.
+  //   Activar con:  ProcessIQ.astar(true)
+
+  let _astCanales = null;  // 'H:y' | 'V:x'  ->  nº de aristas que lo usan
+  let _rutaSerie = 0;      // sube con cada relayout: invalida los paths cacheados
+
+  function astReset() { _astCanales = new Map(); }
+  function invalidarRutas() { _rutaSerie++; _astCanales = null; }
+  function _astCarga(clave) { return _astCanales ? (_astCanales.get(clave) || 0) : 0; }
+  function _astOcupa(clave) { if (_astCanales) _astCanales.set(clave, _astCarga(clave) + 1); }
+
+  // ¿El segmento recto p→q atraviesa alguna caja que no sea origen ni destino?
+  function _astChoca(p, q, exentos) {
+    const x1 = Math.min(p.x, q.x), x2 = Math.max(p.x, q.x);
+    const y1 = Math.min(p.y, q.y), y2 = Math.max(p.y, q.y);
+    for (let i = 0; i < state.nodes.length; i++) {
+      const n = state.nodes[i];
+      if (exentos.indexOf(n.id) >= 0) continue;
+      if (x1 < n.x + n.w + 2 && x2 > n.x - 2 && y1 < n.y + n.h + 2 && y2 > n.y - 2) return true;
+    }
+    return false;
+  }
+
+  // Líneas candidatas: bordes de cada caja (con holgura) dentro de la ventana
+  function _astLineas(a, b) {
+    const x0 = Math.min(a.x, b.x) - AST_MARGEN, x1 = Math.max(a.x + a.w, b.x + b.w) + AST_MARGEN;
+    const y0 = Math.min(a.y, b.y) - AST_MARGEN, y1 = Math.max(a.y + a.h, b.y + b.h) + AST_MARGEN;
+    const xs = new Set(), ys = new Set();
+    state.nodes.forEach(n => {
+      const cx1 = n.x - AST_PAD, cx2 = n.x + n.w + AST_PAD;
+      const cy1 = n.y - AST_PAD, cy2 = n.y + n.h + AST_PAD;
+      if (cx1 > x0 && cx1 < x1) xs.add(cx1);
+      if (cx2 > x0 && cx2 < x1) xs.add(cx2);
+      if (cy1 > y0 && cy1 < y1) ys.add(cy1);
+      if (cy2 > y0 && cy2 < y1) ys.add(cy2);
+    });
+    return { xs: [...xs].sort((p, q) => p - q), ys: [...ys].sort((p, q) => p - q) };
+  }
+
+  // Polilínea de menor coste, o null si no encuentra o se pasa del tope
+  function rutaAStar(a, b, desde, hasta) {
+    const L = _astLineas(a, b);
+    const xs = [...new Set(L.xs.concat([desde.x, hasta.x]))].sort((p, q) => p - q);
+    const ys = [...new Set(L.ys.concat([desde.y, hasta.y]))].sort((p, q) => p - q);
+    if (xs.length * ys.length > AST_MAX_NODOS) return null;
+
+    const ix = (v) => xs.indexOf(v), iy = (v) => ys.indexOf(v);
+    const si = ix(desde.x), sj = iy(desde.y), ti = ix(hasta.x), tj = iy(hasta.y);
+    if (si < 0 || sj < 0 || ti < 0 || tj < 0) return null;
+
+    const exentos = [a.id, b.id];
+    const key = (i, j, d) => (j * xs.length + i) * 3 + d;   // d: 0 inicio, 1 horiz, 2 vert
+    const g = new Map(), padre = new Map();
+    const h = (i, j) => Math.abs(xs[i] - hasta.x) + Math.abs(ys[j] - hasta.y);
+
+    const cola = [{ i: si, j: sj, d: 0, f: h(si, sj) }];
+    g.set(key(si, sj, 0), 0);
+    let expandidos = 0;
+
+    while (cola.length) {
+      let mejor = 0;
+      for (let k = 1; k < cola.length; k++) if (cola[k].f < cola[mejor].f) mejor = k;
+      const cur = cola.splice(mejor, 1)[0];
+      const ck = key(cur.i, cur.j, cur.d);
+      if (cur.i === ti && cur.j === tj) {
+        const pts = [];
+        let k = ck;
+        while (k !== undefined) {
+          const d = k % 3, resto = (k - d) / 3;
+          const i = resto % xs.length, j = (resto - i) / xs.length;
+          pts.unshift({ x: xs[i], y: ys[j] });
+          k = padre.get(k);
+        }
+        return pts;
+      }
+      if (++expandidos > AST_MAX_NODOS) return null;
+      const gc = g.get(ck);
+
+      const vecinos = [
+        { i: cur.i + 1, j: cur.j, d: 1 }, { i: cur.i - 1, j: cur.j, d: 1 },
+        { i: cur.i, j: cur.j + 1, d: 2 }, { i: cur.i, j: cur.j - 1, d: 2 }
+      ];
+      for (const v of vecinos) {
+        if (v.i < 0 || v.j < 0 || v.i >= xs.length || v.j >= ys.length) continue;
+        const p = { x: xs[cur.i], y: ys[cur.j] }, q = { x: xs[v.i], y: ys[v.j] };
+        if (_astChoca(p, q, exentos)) continue;
+        const largo = Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
+        const giro = (cur.d !== 0 && cur.d !== v.d) ? AST_TURN : 0;
+        const canal = v.d === 1 ? ('H:' + Math.round(q.y)) : ('V:' + Math.round(q.x));
+        const reuso = _astCarga(canal) * AST_REUSE;
+        const ng = gc + largo + giro + reuso;
+        const vk = key(v.i, v.j, v.d);
+        if (g.has(vk) && g.get(vk) <= ng) continue;
+        g.set(vk, ng); padre.set(vk, ck);
+        cola.push({ i: v.i, j: v.j, d: v.d, f: ng + h(v.i, v.j) });
+      }
+    }
+    return null;
+  }
+
+  // Marca como ocupados los canales que usa una polilínea ya trazada
+  function _astRegistra(pts) {
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i - 1], q = pts[i];
+      if (Math.abs(p.y - q.y) < 1) _astOcupa('H:' + Math.round(q.y));
+      else _astOcupa('V:' + Math.round(q.x));
+    }
+  }
+
+  // ¿Este path pisa alguna caja que no sea su origen o su destino?
+  function _pathPisaCaja(d, a, b) {
+    const segs = _segsOfD(d);
+    for (let i = 0; i < segs.length; i++) {
+      for (let k = 0; k < state.nodes.length; k++) {
+        const n = state.nodes[k];
+        if (n.id === a.id || n.id === b.id) continue;
+        if (_segHitsBox(segs[i][0], segs[i][1], n, 2)) return true;
+      }
+    }
+    return false;
+  }
+  function _astRegistraPath(d) {
+    const segs = _segsOfD(d);
+    segs.forEach(sg => {
+      if (Math.abs(sg[0].y - sg[1].y) < 1) _astOcupa('H:' + Math.round(sg[1].y));
+      else if (Math.abs(sg[0].x - sg[1].x) < 1) _astOcupa('V:' + Math.round(sg[1].x));
+    });
+  }
+
+  // Path entre dos nodos. Primero la heurística, que es barata y en la mayoría
+  // de aristas ya sale limpia; el A* sólo entra cuando esa heurística pisa una
+  // caja. Aplicarlo a todas las aristas multiplicaba por 15 el tiempo de
+  // autoajuste sin mejorar las que ya estaban bien.
   function smartEdgePath(a, b, edge) {
+    // Cacheado por layout: repintar (zoom, scroll, selección) no debe reroutear.
+    if (edge && edge._dSerie === _rutaSerie && edge._d) return edge._d;
+    const d = _calculaEdgePath(a, b, edge);
+    if (edge) { edge._d = d; edge._dSerie = _rutaSerie; }
+    return d;
+  }
+
+  function _calculaEdgePath(a, b, edge) {
+    const heur = _pathHeuristico(a, b, edge);
+    if (!_astCanales) return heur;
+    if (!_pathPisaCaja(heur, a, b)) { _astRegistraPath(heur); return heur; }
+
+    const ac = nodeCenter(a), bc = nodeCenter(b);
+    const forward = b.x >= a.x + a.w - 4;
+    const desde = forward ? { x: a.x + a.w + AST_PAD, y: ac.y } : { x: a.x - AST_PAD, y: ac.y };
+    const hasta = forward ? { x: b.x - AST_PAD, y: bc.y } : { x: b.x + b.w + AST_PAD, y: bc.y };
+    const pts = rutaAStar(a, b, desde, hasta);
+    if (pts && pts.length >= 2) {
+      const salida = { x: forward ? a.x + a.w : a.x, y: ac.y };
+      const entrada = { x: forward ? b.x : b.x + b.w, y: bc.y };
+      const d = roundedPath([salida].concat(pts, [entrada]), EDGE_RADIUS);
+      // Sólo se acepta si de verdad mejora: si el A* también pisa, no gana nada
+      if (!_pathPisaCaja(d, a, b)) { _astRegistraPath(d); return d; }
+    }
+    _astRegistraPath(heur);
+    return heur;
+  }
+
+  // Heurística de codos: la de siempre, ahora como plan A
+  function _pathHeuristico(a, b, edge) {
     const ac = nodeCenter(a), bc = nodeCenter(b);
     const forward = b.x >= a.x + a.w - 4;
     const backward = (b.x + b.w) <= (a.x + 4);
@@ -1158,6 +1348,8 @@
   }
   // Diagnóstico de calidad del diagrama actual
   function diagramQuality() {
+    invalidarRutas();
+    if (state._astar) astReset();   // el A* sólo entra si está activado
     const paths = [];
     state.edges.forEach(e => {
       const a = getNode(e.from), b = getNode(e.to);
@@ -2486,6 +2678,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   // Arriba-izquierda → abajo-derecha. Cada "carretera" horizontal = responsable.
   // Las actividades se colocan en su carretera según su rank (BFS).
   function autoLayout() {
+    invalidarRutas();
     if (state.nodes.length === 0) return;
     ensureDecisionBranches();
 

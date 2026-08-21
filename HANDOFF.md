@@ -71,12 +71,33 @@ Nunca se pudo renderizar PowerPoint en el entorno de trabajo. El usuario report�
 Todo el camino de IA se validó con `fetch` interceptado. **Nunca se hizo una llamada facturada real.**
 → *Siguiente paso:* configurar la key en el botón de ajustes → *Probar conexión* → ingerir un documento real y revisar la calidad del flujo generado.
 
-**3. Ruteo A-star con evasión de obstáculos**
-Medido sobre el PPTX de Venta de Lotes en v2.6.0: **18 cruces flecha-flecha y 4 flechas
-sobre cajas** en las 6 láminas de flujo. Es lo ÚNICO que queda: los solapamientos de
-texto ya están en cero. Causa: varias decisiones apuntan al mismo destino y comparten
-la misma "autopista" horizontal.
-→ *Siguiente paso:* ruteo ortogonal sobre grilla con A-star y canales reservados por arista.
+**3. Ruteo A-star** — *IMPLEMENTADO Y APAGADO. No volver a intentarlo sin leer esto.*
+
+Se construyó en v2.8: ruteo ortogonal sobre grilla de Hanan, coste por longitud,
+giros y reutilización de canal, con cacheo por layout. Funciona. **No se paga.**
+
+Medido sobre 3 procesos reales (flechas sobre cajas / cruces / tiempo de autoajuste):
+
+| Proceso | Apagado | Encendido |
+|---|---|---|
+| 59 nodos | 6 / 2 · 0,3 s | 6 / 2 · 1,3 s |
+| 97 nodos | 320 / 36 · 0,7 s | 317 / 39 · 9,5 s |
+| 119 nodos | 200 / 65 · 0,7 s | **142 / 50** · 7,2 s |
+
+Un caso mejora un 29 %, dos no mejoran, y todo va de 6 a 13 veces más lento.
+
+**Por qué falla, que es lo importante:** cuando 97 nodos van apretados en el área
+disponible **no existe canal libre por donde rutear**. Ningún algoritmo encuentra
+un camino limpio que no está ahí. El problema no es el ruteo: es la densidad del
+layout. Se probó primero aplicando A* por tipo de arista y luego sólo cuando la
+heurística pisaba una caja; la segunda variante fue más lenta *y* peor.
+
+→ *Siguiente paso real:* **bajar la densidad, no mejorar el ruteo.** Las vistas por
+nivel de granularidad (macroproceso / actividad / tarea) reducen los nodos por
+lámina; con 20 nodos en vista ejecutiva el problema desaparece solo. Volver a
+medir el A* **después** de eso, cuando sí haya canales libres que aprovechar.
+
+Activar para experimentar: `ProcessIQ.astar(true)`.
 
 > Ojo con la prioridad: hasta v2.5.1 se creía que el ruteo era el problema principal
 > del PPTX. Al medirlo resultó ser el 26 % de los defectos; el 74 % era texto que se

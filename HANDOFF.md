@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v2.7.0 — flujo en escalera; el PPTX usa el 92 % del alto
+> **Última actualización:** v2.7.3 — banco de pruebas de regresión sobre procesos reales
 
 ---
 
@@ -101,6 +101,27 @@ Se mitigó cediendo el hilo cada 3 páginas, pero la extracción **sigue en el h
 **8. OCR para PDF escaneado** — hoy solo avisa de que hace falta OCR.
 
 **9. Textos largos en cajas de 0,53 pulgadas** — verificar que no se corten; si pasa, subir la altura a 0,62.
+
+---
+
+## 3-bis. Banco de pruebas — LEER ANTES DE TOCAR EL LAYOUT
+
+ mide la calidad del lienzo y del export PPTX sobre BPMN reales.
+**Úsalo antes y después de cualquier cambio de layout, ruteo o export.**
+
+    // en la consola de la app, pegar bench/harness.js y luego:
+    const r = await PIQBench.correr();
+
+Línea base en  (v2.7.3, 12 casos, 1.042 nodos). Si
+,  o  suben, es una regresión.
+
+> ⚠️  **no se versiona**: el repo es público y los ficheros
+> son procesos reales de cliente. Están en local; si se pierden, se
+> reextraen del ZIP de evaluación de MBC Process Disruptor.
+
+**Hallazgo clave del banco:**  en el lienzo predice casi 1:1
+los solapes de texto del PPTX (59 nodos: 6 → 52 solapes; 154 nodos: 366 → 344).
+Arreglar el ruteo arregla el entregable.
 
 ---
 

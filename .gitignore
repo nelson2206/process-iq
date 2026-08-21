@@ -13,3 +13,6 @@ _test_*
 *.docx
 *.pdf
 *.pptx
+
+# Banco de pruebas: los fixtures son procesos reales de cliente
+bench/fixtures/

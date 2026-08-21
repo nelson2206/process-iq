@@ -6043,7 +6043,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       // Con escalera, un conector puede saltar de banda dentro de la MISMA
       // lámina, así que el pasillo se reserva por salto de banda, no de lámina.
       const enSlide = (r) => r >= rankStart && r < rankEnd;
-      const saltaBanda = (ra, rb) => Math.floor(ra / ranksPorBanda) !== Math.floor(rb / ranksPorBanda);
+      const saltaBanda = saltaBandaG;
       const hayEntradaIzq = state.edges.some(e => {
         const ra = ranks[e.from], rb = ranks[e.to];
         return ra != null && rb != null && enSlide(rb) && saltaBanda(ra, rb);
@@ -6058,7 +6058,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const CONN_X_DER = 0.4 + (SLIDE_DRAW_W - 0.4) - GUT_DER / 2;
 
       // ───── Grid de celdas: cada nodo en su columna-de-banda × fila ─────
-      const sliceColCount = ranksPorBanda;
+      const sliceColCount = Math.max.apply(null, bandas.map(b => b.fin - b.ini));
       const cellInnerW = (SLIDE_DRAW_W - 0.4 - GUT_IZQ - GUT_DER) / sliceColCount;
       const CELL_GAP_X = 0.18;
       const cellWFinal = cellInnerW - CELL_GAP_X;
@@ -6083,7 +6083,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       // cuando la lámina va holgada, a cambio de legibilidad en proyección.
       const gapsTotales = GAP_BANDA * Math.max(0, bandas.length - 1);
       const altoContenido = laneH.reduce((a, h) => a + h, 0) + gapsTotales;
-      const escala = Math.max(1, Math.min(1.45, (ALTO_UTIL - gapsTotales) / Math.max(0.01, altoContenido - gapsTotales)));
+      // Tope por ARRIBA (crecer si sobra) y por ABAJO (comprimir si no cabe):
+      // sin el segundo, un tramo con muchos actores se salia de la lamina.
+      const escala = Math.max(0.45, Math.min(1.45, (ALTO_UTIL - gapsTotales) / Math.max(0.01, altoContenido - gapsTotales)));
       laneH = laneH.map(h => h * escala);
       // La tipografia acompana a la caja: de nada sirve una caja mas grande con
       // el texto igual de pequeno. Se topa en 11 pt para no romper la jerarquia
@@ -6170,14 +6172,18 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         });
       }
       function apartaEtiqArista(x, y, w, h) {
-        let yy = y;
-        // 24 intentos y no 12: con la escalera cabe mas contenido por lamina y
-        // la busqueda corta se quedaba sin hueco en las bandas densas.
+        // Acotado al area de dibujo: sin el, en procesos densos la busqueda
+        // empujaba etiquetas por encima del titulo o por debajo del pie.
+        const Y_MIN = DRAW_TOP + 0.02, Y_MAX = DRAW_TOP + SLIDE_DRAW_H - h - 0.02;
+        const clamp = (v) => Math.min(Y_MAX, Math.max(Y_MIN, v));
+        let yy = clamp(y);
         for (let i = 0; i < 24; i++) {
           const choca = etiqAristaUsadas.some(u =>
             Math.abs(u.x - x) < (u.w + w) / 2 && Math.abs(u.y - yy) < (u.h + h) / 2);
           if (!choca) break;
-          yy += (i % 2 === 0 ? -1 : 1) * (h + 0.03) * Math.ceil((i + 1) / 2);
+          const cand = clamp(y + (i % 2 === 0 ? -1 : 1) * (h + 0.03) * Math.ceil((i + 1) / 2));
+          if (cand === yy) continue;
+          yy = cand;
         }
         etiqAristaUsadas.push({ x: x, y: yy, w: w, h: h });
         return yy;
@@ -6465,16 +6471,24 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       sembrarCajasEnAnticolision();
       const offPageDer = [], offPageIzq = [];
       const OFF_PAGE_SEP = 0.58;   // circulo (0,36) + rotulo debajo (0,16) + aire
+      // Busca hueco alternando abajo/arriba, pero SIEMPRE dentro del area de
+      // dibujo. Sin el acotado, un proceso con muchos conectores en una lamina
+      // (13 carriles, 136 aristas) empujaba circulos fuera de la diapositiva.
+      const OFF_MIN = DRAW_TOP + 0.20;
+      const OFF_MAX = DRAW_TOP + SLIDE_DRAW_H - 0.30;
       function reservaOffPage(usadas, y) {
-        let cy = y;
-        for (let intento = 0; intento < 24; intento++) {
-          if (!usadas.some(u => Math.abs(u - cy) < OFF_PAGE_SEP)) break;
-          cy += OFF_PAGE_SEP;
-          // Si se sale por abajo, vuelve arriba y sigue buscando hacia arriba
-          if (cy > DRAW_TOP + SLIDE_DRAW_H - 0.25) cy = y - OFF_PAGE_SEP * (intento + 1);
+        const base = Math.min(OFF_MAX, Math.max(OFF_MIN, y));
+        const libre = (v) => !usadas.some(u => Math.abs(u - v) < OFF_PAGE_SEP);
+        if (libre(base)) { usadas.push(base); return base; }
+        for (let k = 1; k <= 24; k++) {
+          const abajo = base + OFF_PAGE_SEP * k;
+          if (abajo <= OFF_MAX && libre(abajo)) { usadas.push(abajo); return abajo; }
+          const arriba = base - OFF_PAGE_SEP * k;
+          if (arriba >= OFF_MIN && libre(arriba)) { usadas.push(arriba); return arriba; }
         }
-        usadas.push(cy);
-        return cy;
+        // Sin hueco: se acepta el solape antes que salirse de la lamina
+        usadas.push(base);
+        return base;
       }
 
       state.edges.forEach(e => {
@@ -6574,10 +6588,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const ALTO_FILA = 0.95;      // medido: contenido real 0,54-0,65" + aire
     const GAP_BANDA = 0.12;      // respiro entre bandas
 
-    const totalBandas = Math.ceil(totalRanks / ranksPorBanda);
-    const bandaInfo = [];
-    for (let b = 0; b < totalBandas; b++) {
-      const ini = b * ranksPorBanda, fin = Math.min(totalRanks, (b + 1) * ranksPorBanda);
+    function medirBanda(ini, fin) {
       const lanes = new Set(); const porCelda = {}; let maxApil = 1;
       state.nodes.forEach(n => {
         const r = ranks[n.id];
@@ -6589,10 +6600,31 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         maxApil = Math.max(maxApil, porCelda[k]);
       });
       const filas = Math.max(1, lanes.size);
-      bandaInfo.push({ ini, fin,
-        lanes: laneList.filter(l => lanes.has(l)),
-        alto: filas * ALTO_FILA + (maxApil - 1) * 0.55 });
+      return { ini, fin, lanes: laneList.filter(l => lanes.has(l)),
+               alto: filas * ALTO_FILA + (maxApil - 1) * 0.55 };
     }
+
+    // Bandas de tramo VARIABLE. Un tramo de 4 columnas que toca 13 actores
+    // necesitaria 12" de alto y se salia de la lamina; se estrecha el tramo
+    // hasta que quepa, porque menos columnas tocan menos actores.
+    const bandaInfo = [];
+    {
+      let r = 0, guarda = 0;
+      while (r < totalRanks && guarda++ < 400) {
+        let span = ranksPorBanda;
+        let bi = medirBanda(r, Math.min(totalRanks, r + span));
+        while (bi.alto > ALTO_UTIL && span > 1) {
+          span = Math.max(1, Math.floor(span / 2));
+          bi = medirBanda(r, Math.min(totalRanks, r + span));
+        }
+        bandaInfo.push(bi);
+        r = bi.fin;
+      }
+    }
+    // Mapa rango -> indice de banda (los tramos ya no son uniformes)
+    const bandaIdxDeRank = {};
+    bandaInfo.forEach((bi, i) => { for (let k = bi.ini; k < bi.fin; k++) bandaIdxDeRank[k] = i; });
+    const saltaBandaG = (ra, rb) => bandaIdxDeRank[ra] !== bandaIdxDeRank[rb];
 
     // Empaqueta bandas en láminas hasta agotar el alto útil
     const laminasPlan = [];
@@ -6611,7 +6643,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     // Las laminas ya no son de tamano fijo: hace falta un mapa rango -> lamina
     const laminaDeBanda = {};
     laminasPlan.forEach((bs, li) => bs.forEach(bi => { laminaDeBanda[bi.ini] = li + 1; }));
-    const laminaDeRank = (r) => laminaDeBanda[Math.floor(r / ranksPorBanda) * ranksPorBanda] || 1;
+    const laminaDeRank = (r) => {
+      const bi = bandaInfo[bandaIdxDeRank[r]];
+      return bi ? (laminaDeBanda[bi.ini] || 1) : 1;
+    };
 
     // Letra única por arista que salta de BANDA (cubre también el salto de lámina)
     const edgeLetters = {};
@@ -6620,7 +6655,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     state.edges.forEach(e => {
       const ra = ranks[e.from], rb = ranks[e.to];
       if (ra === undefined || rb === undefined) return;
-      if (Math.floor(ra / ranksPorBanda) !== Math.floor(rb / ranksPorBanda)) {
+      if (saltaBandaG(ra, rb)) {
         edgeLetters[e.id] = LETTERS[letterIdx % 26];
         letterIdx++;
       }

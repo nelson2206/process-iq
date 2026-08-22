@@ -107,7 +107,7 @@
     attachAiListeners();
     updateAiUi();
     // Hook para demos/pruebas (cargadores de ejemplo)
-    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob(), astar: (on) => { state._astar = !!on; invalidarRutas(); return !!on; } };
+    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob(), astar: (on) => { state._astar = !!on; invalidarRutas(); return !!on; }, nivel: (n) => aplicarNivel(n), niveles: () => NIVELES, modeloCompleto: () => state._modeloCompleto ? state._modeloCompleto.nodes.length : 0 };
   }
 
   function populateSelects() {
@@ -216,6 +216,7 @@
     $('#btnConnect').addEventListener('click', toggleConnectMode);
     $('#btnDelete').addEventListener('click', deleteSelection);
     $('#btnAutoLayout').addEventListener('click', autoLayout);
+    cablearSelectorNivel();
   }
 
   function toggleConnectMode() {
@@ -2677,6 +2678,206 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   // =================== AUTO LAYOUT (swimlanes horizontales + flow left-to-right) ===================
   // Arriba-izquierda → abajo-derecha. Cada "carretera" horizontal = responsable.
   // Las actividades se colocan en su carretera según su rank (BFS).
+  // ============================================================
+  // NIVEL DE GRANULARIDAD
+  //
+  // El proceso se genera UNA vez al máximo detalle y se colapsa localmente.
+  // Preguntar el nivel y regenerar era el bucle que hundió a la herramienta
+  // que evaluamos: cada cambio de opinión costaba otra llamada de IA y varios
+  // minutos. Aquí cambiar de vista es instantáneo y no gasta nada.
+  //
+  // Además baja la densidad, que es la causa real de que las flechas se pisen:
+  // un proceso de 154 nodos en vista ejecutiva son ~20 y el ruteo deja de ser
+  // un problema (ver pendiente #3 del HANDOFF).
+  //
+  // Si la IA etiquetó los nodos con `nivel` y `padre`, manda esa jerarquía.
+  // Si no —proceso importado o dibujado a mano— se deduce: lo que un mismo
+  // actor hace de corrido entre dos decisiones es UNA actividad de negocio.
+  // ============================================================
+  const NIVELES = [
+    { id: 1, nombre: 'Ejecutivo', desc: 'Un paso por actor entre decisiones' },
+    { id: 2, nombre: 'Actividad', desc: 'Agrupa tareas consecutivas del mismo actor' },
+    { id: 3, nombre: 'Detalle', desc: 'Todas las tareas, como se levantó' }
+  ];
+
+  function _esHito(n) {
+    return n.type === 'decision' || n.type === 'start' || n.type === 'end' ||
+           n.type === 'intermediate';
+  }
+  function _carrilDe(n) {
+    return (state._lanes && state._lanes.laneOf && state._lanes.laneOf[n.id]) ||
+           n.owner || n.role || 'Sin asignar';
+  }
+
+  // Agrupa cada cadena de tareas consecutivas del mismo carril.
+  // minTareas: a partir de cuántas merece la pena agrupar.
+  function _gruposPorCadena(nodes, edges, minTareas) {
+    const salida = {}, entrada = {};
+    edges.forEach(e => {
+      (salida[e.from] = salida[e.from] || []).push(e.to);
+      (entrada[e.to] = entrada[e.to] || []).push(e.from);
+    });
+    const porId = {}; nodes.forEach(n => { porId[n.id] = n; });
+    const grupoDe = {}, grupos = [], visitado = {};
+
+    nodes.forEach(n => {
+      if (visitado[n.id] || _esHito(n)) return;
+      // Retrocede hasta el principio de la cadena
+      let ini = n;
+      for (;;) {
+        const prev = (entrada[ini.id] || []).map(id => porId[id]).filter(Boolean);
+        if (prev.length !== 1) break;
+        const p = prev[0];
+        if (_esHito(p) || _carrilDe(p) !== _carrilDe(n)) break;
+        if ((salida[p.id] || []).length !== 1) break;
+        if (visitado[p.id]) break;
+        ini = p;
+      }
+      // Avanza recogiendo la cadena
+      const cadena = [];
+      let cur = ini;
+      for (;;) {
+        if (!cur || visitado[cur.id] || _esHito(cur) || _carrilDe(cur) !== _carrilDe(n)) break;
+        cadena.push(cur); visitado[cur.id] = true;
+        const sig = (salida[cur.id] || []).map(id => porId[id]).filter(Boolean);
+        if (sig.length !== 1) break;
+        if ((entrada[sig[0].id] || []).length !== 1) break;
+        cur = sig[0];
+      }
+      if (cadena.length >= minTareas) {
+        const g = {
+          id: 'grp_' + cadena[0].id,
+          label: cadena.length + ' pasos · ' + _carrilDe(n),
+          type: 'task', marker: 'subprocess',
+          owner: cadena[0].owner, role: cadena[0].role,
+          _hijos: cadena.map(c => c.id),
+          _detalle: cadena.map(c => c.label).filter(Boolean),
+          pains: cadena.reduce((a, c) => a.concat(c.pains || []), [])
+        };
+        grupos.push(g);
+        cadena.forEach(c => { grupoDe[c.id] = g.id; });
+      }
+    });
+    return { grupos, grupoDe };
+  }
+
+  // Proyecta el modelo completo al nivel pedido
+  function proyectarNivel(nivel) {
+    const full = state._modeloCompleto;
+    if (!full) return null;
+    if (nivel >= 3) {
+      return { nodes: full.nodes.map(n => ({ ...n })), edges: full.edges.map(e => ({ ...e })) };
+    }
+
+    const conNivel = full.nodes.filter(n => n.nivel);
+    let grupos = [], grupoDe = {};
+    if (conNivel.length > full.nodes.length * 0.5) {
+      // Jerarquía explícita de la IA
+      const visibles = {};
+      full.nodes.forEach(n => { if ((n.nivel || 3) <= nivel) visibles[n.id] = true; });
+      full.nodes.forEach(n => {
+        if (visibles[n.id]) return;
+        let p = n.padre;
+        while (p && !visibles[p]) { const pn = full.nodes.find(x => x.id === p); p = pn && pn.padre; }
+        if (p) grupoDe[n.id] = p;
+      });
+    } else {
+      const r = _gruposPorCadena(full.nodes, full.edges, nivel === 1 ? 2 : 3);
+      grupos = r.grupos; grupoDe = r.grupoDe;
+    }
+
+    const repr = (id) => grupoDe[id] || id;
+    const nodes = [], puestos = {};
+    full.nodes.forEach(n => {
+      const r = repr(n.id);
+      if (r === n.id) { nodes.push({ ...n }); puestos[n.id] = true; }
+      else if (!puestos[r]) {
+        const g = grupos.find(x => x.id === r);
+        if (g) { nodes.push({ ...g }); puestos[r] = true; }
+      }
+    });
+
+    const vistas = {}, edges = [];
+    full.edges.forEach(e => {
+      const a = repr(e.from), b = repr(e.to);
+      if (a === b) return;                       // arista interna al grupo
+      const k = a + '>' + b;
+      if (vistas[k]) return;
+      vistas[k] = true;
+      edges.push({ ...e, id: 'v_' + e.id, from: a, to: b });
+    });
+    return { nodes, edges };
+  }
+
+  // ¿El modelo completo guardado sigue siendo el de este proceso? Si se cargó
+  // otro proceso (demo, ingesta, JSON) hay que recapturarlo: si no, colapsar
+  // devolvería los nodos del proceso anterior.
+  // Comparar ids no basta: las demos y los BPMN importados usan el mismo
+  // esquema de identificadores y un proceso nuevo parecia una proyeccion del
+  // anterior. Cada modelo completo lleva un sello y sus proyecciones lo heredan;
+  // un nodo sin sello significa que el proceso se reemplazo por otra via.
+  let _selloSeq = 0;
+  function _modeloVigente() {
+    const full = state._modeloCompleto;
+    if (!full || !full.nodes.length || !state.nodes.length) return false;
+    return state.nodes.every(n => n._sello === state._selloModelo);
+  }
+
+  function aplicarNivel(nivel, opts) {
+    opts = opts || {};
+    if (!_modeloVigente()) { state.meta.nivelVista = 3; fijarModeloCompleto(); }
+    const p = proyectarNivel(nivel);
+    if (!p) return null;
+    state.meta.nivelVista = nivel;
+    p.nodes.forEach(n => { n._sello = state._selloModelo; });
+    state.nodes = p.nodes; state.edges = p.edges;
+    state._lanes = null; state._loopSlots = null;
+    invalidarRutas();
+    autoLayout();
+    if (!opts.silent) { render(); actualizarSelectorNivel(); }
+    return { nivel: nivel, nodos: p.nodes.length, aristas: p.edges.length };
+  }
+
+  // Se recaptura cada vez que el proceso cambia de verdad (ingesta, import, demo)
+  function fijarModeloCompleto() {
+    state._selloModelo = 'm' + (++_selloSeq);
+    state.nodes.forEach(n => { n._sello = state._selloModelo; });
+    state._modeloCompleto = { nodes: state.nodes.map(n => ({ ...n })), edges: state.edges.map(e => ({ ...e })) };
+    state.meta.nivelVista = state.meta.nivelVista || 3;
+  }
+
+  function cablearSelectorNivel() {
+    const cont = document.getElementById('nivelVista');
+    if (!cont) return;
+    cont.addEventListener('click', (ev) => {
+      const b = ev.target.closest('button[data-nivel]');
+      if (!b) return;
+      const n = +b.dataset.nivel;
+      if (!state.nodes.length) return;
+      const r = aplicarNivel(n);
+      if (r) {
+        const nv = NIVELES.find(x => x.id === n);
+        copilotPost('ai', '**Vista ' + nv.nombre.toLowerCase() + '.** ' + nv.desc +
+          '. Quedan **' + r.nodos + ' pasos** de ' + state._modeloCompleto.nodes.length +
+          '. El proceso completo sigue guardado: cambiar de vista no pierde nada ni vuelve a llamar a la IA.');
+      }
+    });
+  }
+
+  function actualizarSelectorNivel() {
+    const cont = document.getElementById('nivelVista');
+    if (!cont) return;
+    const activo = state.meta.nivelVista || 3;
+    [].forEach.call(cont.querySelectorAll('button'), b => {
+      b.classList.toggle('activo', +b.dataset.nivel === activo);
+    });
+    const info = document.getElementById('nivelInfo');
+    if (info) {
+      const full = state._modeloCompleto;
+      info.textContent = full ? (state.nodes.length + ' de ' + full.nodes.length + ' pasos') : '';
+    }
+  }
+
   function autoLayout() {
     invalidarRutas();
     if (state.nodes.length === 0) return;
@@ -7871,6 +8072,11 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     persist();
     autoLayout();
     runSimulation();
+    // El flujo recien importado es el modelo COMPLETO: de el cuelgan las vistas
+    // por nivel. Sin esto, colapsar a ejecutivo no tendria de donde recuperar.
+    state.meta.nivelVista = 3;
+    fijarModeloCompleto();
+    actualizarSelectorNivel();
     persist();
     return { count, tasks, gateways, events, flows };
   }

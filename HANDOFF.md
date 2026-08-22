@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v2.7.3 — banco de pruebas de regresión sobre procesos reales
+> **Última actualización:** v2.9.2 — vistas por nivel de granularidad
 
 ---
 
@@ -52,6 +52,18 @@
 - **9 acciones analíticas** con Claude: `suggest-kpis`, `propose-tobe`, `raci`, `impact-effort`, `automation`, `backlog`, `exec-summary`, `sipoc`, `bottleneck`.
 - **Análisis profundo de dolores**, separado en (a) evidenciados en el flujo y (b) hipótesis del sector.
 - Regla reforzada de **paralelismo** (fork/join en vez de secuencia).
+
+### Nivel de granularidad
+- El proceso se genera UNA vez al maximo detalle y se colapsa localmente en tres
+  vistas: Ejecutivo, Actividad y Detalle. Cambiar de vista es instantaneo y no
+  vuelve a llamar a la IA.
+- Si la IA etiqueta los nodos con nivel y padre, manda esa jerarquia. Si no
+  (proceso importado o dibujado a mano) se deduce: lo que un mismo actor hace de
+  corrido entre dos decisiones es UNA actividad de negocio.
+- Es ademas el remedio a la densidad. Venta de Lotes pasa de 3 flechas sobre
+  cajas y 10 cruces a CERO en vista ejecutiva; un BPMN importado de 119 nodos,
+  de 247/115 a 4/0.
+- API de pruebas: ProcessIQ.nivel(1|2|3), ProcessIQ.niveles().
 
 ### Entregables
 - **Ficha de Proceso** corporativa de 12 bloques (formato PR-DU-COM-*).

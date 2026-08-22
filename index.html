@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=2.8.3" />
+  <link rel="stylesheet" href="styles.css?v=2.9.2" />
   <script defer src="https://umami-mbc.vercel.app/script.js" data-website-id="0f3aaa08-7bb8-4aec-b09b-d9c4abf3868c"></script>
 </head>
 <body>
@@ -183,6 +183,14 @@
         <span class="shape-preview">⇲</span>
         <span class="shape-label">Auto-layout</span>
       </button>
+
+      <div class="toolbar-section-title">Nivel de detalle</div>
+      <div id="nivelVista" class="nivel-vista" role="group" aria-label="Nivel de detalle del flujo">
+        <button type="button" data-nivel="1" title="Ejecutivo: un paso por actor entre decisiones">Ejec.</button>
+        <button type="button" data-nivel="2" title="Actividad: agrupa tareas consecutivas del mismo actor">Activ.</button>
+        <button type="button" data-nivel="3" class="activo" title="Detalle: todas las tareas, como se levantó">Detalle</button>
+      </div>
+      <div id="nivelInfo" class="nivel-info"></div>
     </aside>
 
     <!-- ====== CANVAS ====== -->
@@ -762,6 +770,6 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="kpi-library.js?v=1.6.1"></script>
-  <script src="app.js?v=2.8.3"></script>
+  <script src="app.js?v=2.9.2"></script>
 </body>
 </html>

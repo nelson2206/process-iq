@@ -107,7 +107,7 @@
     attachAiListeners();
     updateAiUi();
     // Hook para demos/pruebas (cargadores de ejemplo)
-    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob(), astar: (on) => { state._astar = !!on; invalidarRutas(); return !!on; }, nivel: (n) => aplicarNivel(n), niveles: () => NIVELES, modeloCompleto: () => state._modeloCompleto ? state._modeloCompleto.nodes.length : 0 };
+    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob(), astar: (on) => { state._astar = !!on; invalidarRutas(); return !!on; }, nivel: (n) => aplicarNivel(n), niveles: () => NIVELES, askProfundidad: () => askProfundidad(), modeloCompleto: () => state._modeloCompleto ? state._modeloCompleto.nodes.length : 0 };
   }
 
   function populateSelects() {
@@ -7819,8 +7819,13 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           ingestBusy(true);
           ingestProgress('Interpretando con IA...', null);
         }
-        const spec = await aiBuildProcess(text, label, (m) => ingestProgress(m, null), { roles });
+        ingestBusy(false);
+        const vista = await askProfundidad();
+        ingestBusy(true);
+        ingestProgress('Interpretando con IA...', null);
+        const spec = await aiBuildProcess(text, label, (m) => ingestProgress(m, null), { roles, vista });
         throwIfCancelled();
+        if (vista < 3) aplicarNivel(vista, { silent: true });
         ingestProgress('Proceso generado con IA', 100);
         closeIngestModal();
         maybeFitOnLoad();
@@ -8170,7 +8175,8 @@ Devuelves EXCLUSIVAMENTE un objeto JSON válido (sin texto adicional, sin markdo
               "sistemas"?: [{"nombre":string,"uso"?:string}], "terminos"?: [{"termino":string,"definicion":string}] },
   "nodes": [ { "k": string (id corto único, p.ej. "a1"), "type": "start"|"end"|"task"|"system"|"decision"|"document"|"data"|"intermediate",
                "label": string, "owner"?: string (rol/área responsable = swimlane), "system"?: string (sistema/app usado),
-               "exec"?: "manual"|"system"|"automatic"|"email"|"phone", "gateway"?: "exclusive"|"parallel"|"inclusive", "notes"?: string } ],
+               "exec"?: "manual"|"system"|"automatic"|"email"|"phone", "gateway"?: "exclusive"|"parallel"|"inclusive", "notes"?: string,
+               "nivel": 1|2|3 (1 = hito de negocio, 2 = actividad, 3 = tarea de detalle), "padre"?: k (nodo de nivel superior del que depende) } ],
   "edges": [ { "from": k, "to": k, "label"?: string (etiqueta de la rama, p.ej. "Sí"/"No") } ]
 }
 
@@ -8184,6 +8190,14 @@ Reglas:
 - Modela loops (reprocesos) y convergencias reales del texto; no inventes pasos que el documento no menciona.
 - "owner" es el rol que ejecuta cada actividad (define los carriles). "system" es la herramienta (CRM, ERP, OnBase, etc.).
 - "notes" resume la actividad en 1-3 frases. Numeración y ruteo se derivan solos; no los pongas en labels.
+- NIVEL (obligatorio en cada nodo): permite ver el mismo proceso a tres profundidades sin regenerarlo.
+  * nivel 1 = lo que contarías a un gerente en 30 segundos. Hitos de negocio y decisiones que cambian el resultado.
+  * nivel 2 = la actividad que ejecuta un rol de principio a fin ("Validar expediente").
+  * nivel 3 = el paso operativo dentro de esa actividad ("Descargar el PDF del gestor documental").
+  Los eventos start/end y las decisiones que abren caminos distintos son SIEMPRE nivel 1.
+  Todo nodo de nivel 2 o 3 lleva "padre" apuntando al nodo inmediatamente superior del que forma parte.
+  Reparte con criterio: si todo queda en nivel 1 la vista ejecutiva no resume nada, y si todo queda en nivel 3
+  no hay resumen posible. Como referencia sana, en torno a 1 de cada 4 nodos debería ser nivel 1.
 - Si el documento trae código de proceso, versión, objetivo, alcance, sistemas o glosario, rellénalos en "ficha".
 - Responde SOLO con el JSON.`;
 
@@ -8516,6 +8530,34 @@ Reglas:
     });
   }
 
+  // Modal: profundidad del levantamiento. NO decide QUE se genera --siempre se
+  // genera el proceso completo-- sino con cuanto detalle lo mira la IA y en que
+  // vista se abre. Elegir mal no cuesta nada: el selector de nivel cambia la
+  // vista al instante y sin volver a llamar a la IA.
+  function askProfundidad() {
+    return new Promise(resolve => {
+      const html =
+        '<p class="panel-hint">El proceso se genera <b>completo</b> en cualquier caso. Esto define ' +
+        'con cuanto detalle lo mira la IA y en que vista se abre; podras cambiar de vista cuando ' +
+        'quieras con el selector <b>Nivel de detalle</b>, sin volver a generar.</p>' +
+        '<div class="prof-opts">' +
+        '<label class="prof-opt"><input type="radio" name="prof" value="1" />' +
+        '<span><b>Ejecutivo</b><small>Los hitos y las decisiones. Para comite o SteerCo.</small></span></label>' +
+        '<label class="prof-opt"><input type="radio" name="prof" value="2" checked />' +
+        '<span><b>Actividad</b><small>Lo que hace cada rol de principio a fin. El equilibrio habitual.</small></span></label>' +
+        '<label class="prof-opt"><input type="radio" name="prof" value="3" />' +
+        '<span><b>Detalle</b><small>Cada paso operativo. Para manual de procedimientos o automatizacion.</small></span></label>' +
+        '</div>';
+      openModal('Nivel de detalle del levantamiento', html, () => {
+        const sel = document.querySelector('#modalBody input[name="prof"]:checked');
+        resolve(sel ? +sel.value : 2);
+      });
+      const ok = $('#modalOk'); if (ok) ok.textContent = 'Generar';
+      const cancel = $('#modalCancel');
+      if (cancel) { const prev = cancel.onclick; cancel.onclick = (e) => { resolve(2); if (prev) prev(e); }; }
+    });
+  }
+
   async function aiBuildProcess(sourceText, sourceLabel, statusFn, opts) {
     const setStatus = statusFn || (() => {});
     setStatus('⏳ Interpretando con IA… (puede tardar unos segundos)');
@@ -8527,7 +8569,13 @@ Reglas:
         'Persona no listada: no la conviertas en carril; asigna la actividad al rol que corresponda por contexto.';
     }
     const merge = (sourcesList().length > 1) ? MERGE_RULES : '';
-    const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.${merge}${roles}\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, MAX_AI_CHARS)}`;
+    const NL2 = String.fromCharCode(10);
+    const prof = (opts && opts.vista) ? (NL2 + NL2 + '=== PROFUNDIDAD PEDIDA ===' + NL2 + ({
+      1: 'El consultor presentara esto a un comite. Prioriza hitos de negocio y decisiones que cambian el resultado; aun asi etiqueta con nivel 3 los pasos operativos que el texto mencione.',
+      2: 'Detalle habitual de un levantamiento: la actividad que ejecuta cada rol de principio a fin.',
+      3: 'Levantamiento exhaustivo: recoge cada paso operativo que el texto mencione, incluidos sistemas y validaciones intermedias.'
+    })[opts.vista]) : '';
+    const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.${merge}${roles}${prof}\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, MAX_AI_CHARS)}`;
     const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: 16000 });
     const spec = parseJsonLoose(raw);
     buildProcessFromAiSpec(spec, sourceLabel);
@@ -8552,7 +8600,8 @@ Reglas:
         label: t.label || '(sin título)', executionType: t.exec || (type === 'task' ? 'manual' : ''),
         gatewayType: (type === 'decision' ? (t.gateway || 'exclusive') : undefined),
         activityCode: '', owner: t.owner || '', system: t.system || '',
-        time: '', volume: '', va: '', sla: '', docsIn: '', docsOut: '', rules: '', notes: t.notes || '', pains: []
+        time: '', volume: '', va: '', sla: '', docsIn: '', docsOut: '', rules: '', notes: t.notes || '', pains: [],
+        nivel: (t.nivel >= 1 && t.nivel <= 3) ? +t.nivel : undefined, _padreK: t.padre || null
       };
       idMap[t.k] = node.id;
       state.nodes.push(node);
@@ -8561,10 +8610,21 @@ Reglas:
       const f = idMap[e.from], to = idMap[e.to];
       if (f && to) state.edges.push({ id: 'e' + (state.nextId++), from: f, to, label: e.label || '' });
     });
+    // La IA referencia al padre por su id corto (a3); aquí se traduce al id real.
+    // Los hitos (start/end/decision) se fuerzan a nivel 1: son los que sostienen
+    // la vista ejecutiva y la IA a veces los deja en 2.
+    state.nodes.forEach(n => {
+      if (n._padreK && idMap[n._padreK]) n.padre = idMap[n._padreK];
+      delete n._padreK;
+      if (_esHito(n)) n.nivel = 1;
+    });
     ensureDecisionBranches();
     persist();
     autoLayout();
     runSimulation();
+    state.meta.nivelVista = 3;
+    fijarModeloCompleto();
+    actualizarSelectorNivel();
     persist();
   }
 

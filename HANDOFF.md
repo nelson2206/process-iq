@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v2.9.2 — vistas por nivel de granularidad
+> **Última actualización:** v2.9.5 — la IA etiqueta el nivel; pregunta de profundidad
 
 ---
 
@@ -63,7 +63,16 @@
 - Es ademas el remedio a la densidad. Venta de Lotes pasa de 3 flechas sobre
   cajas y 10 cruces a CERO en vista ejecutiva; un BPMN importado de 119 nodos,
   de 247/115 a 4/0.
-- API de pruebas: ProcessIQ.nivel(1|2|3), ProcessIQ.niveles().
+- La IA etiqueta cada nodo con nivel (1|2|3) y padre; los hitos (start/end/
+  decision) se fuerzan a nivel 1 al construir. Si faltan los campos, actua la
+  heuristica por cadenas, ya probada.
+- Antes de generar se pregunta la PROFUNDIDAD (modal askProfundidad). No decide
+  que se genera --siempre el proceso completo-- sino con cuanto detalle mira la
+  IA y en que vista se abre.
+- API de pruebas: ProcessIQ.nivel(1|2|3), ProcessIQ.niveles(), ProcessIQ.askProfundidad().
+
+> Sin probar con llamada real de IA: el etiquetado se valido con un spec
+> sintetico via buildProcessFromAiSpec. Ver pendiente #2.
 
 ### Entregables
 - **Ficha de Proceso** corporativa de 12 bloques (formato PR-DU-COM-*).

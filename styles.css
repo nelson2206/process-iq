@@ -2522,3 +2522,16 @@ code {
   background: var(--accent, #FF0054); border-color: var(--accent, #FF0054); color: #fff;
 }
 .nivel-info { font-size: 10px; color: var(--text-muted, #8a8a8a); text-align: center; min-height: 13px; }
+
+/* Opciones de profundidad del levantamiento */
+.prof-opts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.prof-opt {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; cursor: pointer;
+  border: 1px solid var(--border, #d8d4cc); border-radius: 7px;
+  transition: border-color .12s ease, background .12s ease;
+}
+.prof-opt:hover { border-color: var(--accent, #FF0054); }
+.prof-opt:has(input:checked) { border-color: var(--accent, #FF0054); background: rgba(255, 0, 84, .05); }
+.prof-opt input { margin-top: 3px; accent-color: var(--accent, #FF0054); }
+.prof-opt span { display: flex; flex-direction: column; gap: 2px; }
+.prof-opt small { color: var(--text-muted, #7a7a7a); font-size: 11px; line-height: 1.35; }

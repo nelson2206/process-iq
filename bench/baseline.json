@@ -1,7 +1,7 @@
 {
-  "version": "v2.7.3",
-  "commit": "97ce7c0",
-  "nota": "Filas anonimizadas: los fixtures son procesos reales de cliente y no se versionan. Ver bench/README.md.",
+  "version": "v2.9.5",
+  "commit": "2679990",
+  "nota": "Filas anonimizadas: los fixtures son procesos reales de cliente y no se versionan. Ver bench/README.md. La corrida en vista ejecutiva se obtiene con PIQBench.correr(null, 7000, 1). Sin regresion respecto a la linea base v2.7.3: las 7 metricas en detalle son identicas.",
   "resumen": {
     "casos": 12,
     "importados": 11,
@@ -145,5 +145,25 @@
       "uso": 94,
       "caso": "caso-12"
     }
-  ]
+  ],
+  "resumenPorVista": {
+    "detalle_nivel3": {
+      "flechaSobreCaja": 1804,
+      "cruces": 346,
+      "txtSobreTxt": 1793,
+      "txtSobreFig": 2092,
+      "laminas": 138,
+      "usoMedio": 90,
+      "fueraDeLamina": 0
+    },
+    "ejecutivo_nivel1": {
+      "flechaSobreCaja": 104,
+      "cruces": 0,
+      "txtSobreTxt": 1168,
+      "txtSobreFig": 1354,
+      "laminas": 119,
+      "usoMedio": 95,
+      "fueraDeLamina": 0
+    }
+  }
 }

@@ -128,7 +128,7 @@
   }
 
   // ── Un caso ────────────────────────────────────────────────
-  function unCaso(url, esperaMs) {
+  function unCaso(url, esperaMs, nivel) {
     var nombre = decodeURIComponent(url.split('/').pop());
     var fila = { archivo: nombre };
     var original = PptxGenJS.prototype.writeFile;
@@ -146,6 +146,12 @@
       fila.nodos = snap.nodes; fila.aristas = snap.edges;
       if (!fila.nodos) throw new Error('importó 0 nodos');
 
+      // Vista pedida. El banco medía siempre en detalle y no veía la mejora
+      // que aporta colapsar: es justo donde el diagrama se vuelve presentable.
+      if (nivel && nivel < 3 && ProcessIQ.nivel) {
+        var pr = ProcessIQ.nivel(nivel);
+        if (pr) { fila.nivel = nivel; fila.nodosEnVista = pr.nodos; }
+      }
       var t0 = performance.now();
       ProcessIQ.autoFit({ silent: true });
       fila.autoFitMs = Math.round(performance.now() - t0);
@@ -183,8 +189,9 @@
      * @param {string[]} [archivos] nombres dentro de bench/fixtures/.
      *        Si se omite, se lee bench/fixtures/manifest.json
      * @param {number}   [esperaMs] margen para que termine el export (def. 15000)
+     * @param {number}   [nivel]    vista a medir: 1 ejecutivo, 2 actividad, 3 detalle (def. 3)
      */
-    correr: function (archivos, esperaMs) {
+    correr: function (archivos, esperaMs, nivel) {
       esperaMs = esperaMs || 15000;
       var lista = archivos
         ? Promise.resolve(archivos)
@@ -196,7 +203,7 @@
           if (i >= nombres.length) return Promise.resolve();
           var n = nombres[i++];
           console.log('[bench] ' + i + '/' + nombres.length + '  ' + n);
-          return unCaso(DIR + encodeURIComponent(n), esperaMs).then(function (f) {
+          return unCaso(DIR + encodeURIComponent(n), esperaMs, nivel).then(function (f) {
             filas.push(f);
             return siguiente();
           });
@@ -232,6 +239,7 @@
             };
           }));
           console.log('[bench] RESUMEN', resumen);
+          resumen.nivel = nivel || 3;
           return { version: (document.querySelector('script[src*="app.js"]') || {}).src || '?',
                    resumen: resumen, filas: filas };
         });

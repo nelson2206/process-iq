@@ -11,7 +11,7 @@
 
 | | |
 |---|---|
-| **App en vivo** | https://nelson2206.github.io/process-iq/ |
+| **App en vivo** | https://procesos.mbc-latam.com/ (dominio propio via CNAME desde el 3-sep-2026; nelson2206.github.io/process-iq redirige 301 alli) |
 | **Repositorio** | https://github.com/nelson2206/process-iq (público) |
 | **Carpeta local** | `C:\Users\nebernal\OneDrive - Indra\Documentos\Propuestas\Transformación\ProcessIQ` |
 | **Stack** | HTML + CSS + JS vanilla. **Sin backend, sin build, sin npm.** |
@@ -289,6 +289,16 @@ Secuencia completa (los cuatro pasos importan):
    `gh api -X POST repos/nelson2206/process-iq/pages/builds`
 4. **Verificar en vivo** que la versión servida es la nueva
    `curl -s --ssl-no-revoke "https://nelson2206.github.io/process-iq/index.html?cb=123"`
+
+> ⚠️ **Desde la red corporativa el dominio nuevo esta bloqueado** (medido el 6-sep-2026):
+> https://procesos.mbc-latam.com devuelve 403 con la pagina "Noncompliant action" y la
+> cabecera X-Direct-Response, sin ninguna cabecera de GitHub; github.io si responde con
+> Server: GitHub.com y redirige al dominio. Es un proxy de red que aun no categoriza el
+> dominio, no un fallo del despliegue. Para verificar la version desplegada sin pasar por el
+> dominio: gh api repos/nelson2206/process-iq/contents/index.html --jq .content | base64 -d
+> | grep app.js?v= ; y comparar gh api .../pages/builds/latest --jq .commit con git rev-parse HEAD.
+> Pedir a Seguridad que categorice procesos.mbc-latam.com; hasta entonces los usuarios en
+> red corporativa veran el mismo 403.
 
 ### Edición de código
 

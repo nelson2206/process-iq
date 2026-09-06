@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.0.1 — PPTX editable: un objeto por nodo, nombres, grilla y conectores anclados
+> **Última actualización:** v3.0.2 — conectores de página anclados en un solo tramo; codos escalonados en rombos; arrastre en lienzo corregido
 
 ---
 
@@ -89,6 +89,17 @@
 - Medido sobre Venta de Lotes, lamina 2: 43 formas con texto dentro (antes 0),
   8 conectores anclados por ambos extremos, 14 lineas sueltas (antes 26; las que
   quedan son conectores de pagina y saltos de banda, a proposito).
+- v3.0.2: los conectores de pagina y de salto de banda tambien son UN cxnSp
+  anclado nodo <-> circulo (antes 3 lineas sueltas). Cada rama que sale de un
+  mismo nodo lleva un codo distinto (adj1 del bentConnector3, 20-80 %): antes
+  cuatro salidas de un rombo compartian el tronco y se veian como una sola.
+  El paso de apilado vertical usa el alto REAL de la etiqueta (altoEtiqueta),
+  no 0,52 fijo. Medido: 52/52 conectores anclados, lamina 3 con 2 lineas
+  sueltas (antes 14).
+- REGRESION corregida en v3.0.2: la cache de rutas del lienzo (v2.8) solo se
+  invalidaba en autoLayout(); al arrastrar una caja las flechas quedaban en el
+  aire. Ahora render() firma la geometria de los nodos y, si cambia, invalida.
+  Probado: arrastre de +70/+110 px, 0 de 18 flechas en el aire.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

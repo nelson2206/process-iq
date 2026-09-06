@@ -439,8 +439,12 @@
       updateStickyHeaders();
     }
 
-    // Edges. No se llama a astReset() aquí: el ruteo ya se hizo en el relayout
-    // y los paths están cacheados por arista. Repintar debe ser gratis.
+    // Edges. Los paths se cachean por arista para que repintar sea gratis, PERO
+    // la caché sólo se invalidaba en autoLayout(): al arrastrar una caja a mano
+    // las flechas se quedaban en el aire (regresión de la v2.8). Cualquier
+    // cambio de geometría —arrastre, undo, resize, edición— invalida las rutas.
+    const firmaGeom = state.nodes.map(n => n.id + ':' + (n.x | 0) + ',' + (n.y | 0) + ',' + (n.w | 0) + ',' + (n.h | 0)).join('|');
+    if (firmaGeom !== state._firmaGeom) { state._firmaGeom = firmaGeom; invalidarRutas(); }
     state.edges.forEach(e => {
       const a = getNode(e.from), b = getNode(e.to);
       if (!a || !b) return;
@@ -6345,7 +6349,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const cod = n.activityCode || ('' + (++_seqNombre)).padStart(2, '0');
       const tipo = { start: 'Inicio', end: 'Fin', decision: 'Decisión', intermediate: 'Evento',
                      document: 'Documento', data: 'Datos' }[n.type] || 'Tarea';
-      const nom = tipo + ' ' + cod + ' · ' + String(n.label || '').replace(/\s+/g, ' ').slice(0, 48);
+      // pptxgenjs escribe el nombre en el XML sin escapar: un "&" o "<" en la
+      // etiqueta corrompería el archivo. Se limpian antes.
+      const nom = tipo + ' ' + cod + ' · ' + String(n.label || '').replace(/[&<>"]/g, '').replace(/\s+/g, ' ').slice(0, 48);
       nombresPorNodo[n.id] = nom;
       return nom;
     }
@@ -6638,7 +6644,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           // Paso que incluye la etiqueta bajo la figura (decisiones/eventos la
           // llevan debajo) para que dos nodos apilados no se solapen el texto.
           const labelBelow = (n.type === 'decision' || n.type === 'start' || n.type === 'end' || n.type === 'intermediate');
-          const step = Math.min((lh - 0.1) / total, sz.h + (labelBelow ? 0.52 : 0.12));
+          // El paso incluye el alto REAL de la etiqueta: con 0,52 fijo, una
+          // pregunta de 4 líneas bajo un rombo pisaba el rombo apilado debajo.
+          const step = Math.min((lh - 0.1) / total, sz.h + (labelBelow ? altoEtiqueta(n.label, sz.w + 0.9, 9) + 0.12 : 0.12));
           cellY = ly + (lh - (total - 1) * step - sz.h) / 2 + idx * step;
         }
         const gx = g5(cellX), gy = g5(cellY), gw = g5(sz.w), gh = g5(sz.h);
@@ -6897,6 +6905,15 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       // dos formas: al mover una caja en PowerPoint, la flecha la sigue y
       // PowerPoint la re-rutea. Los codos que calculábamos aquí se pierden a
       // cambio de eso; es la decisión tomada (corregir > fidelidad al abrir).
+      // Varias ramas saliendo del mismo nodo (un rombo) compartían el mismo codo
+      // y se veían como una sola línea. Cada rama recibe un codo distinto: adj1
+      // del bentConnector3, en milésimas de % del ancho del conector.
+      const _ramasPorOrigen = {};
+      function adjRama(idOrigen) {
+        const k = (_ramasPorOrigen[idOrigen] = (_ramasPorOrigen[idOrigen] || 0) + 1);
+        return [50000, 35000, 65000, 80000, 20000][(k - 1) % 5];
+      }
+
       function emitirConector(slide, a, b, ba, bb, e, esMensaje) {
         let ladoA, ladoB, p1, p2;
         if (bb.x >= ba.x + ba.w - 0.01) {
@@ -6918,7 +6935,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           flipH: p2.x < p1.x, flipV: p2.y < p1.y,
           line: { color: esMensaje ? 'B8879E' : 'FF0054', width: 0.5,
                   dashType: esMensaje ? 'dash' : 'solid', endArrowType: 'triangle' },
-          objectName: 'Flujo|' + a.id + '|' + b.id + '|' + ladoA + '|' + ladoB
+          objectName: 'Flujo|' + a.id + '|' + b.id + '|' + ladoA + '|' + ladoB + '|' + adjRama(a.id)
         });
         if (e.label) {
           const lx = p1.x + (p2.x - p1.x) * 0.3, ly = p1.y + (p2.y - p1.y) * 0.3;
@@ -6988,18 +7005,23 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const cx = CONN_X_DER;
           const sy = ba.y + ba.h / 2;
           const cy = reservaOffPage(offPageDer, sy);
-          // Si el círculo tuvo que apartarse, se llega en tres tramos ortogonales
-          const xJog = cx - 0.62;
-          if (Math.abs(cy - sy) > 0.01) {
-            slide.addShape('line', { x: ba.x + ba.w, y: sy, w: Math.max(xJog - (ba.x + ba.w), 0.01), h: 0.01, line: { color: '926979', width: 0.85 } });
-            slide.addShape('line', { x: xJog, y: Math.min(sy, cy), w: 0.01, h: Math.abs(cy - sy), line: { color: '926979', width: 0.85 } });
-            slide.addShape('line', { x: xJog, y: cy, w: 0.44, h: 0.01, line: { color: '926979', width: 0.85 } });
-          } else {
-            slide.addShape('line', { x: ba.x + ba.w, y: sy, w: Math.max(cx - 0.18 - (ba.x + ba.w), 0.01), h: 0.01,
-              line: { color: '926979', width: 0.85 } });
-          }
+          // UN solo conector anclado nodo → círculo (antes eran tres líneas
+          // sueltas que no seguían a la caja). El círculo lleva nombre y se
+          // registra en nombresPorNodo con un id sintético para que el
+          // post-proceso lo encuentre. El codo vertical (adj1) se escalona por
+          // conector: con una x fija, cuatro salidas compartían el mismo tronco
+          // y se veían como una sola línea.
+          const idCirc = 'conn:' + sliceIdx + ':der:' + letter + ':' + Math.round(cy * 100);
+          nombresPorNodo[idCirc] = 'Conector ' + letter + ' → ' + targetSlice;
+          const adjDer = [82000, 68000, 54000, 40000, 26000][(offPageDer.length - 1) % 5];
+          slide.addShape('line', {
+            x: ba.x + ba.w, y: Math.min(sy, cy),
+            w: Math.max(cx - 0.18 - (ba.x + ba.w), 0.01), h: Math.max(Math.abs(cy - sy), 0.01),
+            flipV: cy < sy, line: { color: '926979', width: 0.85 },
+            objectName: 'Flujo|' + a.id + '|' + idCirc + '|right|left|' + adjDer
+          });
           slide.addShape('ellipse', { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
-            fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 } });
+            fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 }, objectName: nombresPorNodo[idCirc] });
           slide.addText(letter, { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
             fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
           // Rótulo corto bajo el círculo: la letra ya está dentro, "Conector C"
@@ -7016,19 +7038,20 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const cx = CONN_X_IZQ;
           const ty = bb.y + bb.h / 2;
           const cy = reservaOffPage(offPageIzq, ty);
-          const xJog = cx + 0.62;
+          // UN solo conector anclado círculo → nodo (ver rama derecha)
+          const idCirc = 'conn:' + sliceIdx + ':izq:' + letter + ':' + Math.round(cy * 100);
+          nombresPorNodo[idCirc] = 'Conector ' + letter + ' ← ' + sourceSlice;
           slide.addShape('ellipse', { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
-            fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 } });
+            fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 }, objectName: nombresPorNodo[idCirc] });
           slide.addText(letter, { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
             fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
-          if (Math.abs(cy - ty) > 0.01) {
-            slide.addShape('line', { x: cx + 0.18, y: cy, w: Math.max(xJog - cx - 0.18, 0.01), h: 0.01, line: { color: '926979', width: 0.85 } });
-            slide.addShape('line', { x: xJog, y: Math.min(ty, cy), w: 0.01, h: Math.abs(cy - ty), line: { color: '926979', width: 0.85 } });
-            slide.addShape('line', { x: xJog, y: ty, w: Math.max(bb.x - xJog, 0.01), h: 0.01, line: { color: '926979', width: 0.85, endArrowType: 'triangle' } });
-          } else {
-            slide.addShape('line', { x: cx + 0.18, y: ty, w: Math.max(bb.x - cx - 0.18, 0.01), h: 0.01,
-              line: { color: '926979', width: 0.85, endArrowType: 'triangle' } });
-          }
+          const adjIzq = [18000, 32000, 46000, 60000, 74000][(offPageIzq.length - 1) % 5];
+          slide.addShape('line', {
+            x: cx + 0.18, y: Math.min(cy, ty),
+            w: Math.max(bb.x - cx - 0.18, 0.01), h: Math.max(Math.abs(cy - ty), 0.01),
+            flipV: ty < cy, line: { color: '926979', width: 0.85, endArrowType: 'triangle' },
+            objectName: 'Flujo|' + idCirc + '|' + b.id + '|right|left|' + adjIzq
+          });
           slide.addText(marcaIzq, { x: cx - 0.19, y: cy + 0.19, w: 0.38, h: 0.16,
             fontSize: 7, color: GRAY, italic: true, align: 'center' });
         }
@@ -7541,11 +7564,13 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     });
     let n = 0;
     const out = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/g, (m, body) => {
-      const mm = /<p:cNvPr id="(\d+)" name="Flujo\|([^|"]+)\|([^|"]+)\|(\w+)\|(\w+)"/.exec(body);
+      const mm = /<p:cNvPr id="(\d+)" name="Flujo\|([^|"]+)\|([^|"]+)\|(\w+)\|(\w+)(?:\|(\d+))?"/.exec(body);
       if (!mm) return m;
       const id = mm[1], deId = mm[2], aId = mm[3], ladoA = mm[4], ladoB = mm[5];
       const nA = nombresPorNodo[deId], nB = nombresPorNodo[aId];
-      const fa = nA && porNombre[_xmlEsc(nA)], fb = nB && porNombre[_xmlEsc(nB)];
+      // pptxgenjs escribe los nombres sin escapar; se prueba crudo y escapado
+      const fa = nA && (porNombre[nA] || porNombre[_xmlEsc(nA)]);
+      const fb = nB && (porNombre[nB] || porNombre[_xmlEsc(nB)]);
       const xfrm = (/<a:xfrm[^>]*>[\s\S]*?<\/a:xfrm>/.exec(body) || [''])[0];
       const ln = (/<a:ln[\s\S]*?<\/a:ln>/.exec(body) || [''])[0];
       if (!fa || !fb || !xfrm) return m;
@@ -7555,7 +7580,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       return '<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="' + id + '" name="Flujo ' + _xmlEsc(nA) + ' → ' + _xmlEsc(nB) + '"/>' +
         '<p:cNvCxnSpPr><a:stCxn id="' + fa.id + '" idx="' + ia + '"/><a:endCxn id="' + fb.id + '" idx="' + ib + '"/></p:cNvCxnSpPr>' +
         '<p:nvPr/></p:nvCxnSpPr><p:spPr>' + xfrm +
-        '<a:prstGeom prst="bentConnector3"><a:avLst/></a:prstGeom>' + ln + '</p:spPr></p:cxnSp>';
+        '<a:prstGeom prst="bentConnector3"><a:avLst>' +
+        (mm[6] ? '<a:gd name="adj1" fmla="val ' + mm[6] + '"/>' : '') +
+        '</a:avLst></a:prstGeom>' + ln + '</p:spPr></p:cxnSp>';
     });
     return { xml: out, n: n };
   }

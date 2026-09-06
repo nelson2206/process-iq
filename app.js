@@ -6627,9 +6627,43 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         };
       }
 
+      // ───── Orden vertical dentro de cada celda: afinidad de fila ─────
+      // Dos tareas que comparten celda se apilan según a qué fila conectan:
+      // la que habla con un actor de más abajo va abajo y su flecha ya no
+      // cruza a las hermanas. Hasta v3.0.2 el orden era el de inserción del
+      // modelo, así que la tarea que iba al Cliente podía quedar en medio.
+      // Se barre 3 veces para que la posición ya decidida de un vecino
+      // (fila + fracción dentro de su celda) refine la de los demás.
+      const filaDe = {};
+      nodesInSlice.forEach(n => { filaDe[n.id] = filaIdxOf(n); });
+      const posFila = {};
+      nodesInSlice.forEach(n => { posFila[n.id] = filaDe[n.id] + 0.5; });
+      const vecinosDe = {};
+      state.edges.forEach(e => {
+        if (posFila[e.from] === undefined || posFila[e.to] === undefined || e.from === e.to) return;
+        (vecinosDe[e.from] = vecinosDe[e.from] || []).push(e.to);
+        (vecinosDe[e.to] = vecinosDe[e.to] || []).push(e.from);
+      });
+      const porCelda = {};
+      nodesInSlice.forEach(n => { const k = keyOf(n); (porCelda[k] = porCelda[k] || []).push(n); });
+      const afinidad = (n) => {
+        const vs = vecinosDe[n.id] || [];
+        if (!vs.length) return posFila[n.id];
+        return vs.reduce((a, v) => a + posFila[v], 0) / vs.length;
+      };
+      for (let pasada = 0; pasada < 3; pasada++) {
+        Object.keys(porCelda).forEach(k => {
+          const grp = porCelda[k];
+          if (grp.length < 2) return;
+          grp.sort((p, q) => (afinidad(p) - afinidad(q)) || (p.y - q.y));
+          grp.forEach((n, i) => { posFila[n.id] = filaDe[n.id] + (i + 0.5) / grp.length; });
+        });
+      }
+      const nodesOrdenados = [].concat.apply([], Object.keys(porCelda).map(k => porCelda[k]));
+
       // Posiciones
       const nodeBoxes = new Map();
-      nodesInSlice.forEach(n => {
+      nodesOrdenados.forEach(n => {
         const li = filaIdxOf(n);
         if (li < 0) return;
         const r = colOf(n);
@@ -6727,14 +6761,16 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const compact = b.h < 0.62;
           const hasCode = !!n.activityCode && !compact;
           if (exec && !compact) {
-            // Marcador BPMN: chip de color con la inicial del tipo (USR, RCV, SRV...)
-            slide.addShape('roundRect', {
-              x: b.x + 0.05, y: b.y + 0.05, w: 0.42, h: 0.17,
-              fill: { color: colorExec(exec.color) }, line: { type: 'none' }, rectRadius: 0.03
-            });
+            // Marcador BPMN: chip de color con la sigla del tipo (USR, RCV, SRV...).
+            // UN solo objeto: la forma lleva el texto dentro. Hasta v3.0.2 eran
+            // dos (rectángulo + cuadro de texto) y al mover uno en PowerPoint el
+            // otro se quedaba atrás.
             slide.addText((exec.codePrefix || 'ACT'), {
+              shape: 'roundRect', rectRadius: 0.03,
               x: b.x + 0.05, y: b.y + 0.05, w: 0.42, h: 0.17,
-              fontSize: 6.5, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: T_FONT
+              fill: { color: colorExec(exec.color) }, line: { type: 'none' }, margin: 0,
+              fontSize: 6.5, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: T_FONT,
+              objectName: 'Tipo ' + (exec.codePrefix || 'ACT') + ' · ' + nombreDe(n)
             });
           }
           // Código de actividad junto al chip
@@ -6742,7 +6778,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             slide.addText('[' + n.activityCode + ']', {
               x: b.x + (exec ? 0.5 : 0.08), y: b.y + 0.04, w: b.w - 0.55, h: 0.18,
               fontSize: 7, bold: true, color: (exec ? colorExec(exec.color) : GRAY),
-              align: 'left', valign: 'middle', fontFace: T_FONT
+              align: 'left', valign: 'middle', fontFace: T_FONT, margin: 0,
+              objectName: 'Código ' + n.activityCode + ' · ' + nombreDe(n)
             });
           }
           // El texto de la tarea ya va DENTRO de la forma (ver arriba)

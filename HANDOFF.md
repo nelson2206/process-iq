@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.0.2 — conectores de página anclados en un solo tramo; codos escalonados en rombos; arrastre en lienzo corregido
+> **Última actualización:** v3.0.3 — apilado por afinidad de fila en el PPTX; chip de tipo en un solo objeto
 
 ---
 
@@ -100,6 +100,16 @@
   invalidaba en autoLayout(); al arrastrar una caja las flechas quedaban en el
   aire. Ahora render() firma la geometria de los nodos y, si cambia, invalida.
   Probado: arrastre de +70/+110 px, 0 de 18 flechas en el aire.
+- v3.0.3: dentro de cada celda del PPTX (fila x columna) las cajas se apilan
+  por AFINIDAD DE FILA: la que conecta con un actor de mas abajo va abajo, y su
+  flecha ya no cruza a las hermanas (antes: orden de insercion del modelo, la
+  tarea que iba al Cliente quedaba en medio). Media de la fila de los vecinos,
+  3 barridos, empate por y del lienzo. Pedido con captura por el usuario sobre
+  Venta de Lotes 3/4: MAN-11 / USR-05 / RCV-01 ahora salen en ese orden.
+- v3.0.3: el chip de tipo (USR/MAN/RCV...) es UN solo objeto: addText con
+  shape roundRect, margin 0 y nombre "Tipo XXX · <tarea>". Antes eran forma +
+  cuadro de texto y al moverlo en PowerPoint se separaban. El codigo [XXX-nn]
+  sigue aparte pero con nombre "Codigo XXX-nn · <tarea>".
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

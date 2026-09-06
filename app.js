@@ -107,7 +107,7 @@
     attachAiListeners();
     updateAiUi();
     // Hook para demos/pruebas (cargadores de ejemplo)
-    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob(), astar: (on) => { state._astar = !!on; invalidarRutas(); return !!on; }, nivel: (n) => aplicarNivel(n), niveles: () => NIVELES, askProfundidad: () => askProfundidad(), modeloCompleto: () => state._modeloCompleto ? state._modeloCompleto.nodes.length : 0 };
+    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob(), astar: (on) => { state._astar = !!on; invalidarRutas(); return !!on; }, nivel: (n) => aplicarNivel(n), niveles: () => NIVELES, askProfundidad: () => askProfundidad(), sinDescarga: (on) => { state._sinDescarga = !!on; }, ultimoPptx: () => state._ultimoPptx, nombresPptx: () => state._nombresPorNodo, modeloCompleto: () => state._modeloCompleto ? state._modeloCompleto.nodes.length : 0 };
   }
 
   function populateSelects() {
@@ -6330,6 +6330,26 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const SLIDE_DRAW_H = 5.55;      // alto util bajo el titulo corporativo
     const DRAW_TOP = 1.12;          // el patron Minsait abre el contenido en y=1.095
 
+    // ── Editabilidad en PowerPoint ──────────────────────────────
+    // Grilla de 0,05": un cuarto de la cuadrícula de PowerPoint. Lo que el
+    // consultor mueva después encaja con el resto sin pelear con la alineación.
+    const g5 = (v) => Math.round(v * 20) / 20;
+    // Nombre descriptivo por nodo: el panel de selección de PowerPoint deja de
+    // ser 97 filas de "Text 12". Se guarda por id porque el post-proceso que
+    // ancla los conectores necesita encontrar cada forma por su nombre.
+    const nombresPorNodo = {};
+    state._nombresPorNodo = nombresPorNodo;   // lo usa el banco para reproducir el post-proceso fuera de la pestaña
+    let _seqNombre = 0;
+    function nombreDe(n) {
+      if (nombresPorNodo[n.id]) return nombresPorNodo[n.id];
+      const cod = n.activityCode || ('' + (++_seqNombre)).padStart(2, '0');
+      const tipo = { start: 'Inicio', end: 'Fin', decision: 'Decisión', intermediate: 'Evento',
+                     document: 'Documento', data: 'Datos' }[n.type] || 'Tarea';
+      const nom = tipo + ' ' + cod + ' · ' + String(n.label || '').replace(/\s+/g, ' ').slice(0, 48);
+      nombresPorNodo[n.id] = nom;
+      return nom;
+    }
+
     // Mapeo de owners → lanes para los slides (reutiliza state._lanes)
     const lanesData = state._lanes || null;
     const ranks = lanesData?.ranks || {};
@@ -6621,7 +6641,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const step = Math.min((lh - 0.1) / total, sz.h + (labelBelow ? 0.52 : 0.12));
           cellY = ly + (lh - (total - 1) * step - sz.h) / 2 + idx * step;
         }
-        nodeBoxes.set(n.id, { x: cellX, y: cellY, w: sz.w, h: sz.h, cx: cellX + sz.w/2, cy: cellY + sz.h/2 });
+        const gx = g5(cellX), gy = g5(cellY), gw = g5(sz.w), gh = g5(sz.h);
+        nodeBoxes.set(n.id, { x: gx, y: gy, w: gw, h: gh, cx: gx + gw/2, cy: gy + gh/2 });
       });
 
       // ───── Dibuja nodos ─────
@@ -6629,13 +6650,31 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         const b = nodeBoxes.get(n.id);
         if (!b) return;
         const kind = shapeKind[n.type] || 'rect';
+        const esTarea = (n.type === 'task' || n.type === 'system');
         const shapeOpts = {
           x: b.x, y: b.y, w: b.w, h: b.h,
           fill: { color: shapeFill[n.type] || 'FFFFFF' },
-          line: { color: shapeBorder[n.type] || '4F062A', width: 1 }
+          line: { color: shapeBorder[n.type] || '4F062A', width: 1 },
+          objectName: nombreDe(n)
         };
         if (kind === 'rect') shapeOpts.rectRadius = 0.08;
-        slide.addShape(kind, shapeOpts);
+        if (esTarea) {
+          // La tarea es UN solo objeto: la forma lleva el texto dentro, como en
+          // el patrón corporativo. Antes eran forma + texto suelto encima, y al
+          // mover la caja en PowerPoint el texto se quedaba atrás.
+          const execT = (window.EXECUTION_TYPES || []).find(t => t.id === n.executionType);
+          const compactT = b.h < 0.62;
+          const arriba = (!compactT && (!!n.activityCode || execT)) ? 0.22 : 0.03;
+          const abajo = 0.03 + ((n.marker && n.marker !== 'none' && MK_GLYPH[n.marker] && !compactT) ? 0.16 : 0);
+          slide.addText(n.label || '', Object.assign({}, shapeOpts, {
+            shape: kind === 'rect' ? 'roundRect' : kind,
+            margin: [Math.round(arriba * 72), 3, Math.round(abajo * 72), 3],
+            fontSize: compactT ? 7.5 : FONT_NODE_S, align: 'center', valign: 'middle',
+            color: T_TXT, fontFace: T_FONT, wrap: true, autoFit: false
+          }));
+        } else {
+          slide.addShape(kind, shapeOpts);
+        }
         // Para eventos: ícono dentro + label debajo
         if (n.type === 'start' || n.type === 'end' || n.type === 'intermediate') {
           // Evento intermedio: doble anillo (anillo interior)
@@ -6698,14 +6737,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
               align: 'left', valign: 'middle', fontFace: T_FONT
             });
           }
-          // Label centrado en el espacio inferior (deja hueco para el marcador si lo hay)
+          // El texto de la tarea ya va DENTRO de la forma (ver arriba)
           const hasMarker = n.marker && n.marker !== 'none' && MK_GLYPH[n.marker] && !compact;
-          const topPad = (!compact && (hasCode || exec)) ? 0.22 : 0.03;
-          slide.addText(n.label || '', {
-            x: b.x + 0.04, y: b.y + topPad, w: b.w - 0.08, h: b.h - topPad - 0.03 - (hasMarker ? 0.16 : 0),
-            fontSize: compact ? 7.5 : FONT_NODE_S, align: 'center', valign: 'middle',
-            color: T_TXT, fontFace: T_FONT, wrap: true, autoFit: false
-          });
           // Marcador de actividad BPMN en la base (centro inferior)
           if (hasMarker) {
             slide.addText(MK_GLYPH[n.marker], {
@@ -6859,6 +6892,44 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         }
       }
 
+      // Una arista = UNA línea con nombre "Flujo|origen|destino|ladoA|ladoB".
+      // El post-proceso del XML la convierte en un conector real anclado a las
+      // dos formas: al mover una caja en PowerPoint, la flecha la sigue y
+      // PowerPoint la re-rutea. Los codos que calculábamos aquí se pierden a
+      // cambio de eso; es la decisión tomada (corregir > fidelidad al abrir).
+      function emitirConector(slide, a, b, ba, bb, e, esMensaje) {
+        let ladoA, ladoB, p1, p2;
+        if (bb.x >= ba.x + ba.w - 0.01) {
+          ladoA = 'right'; ladoB = 'left';
+          p1 = { x: ba.x + ba.w, y: ba.cy }; p2 = { x: bb.x, y: bb.cy };
+        } else if (bb.x + bb.w <= ba.x + 0.01) {
+          ladoA = 'left'; ladoB = 'right';
+          p1 = { x: ba.x, y: ba.cy }; p2 = { x: bb.x + bb.w, y: bb.cy };
+        } else if (bb.cy >= ba.cy) {
+          ladoA = 'bottom'; ladoB = 'top';
+          p1 = { x: ba.cx, y: ba.y + ba.h }; p2 = { x: bb.cx, y: bb.y };
+        } else {
+          ladoA = 'top'; ladoB = 'bottom';
+          p1 = { x: ba.cx, y: ba.y }; p2 = { x: bb.cx, y: bb.y + bb.h };
+        }
+        slide.addShape('line', {
+          x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y),
+          w: Math.max(Math.abs(p2.x - p1.x), 0.01), h: Math.max(Math.abs(p2.y - p1.y), 0.01),
+          flipH: p2.x < p1.x, flipV: p2.y < p1.y,
+          line: { color: esMensaje ? 'B8879E' : 'FF0054', width: 0.5,
+                  dashType: esMensaje ? 'dash' : 'solid', endArrowType: 'triangle' },
+          objectName: 'Flujo|' + a.id + '|' + b.id + '|' + ladoA + '|' + ladoB
+        });
+        if (e.label) {
+          const lx = p1.x + (p2.x - p1.x) * 0.3, ly = p1.y + (p2.y - p1.y) * 0.3;
+          slide.addText(e.label, {
+            x: lx - 0.35, y: apartaEtiqArista(lx, ly - 0.2, 0.7, 0.22), w: 0.7, h: 0.22,
+            fontSize: FONT_EDGE, color: T_TXT, align: 'center', fontFace: T_FONT,
+            objectName: 'Etiqueta · ' + String(e.label).slice(0, 40)
+          });
+        }
+      }
+
       // Conectores de página: dos aristas que salen a la misma altura ponían su
       // círculo y su rótulo en la misma coordenada y quedaban ilegibles. Cada
       // columna (izquierda y derecha) reserva su altura y aparta al siguiente.
@@ -6903,7 +6974,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const lA = state._lanes && state._lanes.laneOf ? state._lanes.laneOf[a.id] : null;
           const lB = state._lanes && state._lanes.laneOf ? state._lanes.laneOf[b.id] : null;
           const isMsg = lA && lB && lA !== lB && a.type !== 'start' && b.type !== 'end';
-          drawOrthoEdge(slide, ba.x, ba.y, ba.w, ba.h, bb.x, bb.y, bb.w, bb.h, true, e.label, isMsg);
+          emitirConector(slide, a, b, ba, bb, e, isMsg);
           return;
         }
         if (aIn) {
@@ -7438,10 +7509,82 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     sf.addShape('rect', { x: 0.4, y: 6.28, w: 12.6, h: 0.5, fill: { color: DARK } });
     sf.addText('SIGUIENTE PASO  ›  Validar hallazgos con sponsor · Priorizar en matriz Impacto-Esfuerzo · Construir business case', { x: 0.5, y: 6.28, w: 12.5, h: 0.5, fontSize: 11, color: 'FFFFFF', bold: true, valign: 'middle' });
 
-    pres.writeFile({ fileName: filename('pptx') });
+    // pptxgenjs sólo sabe dibujar líneas sueltas, y una línea suelta no sigue a
+    // la caja cuando el consultor la mueve. El post-proceso las convierte en
+    // conectores reales anclados a las formas (cxnSp con stCxn/endCxn), como
+    // en el patrón corporativo.
+    anclarConectoresYDescargar(pres, filename('pptx'), nombresPorNodo);
   }
 
   // Helper: renderiza un mini-diagrama dentro de un slide PPTX en un área dada.
+  // ── Post-proceso del PPTX: conectores anclados ───────────────
+  // Punto de conexión por lado según la geometría. rect/roundRect/diamond
+  // tienen 4 (0 arriba, 1 izquierda, 2 abajo, 3 derecha); ellipse tiene 8.
+  const CXN_IDX = {
+    rect: { top: 0, left: 1, bottom: 2, right: 3 },
+    roundRect: { top: 0, left: 1, bottom: 2, right: 3 },
+    diamond: { top: 0, left: 1, bottom: 2, right: 3 },
+    parallelogram: { top: 0, left: 1, bottom: 2, right: 3 },
+    ellipse: { top: 0, left: 2, bottom: 4, right: 6 }
+  };
+  function _xmlEsc(v) {
+    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function anclarConectoresEnXml(xml, nombresPorNodo) {
+    // id y geometría de cada forma, por nombre (ya escapado como lo escribe pptxgenjs)
+    const porNombre = {};
+    xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/g, (m, body) => {
+      const mm = /<p:cNvPr id="(\d+)" name="([^"]*)"/.exec(body);
+      const g = /<a:prstGeom prst="([^"]+)"/.exec(body);
+      if (mm) porNombre[mm[2]] = { id: mm[1], prst: g ? g[1] : 'rect' };
+      return m;
+    });
+    let n = 0;
+    const out = xml.replace(/<p:sp>([\s\S]*?)<\/p:sp>/g, (m, body) => {
+      const mm = /<p:cNvPr id="(\d+)" name="Flujo\|([^|"]+)\|([^|"]+)\|(\w+)\|(\w+)"/.exec(body);
+      if (!mm) return m;
+      const id = mm[1], deId = mm[2], aId = mm[3], ladoA = mm[4], ladoB = mm[5];
+      const nA = nombresPorNodo[deId], nB = nombresPorNodo[aId];
+      const fa = nA && porNombre[_xmlEsc(nA)], fb = nB && porNombre[_xmlEsc(nB)];
+      const xfrm = (/<a:xfrm[^>]*>[\s\S]*?<\/a:xfrm>/.exec(body) || [''])[0];
+      const ln = (/<a:ln[\s\S]*?<\/a:ln>/.exec(body) || [''])[0];
+      if (!fa || !fb || !xfrm) return m;
+      const ia = (CXN_IDX[fa.prst] || CXN_IDX.rect)[ladoA];
+      const ib = (CXN_IDX[fb.prst] || CXN_IDX.rect)[ladoB];
+      n++;
+      return '<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="' + id + '" name="Flujo ' + _xmlEsc(nA) + ' → ' + _xmlEsc(nB) + '"/>' +
+        '<p:cNvCxnSpPr><a:stCxn id="' + fa.id + '" idx="' + ia + '"/><a:endCxn id="' + fb.id + '" idx="' + ib + '"/></p:cNvCxnSpPr>' +
+        '<p:nvPr/></p:nvCxnSpPr><p:spPr>' + xfrm +
+        '<a:prstGeom prst="bentConnector3"><a:avLst/></a:prstGeom>' + ln + '</p:spPr></p:cxnSp>';
+    });
+    return { xml: out, n: n };
+  }
+
+  async function anclarConectoresYDescargar(pres, fileName, nombresPorNodo) {
+    let salida = await pres.write({ outputType: 'blob' });
+    let anclados = 0;
+    try {
+      await lazyLoadScript(CDN.jszip);
+      const zip = await window.JSZip.loadAsync(salida);
+      const slides = Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f));
+      for (const f of slides) {
+        const r = anclarConectoresEnXml(await zip.file(f).async('string'), nombresPorNodo);
+        if (r.n) { zip.file(f, r.xml); anclados += r.n; }
+      }
+      salida = await zip.generateAsync({ type: 'blob',
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+      console.info('[ProcessIQ] PPTX: ' + anclados + ' conectores anclados');
+    } catch (err) {
+      console.warn('[ProcessIQ] no se pudieron anclar los conectores; se descarga sin anclar', err);
+    }
+    state._ultimoPptx = { blob: salida, conectores: anclados };
+    if (state._sinDescarga) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(salida); a.download = fileName;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+
   function renderMiniDiagram(slide, data, x, y, w, h, label, accentColor) {
     slide.addShape('rect', { x, y, w, h, fill: { color: 'FAFAFA' }, line: { color: 'D0CEC1', width: 0.5 } });
     slide.addText(label, { x, y, w, h: 0.35, fontSize: 12, color: accentColor, bold: true, align: 'center' });

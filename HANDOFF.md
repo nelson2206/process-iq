@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v2.9.5 — la IA etiqueta el nivel; pregunta de profundidad
+> **Última actualización:** v3.0.1 — PPTX editable: un objeto por nodo, nombres, grilla y conectores anclados
 
 ---
 
@@ -73,6 +73,26 @@
 
 > Sin probar con llamada real de IA: el etiquetado se valido con un spec
 > sintetico via buildProcessFromAiSpec. Ver pendiente #2.
+
+### PPTX editable (v3.0)
+- Cada tarea es UN objeto: la forma lleva el texto dentro (antes forma + texto
+  suelto encima; al mover la caja en PowerPoint el texto se quedaba atras).
+- Nombres descriptivos en el panel de seleccion: Tarea USR-01 · Registrar y
+  derivar lead, Decision 07 · Conforme?, Flujo A → B.
+- Posiciones en grilla de 0,05 pulgadas (un cuarto de la cuadricula de PowerPoint).
+- Conectores REALES anclados a las formas (cxnSp con stCxn/endCxn): al mover una
+  caja, la flecha la sigue y PowerPoint la re-rutea. pptxgenjs no sabe hacerlos:
+  se emite una linea con nombre Flujo|origen|destino|lado|lado y un post-proceso
+  del XML (JSZip) la convierte. Decision tomada: PowerPoint decide el nuevo camino
+  al mover (se pierden nuestros codos), porque corregir importa mas que la
+  fidelidad al abrir.
+- Medido sobre Venta de Lotes, lamina 2: 43 formas con texto dentro (antes 0),
+  8 conectores anclados por ambos extremos, 14 lineas sueltas (antes 26; las que
+  quedan son conectores de pagina y saltos de banda, a proposito).
+- El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
+  Verificar el post-proceso con el replay en worker descrito en Quirks.
+- Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean
+  placeholders. Esperar a la plantilla MBC oficial para no hacerlo dos veces.
 
 ### Entregables
 - **Ficha de Proceso** corporativa de 12 bloques (formato PR-DU-COM-*).
@@ -278,6 +298,18 @@ Secuencia completa (los cuatro pasos importan):
 - Validar siempre tras editar: `node -e "new Function(require('fs').readFileSync('app.js','utf8'))"`
 
 ### Pruebas en navegador
+
+- **El export PPTX NO se puede verificar dentro del panel del navegador de la
+  sesion.** Medido el 25-ago-2026: la pestana esta siempre en document.hidden
+  = true y Chrome estrangula los timers encadenados (el sexto setTimeout(0)
+  espero 5,7 s). JSZip genera el zip encadenando decenas de esos timers, asi
+  que pres.write() NUNCA termina ahi. No es un bug del export: en un navegador
+  normal en primer plano funciona. Para verificar la serializacion, reproducir
+  la presentacion en un Web Worker (no se estrangula): capturar pres
+  interceptando PptxGenJS.prototype.write, serializar _slides a JSON y
+  reproducirla con addText/addShape/addImage dentro del worker. Asi se valido
+  la v3.0.1 (2,6 s de escritura, 28 conectores anclados).
+
 
 - `window.ProcessIQ` es el hook de pruebas: `loadFichaVentaLotes()`, `snapshot()`, `quality()`, `autoFit()`, `runAiTask(k)`, `sources()`, `detectParticipants(t)`, `aiAnalyzePains()`, `importBpmnXml()`, `generateBpmnXml()`.
 - **Los screenshots del preview hacen timeout** con diagramas pesados: validar con `javascript_tool`.

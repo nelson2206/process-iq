@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.0.3 — apilado por afinidad de fila en el PPTX; chip de tipo en un solo objeto
+> **Última actualización:** v3.0.4 — fines adelantados en la lámina de origen; vista Ejecutiva que sí colapsa
 
 ---
 
@@ -69,6 +69,22 @@
 - Antes de generar se pregunta la PROFUNDIDAD (modal askProfundidad). No decide
   que se genera --siempre el proceso completo-- sino con cuanto detalle mira la
   IA y en que vista se abre.
+- v3.0.4: el nivel EJECUTIVO agrupa por SEGMENTO entre hitos, no por cadena
+  lineal. _gruposPorCadena exigia 1 entrada y 1 salida, y un BPMN real con
+  gateways casi no tiene esas cadenas: Venta de Lotes solo bajaba de 33 a 28
+  nodos y el usuario lo reporto como "no funciona". Ahora las tareas del mismo
+  carril que cuelgan de los mismos hitos previos --ramas hermanas de un gateway
+  incluidas-- son UN paso. Medido: 33 -> 28 (actividad) -> 20 (ejecutivo), con
+  ida y vuelta exacta. Nivel 2 pasa a cadenas de 2+ (antes 3+, casi nunca
+  disparaba).
+- v3.0.4: si al colapsar todas las ramas de un gateway exclusivo acaban en el
+  mismo paso, el gateway se elimina y sus entradas van directas al destino. Sin
+  esto quedaba con una sola salida y ensureDecisionBranches le inventaba una
+  rama "Caso no procede" inexistente.
+- v3.0.4 REGRESION corregida: _modeloVigente ahora ignora los nodos _autoGen.
+  Nacen sin sello, asi que tras colapsar el modelo se daba por ajeno y se
+  recapturaba la vista colapsada como si fuera el completo: volver a Detalle ya
+  no restauraba los 33 nodos.
 - API de pruebas: ProcessIQ.nivel(1|2|3), ProcessIQ.niveles(), ProcessIQ.askProfundidad().
 
 > Sin probar con llamada real de IA: el etiquetado se valido con un spec
@@ -110,6 +126,12 @@
   shape roundRect, margin 0 y nombre "Tipo XXX · <tarea>". Antes eran forma +
   cuadro de texto y al moverlo en PowerPoint se separaban. El codigo [XXX-nn]
   sigue aparte pero con nombre "Codigo XXX-nn · <tarea>".
+- v3.0.4: FINES ADELANTADOS. Una flecha a un fin sin salidas que cruza de banda
+  ya no gasta un conector con letra para llegar al circulo de fin en la lamina
+  siguiente: el fin se pinta en el pasillo de salida de la banda de ORIGEN, con
+  su etiqueta, y se repite en cada banda que lo alcance (BPMN lo permite). Si un
+  fin solo se alcanza asi, no se dibuja en su propia banda y su fila desaparece
+  si queda vacia. Medido sobre Venta de Lotes: circulos con letra de 13 a 8.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

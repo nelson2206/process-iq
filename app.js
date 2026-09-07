@@ -2765,6 +2765,98 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     return { grupos, grupoDe };
   }
 
+  // Agrupa por SEGMENTO entre hitos: todas las tareas del mismo carril que
+  // cuelgan de los mismos hitos previos (decisión, inicio, fin, evento) son
+  // UN paso. Es lo que promete el nivel Ejecutivo: "un paso por actor entre
+  // decisiones". _gruposPorCadena no lo lograba porque exigía cadena lineal
+  // estricta (1 entrada, 1 salida): un BPMN real con gateways casi no tiene
+  // esas cadenas y el nivel apenas quitaba 5 nodos de 33. Aquí las ramas
+  // hermanas de un mismo gateway y mismo actor también se funden.
+  function _gruposPorSegmento(nodes, edges) {
+    const salida = {}, entrada = {};
+    edges.forEach(e => {
+      (salida[e.from] = salida[e.from] || []).push(e.to);
+      (entrada[e.to] = entrada[e.to] || []).push(e.from);
+    });
+    const porId = {}; nodes.forEach(n => { porId[n.id] = n; });
+
+    // Hitos previos más cercanos: se retrocede atravesando tareas hasta topar
+    // con un hito. El conjunto (ordenado) identifica el segmento.
+    const segDe = {};
+    nodes.forEach(n => {
+      if (_esHito(n)) return;
+      const hitos = {}, vistos = {};
+      const cola = [n.id];
+      while (cola.length) {
+        const id = cola.shift();
+        (entrada[id] || []).forEach(pid => {
+          if (vistos[pid]) return;
+          vistos[pid] = true;
+          const p = porId[pid];
+          if (!p) return;
+          if (_esHito(p)) hitos[pid] = true; else cola.push(pid);
+        });
+      }
+      const k = Object.keys(hitos).sort().join(',');
+      segDe[n.id] = k || 'origen';
+    });
+
+    const porClave = {};
+    nodes.forEach(n => {
+      if (_esHito(n)) return;
+      const k = _carrilDe(n) + '||' + segDe[n.id];
+      (porClave[k] = porClave[k] || []).push(n);
+    });
+
+    const grupos = [], grupoDe = {};
+    Object.keys(porClave).forEach(k => {
+      const miembros = porClave[k];
+      if (miembros.length < 2) return;
+      const g = {
+        id: 'seg_' + miembros[0].id,
+        label: (miembros[0].label || 'Paso') + ' (+' + (miembros.length - 1) + ' pasos)',
+        type: 'task', marker: 'subprocess',
+        owner: miembros[0].owner, role: miembros[0].role,
+        _hijos: miembros.map(m => m.id),
+        _detalle: miembros.map(m => m.label).filter(Boolean),
+        pains: miembros.reduce((a, m) => a.concat(m.pains || []), [])
+      };
+      grupos.push(g);
+      miembros.forEach(m => { grupoDe[m.id] = g.id; });
+    });
+    return { grupos, grupoDe };
+  }
+
+  // Si al colapsar todas las ramas de un gateway exclusivo acaban en el MISMO
+  // paso, la decisión ya no decide nada: se elimina y sus entradas van directas
+  // al destino. Sin esto, el gateway quedaba con una sola salida y
+  // ensureDecisionBranches le inventaba una rama "Caso no procede" que no
+  // existe en el proceso.
+  function _colapsarGatewaysDegenerados(nodes, edges) {
+    let ns = nodes.slice(), es = edges.slice();
+    for (let vuelta = 0; vuelta < 20; vuelta++) {
+      const cand = ns.find(n => {
+        if (n.type !== 'decision' || n.gatewayType === 'parallel' || n.gatewayType === 'inclusive') return false;
+        const outs = es.filter(e => e.from === n.id);
+        return outs.length > 0 && new Set(outs.map(e => e.to)).size === 1;
+      });
+      if (!cand) break;
+      const destino = es.find(e => e.from === cand.id).to;
+      ns = ns.filter(n => n.id !== cand.id);
+      const vistas = {};
+      es = es.filter(e => e.from !== cand.id)
+             .map(e => (e.to === cand.id ? { ...e, to: destino } : e))
+             .filter(e => {
+               if (e.from === e.to) return false;
+               const k = e.from + '>' + e.to;
+               if (vistas[k]) return false;
+               vistas[k] = true;
+               return true;
+             });
+    }
+    return { nodes: ns, edges: es };
+  }
+
   // Proyecta el modelo completo al nivel pedido
   function proyectarNivel(nivel) {
     const full = state._modeloCompleto;
@@ -2786,7 +2878,9 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         if (p) grupoDe[n.id] = p;
       });
     } else {
-      const r = _gruposPorCadena(full.nodes, full.edges, nivel === 1 ? 2 : 3);
+      const r = nivel === 1
+        ? _gruposPorSegmento(full.nodes, full.edges)
+        : _gruposPorCadena(full.nodes, full.edges, 2);
       grupos = r.grupos; grupoDe = r.grupoDe;
     }
 
@@ -2810,7 +2904,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       vistas[k] = true;
       edges.push({ ...e, id: 'v_' + e.id, from: a, to: b });
     });
-    return { nodes, edges };
+    return nivel === 1 ? _colapsarGatewaysDegenerados(nodes, edges) : { nodes, edges };
   }
 
   // ¿El modelo completo guardado sigue siendo el de este proceso? Si se cargó
@@ -2824,7 +2918,11 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   function _modeloVigente() {
     const full = state._modeloCompleto;
     if (!full || !full.nodes.length || !state.nodes.length) return false;
-    return state.nodes.every(n => n._sello === state._selloModelo);
+    // Los nodos que crea ensureDecisionBranches ("Caso no procede") nacen sin
+    // sello: son artefactos de dibujo, no del modelo. Sin esta excepción, al
+    // colapsar a nivel 1 el modelo se daba por ajeno y se recapturaba la vista
+    // colapsada como si fuera el completo: volver a nivel 3 ya no restauraba.
+    return state.nodes.every(n => n._autoGen || n._sello === state._selloModelo);
   }
 
   function aplicarNivel(nivel, opts) {
@@ -6423,6 +6521,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
 
       // Filtra nodos en el rango de ranks del slice
       const nodesInSlice = state.nodes.filter(n => {
+        if (finSoloAdelantado[n.id]) return false;   // se pinta en la banda de origen
         const r = ranks[n.id] || 0;
         return r >= rankStart && r < rankEnd;
       });
@@ -6449,6 +6548,17 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           filas.push({ banda: bIdx, ini: bi.ini, fin: bi.fin, lane: laneName });
         });
       });
+      // Si el único nodo de una fila era un fin adelantado, la fila queda vacía
+      // y no se dibuja (medirBanda la contó porque no sabe de adelantos).
+      for (let fi = filas.length - 1; fi >= 0; fi--) {
+        const f = filas[fi];
+        const conNodos = nodesInSlice.some(n => {
+          const r = ranks[n.id] || 0;
+          const ln = (state._lanes && state._lanes.laneOf && state._lanes.laneOf[n.id]) || 'Por asignar';
+          return r >= f.ini && r < f.fin && f.lane === ln;
+        });
+        if (!conNodos) filas.splice(fi, 1);
+      }
       const filaIdxOf = (n) => {
         const r = ranks[n.id] || 0;
         const ln = (state._lanes && state._lanes.laneOf && state._lanes.laneOf[n.id]) || 'Por asignar';
@@ -6466,7 +6576,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const saltaBanda = saltaBandaG;
       const hayEntradaIzq = state.edges.some(e => {
         const ra = ranks[e.from], rb = ranks[e.to];
-        return ra != null && rb != null && enSlide(rb) && saltaBanda(ra, rb);
+        return ra != null && rb != null && enSlide(rb) && saltaBanda(ra, rb) && !esAristaAFinAdelantado(e);
       });
       const haySalidaDer = state.edges.some(e => {
         const ra = ranks[e.from], rb = ranks[e.to];
@@ -6989,6 +7099,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       // columna (izquierda y derecha) reserva su altura y aparta al siguiente.
       sembrarCajasEnAnticolision();
       const offPageDer = [], offPageIzq = [];
+      const finesAdelantados = {};   // (idNodoFin|banda) -> {cx, cy, d, idFin, n}
       const OFF_PAGE_SEP = 0.58;   // circulo (0,36) + rotulo debajo (0,16) + aire
       // Busca hueco alternando abajo/arriba, pero SIEMPRE dentro del area de
       // dibujo. Sin el acotado, un proceso con muchos conectores en una lamina
@@ -7029,6 +7140,47 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const lB = state._lanes && state._lanes.laneOf ? state._lanes.laneOf[b.id] : null;
           const isMsg = lA && lB && lA !== lB && a.type !== 'start' && b.type !== 'end';
           emitirConector(slide, a, b, ba, bb, e, isMsg);
+          return;
+        }
+        if (aIn && esAristaAFinAdelantado(e)) {
+          // Fin adelantado: el círculo de fin se dibuja aquí, en el pasillo de
+          // salida, UNA vez por banda aunque lleguen varias flechas (C y E → Fin).
+          const ba = nodeBoxes.get(a.id);
+          const bandaA = bandaIdxDeRank[rA];
+          const kFin = b.id + '|' + bandaA;
+          let fin = finesAdelantados[kFin];
+          if (!fin) {
+            // Centrado en la media de sus orígenes de ESTA banda
+            const fuentes = state.edges
+              .filter(x => x.to === b.id && nodeBoxes.has(x.from) && bandaIdxDeRank[ranks[x.from]] === bandaA)
+              .map(x => nodeBoxes.get(x.from));
+            const syProm = fuentes.reduce((acc, f) => acc + f.y + f.h / 2, 0) / Math.max(1, fuentes.length);
+            const d = 0.32, cx = CONN_X_DER, cy = reservaOffPage(offPageDer, syProm);
+            const idFin = 'fin:' + b.id + ':' + bandaA;
+            nombresPorNodo[idFin] = nombreDe(b) + ' (banda ' + (bandaA + 1) + ')';
+            fin = finesAdelantados[kFin] = { cx, cy, d, idFin, n: 0 };
+            slide.addShape('ellipse', { x: cx - d / 2, y: cy - d / 2, w: d, h: d,
+              fill: { color: shapeFill.end }, line: { color: shapeBorder.end, width: 1 }, objectName: nombresPorNodo[idFin] });
+            if (b.terminate) {
+              slide.addShape('ellipse', { x: cx - d / 2 + 0.07, y: cy - d / 2 + 0.07, w: d - 0.14, h: d - 0.14,
+                fill: { color: 'FFFFFF' }, line: { type: 'none' } });
+            }
+            const etq = b.label || 'Fin';
+            // 0,8" de ancho: no pisa la última columna (acaba en 11,91") y
+            // solo asoma 0,12" fuera del carril por la derecha.
+            slide.addText(etq, { x: cx - 0.38, y: cy + d / 2 + 0.02, w: 0.8, h: altoEtiqueta(etq, 0.8, 7.5),
+              fontSize: 7.5, color: M_PRUNO, align: 'center', valign: 'top', fontFace: T_FONT, wrap: true, autoFit: false,
+              objectName: 'Etiqueta · ' + String(etq).slice(0, 40) });
+          }
+          const sy = ba.y + ba.h / 2;
+          const adjFin = [82000, 68000, 54000, 40000, 26000][(offPageDer.length - 1 + fin.n) % 5];
+          fin.n++;
+          slide.addShape('line', {
+            x: ba.x + ba.w, y: Math.min(sy, fin.cy),
+            w: Math.max(fin.cx - fin.d / 2 - (ba.x + ba.w), 0.01), h: Math.max(Math.abs(fin.cy - sy), 0.01),
+            flipV: fin.cy < sy, line: { color: '926979', width: 0.85, endArrowType: 'triangle' },
+            objectName: 'Flujo|' + a.id + '|' + fin.idFin + '|right|left|' + adjFin
+          });
           return;
         }
         if (aIn) {
@@ -7151,6 +7303,29 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     bandaInfo.forEach((bi, i) => { for (let k = bi.ini; k < bi.fin; k++) bandaIdxDeRank[k] = i; });
     const saltaBandaG = (ra, rb) => bandaIdxDeRank[ra] !== bandaIdxDeRank[rb];
 
+    // ── Fines adelantados ──
+    // Una flecha que va a un FIN (sin salidas) y cruza de banda no se dibuja
+    // como conector con letra + círculo de fin en la lámina siguiente: el fin
+    // se pinta en el pasillo de salida de la banda de ORIGEN, con su etiqueta.
+    // Pedido del usuario sobre Venta de Lotes: C y E salían de la 1/4 solo para
+    // llegar a "Fin — venta no concretada" en la 2/4. Si el fin recibe flechas
+    // desde varias bandas, se repite en cada una (BPMN lo permite). Solo se
+    // dibuja en su propia banda si alguna flecha le llega desde ahí.
+    const esFinSinSalida = (id) => {
+      const n = state.nodes.find(x => x.id === id);
+      return !!n && n.type === 'end' && !state.edges.some(e => e.from === id);
+    };
+    const esAristaAFinAdelantado = (e) => {
+      const ra = ranks[e.from], rb = ranks[e.to];
+      return ra != null && rb != null && e.from !== e.to && esFinSinSalida(e.to) && saltaBandaG(ra, rb);
+    };
+    const finSoloAdelantado = {};
+    state.nodes.forEach(n => {
+      if (!esFinSinSalida(n.id) || ranks[n.id] == null) return;
+      const entradas = state.edges.filter(e => e.to === n.id && ranks[e.from] != null && e.from !== n.id);
+      if (entradas.length && entradas.every(esAristaAFinAdelantado)) finSoloAdelantado[n.id] = true;
+    });
+
     // Empaqueta bandas en láminas hasta agotar el alto útil
     const laminasPlan = [];
     {
@@ -7180,7 +7355,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     state.edges.forEach(e => {
       const ra = ranks[e.from], rb = ranks[e.to];
       if (ra === undefined || rb === undefined) return;
-      if (saltaBandaG(ra, rb)) {
+      if (saltaBandaG(ra, rb) && !esAristaAFinAdelantado(e)) {
         edgeLetters[e.id] = LETTERS[letterIdx % 26];
         letterIdx++;
       }

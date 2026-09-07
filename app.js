@@ -7155,6 +7155,23 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       sembrarCajasEnAnticolision();
       const offPageDer = [], offPageIzq = [];
       const finesAdelantados = {};   // (idNodoFin|banda) -> {cx, cy, d, idFin, n}
+
+      // ───── Dónde va el círculo de continuidad ─────
+      // Hasta v3.1.1 vivían siempre pegados al borde izquierdo o derecho de la
+      // lámina, así que un nodo de la primera columna tiraba una línea que la
+      // cruzaba entera. Si la celda contigua de su misma fila está VACÍA, el
+      // círculo se pone ahí: la línea se acorta y la lámina respira. Si no hay
+      // hueco, vuelve al borde, que es el comportamiento de siempre.
+      const usadasPorX = {};
+      const usadasEn = (x) => (usadasPorX[x.toFixed(2)] = usadasPorX[x.toFixed(2)] || []);
+      function columnaConector(n, dir, xBorde) {
+        const li = filaIdxOf(n);
+        if (li < 0) return xBorde;
+        const r = colOf(n) + dir;
+        if (r < 0 || r >= sliceColCount) return xBorde;
+        if (cellCount[li + '|' + r]) return xBorde;          // celda ocupada
+        return 0.4 + GUT_IZQ + r * cellInnerW + cellInnerW / 2;
+      }
       const OFF_PAGE_SEP = 0.58;   // circulo (0,36) + rotulo debajo (0,16) + aire
       // Busca hueco alternando abajo/arriba, pero SIEMPRE dentro del area de
       // dibujo. Sin el acotado, un proceso con muchos conectores en una lamina
@@ -7210,7 +7227,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
               .filter(x => x.to === b.id && nodeBoxes.has(x.from) && bandaIdxDeRank[ranks[x.from]] === bandaA)
               .map(x => nodeBoxes.get(x.from));
             const syProm = fuentes.reduce((acc, f) => acc + f.y + f.h / 2, 0) / Math.max(1, fuentes.length);
-            const d = 0.32, cx = CONN_X_DER, cy = reservaOffPage(offPageDer, syProm);
+            const d = 0.32, cx = columnaConector(a, +1, CONN_X_DER);
+            const cy = reservaOffPage(usadasEn(cx), syProm);
             const idFin = 'fin:' + b.id + ':' + bandaA;
             nombresPorNodo[idFin] = nombreDe(b) + ' (banda ' + (bandaA + 1) + ')';
             fin = finesAdelantados[kFin] = { cx, cy, d, idFin, n: 0 };
@@ -7228,7 +7246,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
               objectName: 'Etiqueta · ' + String(etq).slice(0, 40) });
           }
           const sy = ba.y + ba.h / 2;
-          const adjFin = [82000, 68000, 54000, 40000, 26000][(offPageDer.length - 1 + fin.n) % 5];
+          const adjFin = [82000, 68000, 54000, 40000, 26000][(usadasEn(fin.cx).length - 1 + fin.n) % 5];
           fin.n++;
           slide.addShape('line', {
             x: ba.x + ba.w, y: Math.min(sy, fin.cy),
@@ -7246,9 +7264,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           // Si el salto es a otra banda de ESTA misma lamina, la referencia
           // no es un numero de lamina sino "sigue abajo".
           const marcaDer = targetSlice === sliceIdx + 1 ? '↓' : ('→ ' + targetSlice);
-          const cx = CONN_X_DER;
+          const cx = columnaConector(a, +1, CONN_X_DER);
           const sy = ba.y + ba.h / 2;
-          const cy = reservaOffPage(offPageDer, sy);
+          const usadas = usadasEn(cx);
+          const cy = reservaOffPage(usadas, sy);
           // UN solo conector anclado nodo → círculo (antes eran tres líneas
           // sueltas que no seguían a la caja). El círculo lleva nombre y se
           // registra en nombresPorNodo con un id sintético para que el
@@ -7257,7 +7276,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           // y se veían como una sola línea.
           const idCirc = 'conn:' + sliceIdx + ':der:' + letter + ':' + Math.round(cy * 100);
           nombresPorNodo[idCirc] = 'Conector ' + letter + ' → ' + targetSlice;
-          const adjDer = [82000, 68000, 54000, 40000, 26000][(offPageDer.length - 1) % 5];
+          const adjDer = [82000, 68000, 54000, 40000, 26000][(usadas.length - 1) % 5];
           slide.addShape('line', {
             x: ba.x + ba.w, y: Math.min(sy, cy),
             w: Math.max(cx - 0.18 - (ba.x + ba.w), 0.01), h: Math.max(Math.abs(cy - sy), 0.01),
@@ -7279,9 +7298,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const letter = edgeLetters[e.id] || '?';
           const sourceSlice = laminaDeRank(ranks[a.id] || 0);
           const marcaIzq = sourceSlice === sliceIdx + 1 ? '↑' : ('← ' + sourceSlice);
-          const cx = CONN_X_IZQ;
+          const cx = columnaConector(b, -1, CONN_X_IZQ);
           const ty = bb.y + bb.h / 2;
-          const cy = reservaOffPage(offPageIzq, ty);
+          const usadas = usadasEn(cx);
+          const cy = reservaOffPage(usadas, ty);
           // UN solo conector anclado círculo → nodo (ver rama derecha)
           const idCirc = 'conn:' + sliceIdx + ':izq:' + letter + ':' + Math.round(cy * 100);
           nombresPorNodo[idCirc] = 'Conector ' + letter + ' ← ' + sourceSlice;
@@ -7289,7 +7309,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 }, objectName: nombresPorNodo[idCirc] });
           slide.addText(letter, { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
             fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
-          const adjIzq = [18000, 32000, 46000, 60000, 74000][(offPageIzq.length - 1) % 5];
+          const adjIzq = [18000, 32000, 46000, 60000, 74000][(usadas.length - 1) % 5];
           slide.addShape('line', {
             x: cx + 0.18, y: Math.min(cy, ty),
             w: Math.max(bb.x - cx - 0.18, 0.01), h: Math.max(Math.abs(cy - ty), 0.01),

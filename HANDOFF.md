@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.1.1 — la flecha sale por el vértice inferior cuando el destino cambia de carril
+> **Última actualización:** v3.2.0 — arte MBC oficial en la web; círculos de continuidad a media lámina
 
 ---
 
@@ -167,10 +167,29 @@
   texto-sobre-texto 18 -> 7, texto-sobre-figura 8 -> 7, cero fugas de lamina.
   Comparativa hecha sirviendo el commit anterior en paralelo desde una copia
   (git show HEAD:app.js), no de memoria.
+- v3.2.0: los circulos de continuidad ya NO viven siempre en el borde de la
+  lamina. Si la celda contigua de la misma fila esta vacia, el circulo se pone
+  ahi (columnaConector); si no, vuelve al borde. Medido en 4 procesos: mismo
+  numero de circulos (53) y largo total de linea de conector 78,6" -> 56,6"
+  (-28 %). Comparativa hecha sirviendo el commit anterior en paralelo.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean
   placeholders. Esperar a la plantilla MBC oficial para no hacerlo dos veces.
+
+### Identidad visual (v3.2.0)
+- La marca es **MBC**, no Minsait. Fuente de verdad: *Libro de estilo transitorio
+  V2*, archivado en `Documentos\Plantillas\MBC\`. Azul MBC `003478` (dk1),
+  Fucsia `FF0054`, Gris Ceramica `E3E2DA` (lt2), tipografia **Montserrat**
+  (esta en Google Fonts, a diferencia de ForFuture Sans).
+- La web usa el logotipo oficial como SVG inline (`logo-mbc.svg`, tres trazos
+  M/C/B, viewBox 3860x856), favicon propio (`favicon.svg`: teja azul + M oficial
+  + regla fucsia) e imagen Open Graph `og-image.png` 1200x630.
+- La OG era un SVG y casi ningun cliente los renderiza: ahora es PNG, generado
+  con Chrome headless a partir de `scratchpad/og-card.html` (asi carga Montserrat
+  de verdad). Para regenerarla: `chrome --headless=new --window-size=1200,630
+  --screenshot=og-image.png file:///.../og-card.html`.
+- El PPTX sigue con la paleta anterior (Pruno). Migrarlo es trabajo aparte.
 
 ### Entregables
 - **Ficha de Proceso** corporativa de 12 bloques (formato PR-DU-COM-*).

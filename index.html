@@ -3,25 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ProcessIQ — Diagramador de procesos BPMN · Minsait BC Perú</title>
-  <meta name="description" content="ProcessIQ: herramienta de diagramación, diagnóstico y reingeniería de procesos con nomenclatura BPMN 2.0. Pains, KPIs, simulación what-if, cuello de botella y export a PPTX/BPMN/SVG/Word. Minsait Business Consulting Perú." />
-  <meta name="theme-color" content="#160a26" />
+  <title>ProcessIQ — Diagramador de procesos BPMN · MBC Perú</title>
+  <meta name="description" content="ProcessIQ: herramienta de diagramación, diagnóstico y reingeniería de procesos con nomenclatura BPMN 2.0. Pains, KPIs, simulación what-if, cuello de botella y export a PPTX/BPMN/SVG/Word. MBC Business Consulting Perú." />
+  <meta name="theme-color" content="#003478" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <!-- Open Graph / Twitter (preview al compartir el link) -->
   <meta property="og:type" content="website" />
   <meta property="og:title" content="ProcessIQ — Diagramador de procesos BPMN" />
-  <meta property="og:description" content="Diagramación, diagnóstico y reingeniería de procesos con nomenclatura BPMN 2.0. Analítica 2026 y export a PPTX/BPMN/SVG/Word. Minsait Business Consulting Perú." />
+  <meta property="og:description" content="Diagramación, diagnóstico y reingeniería de procesos con nomenclatura BPMN 2.0. Analítica 2026 y export a PPTX/BPMN/SVG/Word. MBC Business Consulting Perú." />
   <meta property="og:url" content="https://nelson2206.github.io/process-iq/" />
-  <meta property="og:image" content="https://nelson2206.github.io/process-iq/og-image.svg" />
-  <meta property="og:site_name" content="ProcessIQ · Minsait BC Perú" />
+  <meta property="og:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.2.0" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="ProcessIQ — diagramador de procesos BPMN de MBC" />
+  <meta property="og:site_name" content="ProcessIQ · MBC Perú" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="ProcessIQ — Diagramador de procesos BPMN" />
-  <meta name="twitter:description" content="Diagramación, diagnóstico y reingeniería de procesos con BPMN 2.0. Minsait Business Consulting Perú." />
-  <meta name="twitter:image" content="https://nelson2206.github.io/process-iq/og-image.svg" />
+  <meta name="twitter:description" content="Diagramación, diagnóstico y reingeniería de procesos con BPMN 2.0. MBC Business Consulting Perú." />
+  <meta name="twitter:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.2.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=3.1.1" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=3.2.0" />
   <script defer src="https://umami-mbc.vercel.app/script.js" data-website-id="0f3aaa08-7bb8-4aec-b09b-d9c4abf3868c"></script>
 </head>
 <body>
@@ -33,17 +36,17 @@
       <h2>ProcessIQ está optimizado para escritorio</h2>
       <p>Es un diagramador de procesos con paneles de edición y un lienzo amplio: la mejor experiencia es en una pantalla grande (laptop o monitor).</p>
       <button id="btnMobileContinue" class="mobile-notice-btn">Continuar de todos modos</button>
-      <div class="mobile-notice-sub">Minsait · Business Consulting · Perú</div>
+      <div class="mobile-notice-sub">MBC · Business Consulting · Perú</div>
     </div>
   </div>
 
   <!-- ============== HEADER ============== -->
   <header class="app-header">
     <div class="brand">
-      <div class="brand-mark">M</div>
+      <div class="brand-mark"><svg class="brand-logo" viewBox="0 0 3860.17 856.07" role="img" aria-label="MBC"><path fill="currentColor" d="M418.06 0 626.07 488.07 701.67 492.29 910.14 0 1328.21 0 1328.21 856.07 1100.17 856.07 1100.17 192.01 1048.6 192.48 830.28 684.35 496.03 682.1 280.46 194.49 228.04 192.01 228.04 856.07 0 856.07 0 0 418.06 0Z"/><path fill="currentColor" d="M3139.84 201 3860.17 201 3860.17 0 3148.64 0C3148.13 0 3147.62 0.01 3147.11 0.02 2906.1 1.66 2724.88 176.94 2724.88 428.03 2724.88 679.12 2905.48 852.72 3144.73 856.01 3145.07 856.01 3145.42 856.02 3145.76 856.03 3145.9 856.03 3146.05 856.03 3146.19 856.03 3147 856.04 3147.81 856.06 3148.63 856.06L3860.16 856.06 3860.16 655.06 3141.03 655.06C3033.15 651.52 2947.27 567.26 2947.27 428.02 2947.27 288.78 3029.79 204.6 3139.84 200.98Z"/><path fill="currentColor" d="M1485.95 0 2304.74 0C2482.07 0 2588.46 94.17 2588.46 231.14 2588.46 311.86 2550.55 384.01 2463.72 407.24L2463.72 426.81C2560.33 441.49 2614.14 508.75 2614.14 618.81 2614.14 765.56 2516.3 856.06 2334.08 856.06L1485.94 856.06 1485.94 0ZM2292.51 335.09C2345.1 335.09 2373.23 305.74 2373.23 259.27 2373.23 212.8 2345.1 183.45 2292.51 183.45L1706.08 183.45 1706.08 335.1 2292.51 335.1ZM2299.84 672.62C2357.32 672.62 2386.67 646.94 2386.67 595.57 2386.67 544.2 2357.32 518.52 2299.84 518.52L1706.08 518.52 1706.08 672.61 2299.84 672.61Z"/></svg></div>
       <div class="brand-text">
         <div class="brand-title">ProcessIQ</div>
-        <div class="brand-sub">Minsait · BC Perú</div>
+        <div class="brand-sub">Business Consulting · Perú</div>
       </div>
     </div>
 
@@ -112,7 +115,7 @@
           </button>
           <button data-export="pptx">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="20" x2="22" y2="20"/><path d="m7 12 3-3 3 3 5-5"/></svg>
-            PPTX · entregable Minsait
+            PPTX · entregable MBC
           </button>
           <button data-export="word">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
@@ -770,6 +773,6 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="kpi-library.js?v=1.6.1"></script>
-  <script src="app.js?v=3.1.1"></script>
+  <script src="app.js?v=3.2.0"></script>
 </body>
 </html>

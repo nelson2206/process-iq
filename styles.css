@@ -1,29 +1,35 @@
 /* ============================================================
-   ProcessIQ — Sistema de diseño Minsait / Indra
+   ProcessIQ — Sistema de diseño MBC
+   Fuente: Libro de estilo transitorio V2 (esquema "MBC", Montserrat).
+   Azul MBC 003478 = dk1 · Fucsia FF0054 = acento · Gris Cerámica E3E2DA = lt2.
    ============================================================ */
 
 :root {
   /* ---- NEXUS design tokens (tema del hub — https://nelson2206.github.io/mbc-hub/) ---- */
-  --bg-0: #0b0410;
-  --bg-1: #160a26;
+  --mbc-azul:      #003478;   /* dk1 del tema MBC */
+  --mbc-azul-vivo: #147AFF;   /* accent1 del tema MBC */
+  --mbc-fucsia:    #FF0054;
+  --mbc-ceramica:  #E3E2DA;   /* lt2 */
+  --bg-0: #01142c;
+  --bg-1: #042450;
   --rose: #ff0054;
   --pink: #ff6a9e;
-  --cyan: #41B9FF;
+  --cyan: var(--mbc-azul-vivo);
   --amber: #f0a818;
-  --cream: #f5ecdc;
-  --nexus-text: #efe6f5;
-  --nexus-text-soft: rgba(239,230,245,0.62);
-  --glass: rgba(24,12,38,0.55);
+  --cream: #EFEDE6;
+  --nexus-text: #eef3fa;
+  --nexus-text-soft: rgba(238,243,250,0.64);
+  --glass: rgba(4,36,80,0.55);
   --glass-brd: rgba(255,255,255,0.09);
-  --trace: #b2a5ff;        /* ProcessIQ's own hub character color — new primary accent */
-  --trace-dk: #8f7ff0;     /* darker variant for hover/active states */
-  --trace-tint: rgba(178,165,255,0.14);
-  --trace-ring: rgba(178,165,255,0.30);
+  --trace: var(--mbc-azul-vivo);   /* acento primario = azul MBC vivo */
+  --trace-dk: #0A56C4;
+  --trace-tint: rgba(20,122,255,0.12);
+  --trace-ring: rgba(20,122,255,0.32);
 
   /* Brand — reskin NEXUS: alias del acento primario a "Trace" (violeta del hub) */
   --indra-primary:     var(--trace);   /* antes #FF4713 — ahora violeta Trace (uso: header rule, primary CTA, focus ring, tab active) */
   --indra-primary-dk:  var(--trace-dk);
-  --indra-primary-text: #5B4FCF;  /* violeta oscuro para TEXTO pequeño sobre BLANCO — 6.06:1 (WCAG AA); --trace puro (2.16:1) no pasa */
+  --indra-primary-text: var(--mbc-azul);  /* azul MBC para TEXTO pequeño sobre BLANCO — 12,4:1; el azul vivo (3,3:1) no pasa AA a 13px */
   --indra-primary-tint:var(--trace-tint);   /* fondos hover suaves */
   --indra-primary-ring:var(--trace-ring);   /* focus ring */
 
@@ -40,9 +46,9 @@
   --gray-200: #D6D6D6;
   --gray-150: #E5E5E5;
   --gray-100: #F0F0F0;
-  --gray-50:  #F8F6F2;          /* warmer cream — MBC-vacations base */
-  --bg:       #F4F1EC;          /* Recreo surface base */
-  --bg-alt:   #FAF6F1;          /* Recreo surface alt */
+  --gray-50:  #F5F4EF;          /* Gris Cerámica aclarado */
+  --bg:       #EFEEE7;          /* superficie base — Cerámica al 92 % */
+  --bg-alt:   #F7F6F1;
   --white:    #FFFFFF;
 
   /* Aliases legacy (compatibilidad con clases existentes) */
@@ -80,7 +86,7 @@
   --node-system-stroke:   #37474F;
 
   /* Typography scale */
-  --font-stack: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-stack: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
   --font-xs:   11px;
   --font-sm:   12px;
@@ -252,19 +258,18 @@ textarea:focus-visible {
 }
 
 .brand-mark {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, var(--rose), var(--trace));
-  color: var(--white);
+  /* Logotipo MBC oficial (Libro de estilo transitorio V2, ppt/media/image4.svg).
+     Se pinta en blanco porque la cabecera es oscura; hereda el color, no lo fija. */
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: var(--font-xl);
-  border-radius: var(--radius-md);
-  letter-spacing: -0.04em;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 1px 2px rgba(0,0,0,0.3);
+  color: var(--white);
   flex-shrink: 0;
+}
+
+.brand-logo {
+  height: 19px;
+  width: auto;
+  display: block;
 }
 
 .brand-text { display: flex; flex-direction: column; line-height: 1; }

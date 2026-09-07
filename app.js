@@ -6817,6 +6817,48 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         nodeBoxes.set(n.id, { x: gx, y: gy, w: gw, h: gh, cx: gx + gw/2, cy: gy + gh/2 });
       });
 
+      // ───── Lado por el que sale y entra cada arista ─────
+      // Hasta v3.1.0 mandaba la horizontal: si el destino estaba a la derecha
+      // se salia por la derecha aunque estuviera tres carriles mas abajo, y la
+      // flecha daba un rodeo largo por el pasillo (visto por el usuario en
+      // Originacion de Credito Hipotecario: el rombo del umbral hasta "Evaluar
+      // en comite"). Ahora manda la direccion DOMINANTE: si el salto vertical
+      // supera al avance horizontal, se sale por el vertice inferior y se entra
+      // por arriba, que es como se dibuja a mano.
+      const carrilDeId = (id) => (state._lanes && state._lanes.laneOf && state._lanes.laneOf[id]) || null;
+      function ladoDeArista(idA, idB, ba, bb) {
+        const dx = bb.cx - ba.cx, dy = bb.cy - ba.cy;
+        // Cambio de carril: manda la vertical aunque el destino avance mas a la
+        // derecha que hacia abajo. Medido en Originacion de Credito: dx 2,63" y
+        // dy 2,38", asi que por dominancia pura seguia saliendo por la derecha
+        // y daba el rodeo largo. El criterio real es el actor, no la distancia.
+        const lA = carrilDeId(idA), lB = carrilDeId(idB);
+        const cambiaCarril = !!(lA && lB && lA !== lB);
+        if (cambiaCarril || Math.abs(dy) > Math.abs(dx)) {
+          return dy >= 0
+            ? { ladoA: 'bottom', ladoB: 'top',
+                p1: { x: ba.cx, y: ba.y + ba.h }, p2: { x: bb.cx, y: bb.y } }
+            : { ladoA: 'top', ladoB: 'bottom',
+                p1: { x: ba.cx, y: ba.y }, p2: { x: bb.cx, y: bb.y + bb.h } };
+        }
+        return dx >= 0
+          ? { ladoA: 'right', ladoB: 'left',
+              p1: { x: ba.x + ba.w, y: ba.cy }, p2: { x: bb.x, y: bb.cy } }
+          : { ladoA: 'left', ladoB: 'right',
+              p1: { x: ba.x, y: ba.cy }, p2: { x: bb.x + bb.w, y: bb.cy } };
+      }
+
+      // Que nodos van a sacar una flecha por su vertice inferior: su etiqueta
+      // (la pregunta del rombo) tiene que subir encima para no quedar cruzada.
+      const salidaAbajo = {};
+      state.edges.forEach(e => {
+        const ba = nodeBoxes.get(e.from), bb = nodeBoxes.get(e.to);
+        if (!ba || !bb) return;
+        const rA = ranks[e.from], rB = ranks[e.to];
+        if (rA != null && rB != null && saltaBanda(rA, rB)) return;   // va por conector
+        if (ladoDeArista(e.from, e.to, ba, bb).ladoA === 'bottom') salidaAbajo[e.from] = true;
+      });
+
       // ───── Dibuja nodos ─────
       nodesInSlice.forEach(n => {
         const b = nodeBoxes.get(n.id);
@@ -6874,9 +6916,12 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           }
           // Label debajo del círculo
           if (n.label && n.label !== 'Inicio') {
+            const hEv = altoEtiqueta(n.label, b.w + 0.6, FONT_NODE_S);
+            const evArriba = !!salidaAbajo[n.id];
             slide.addText(n.label, {
-              x: b.x - 0.3, y: b.y + b.h + 0.02, w: b.w + 0.6, h: altoEtiqueta(n.label, b.w + 0.6, FONT_NODE_S),
-              fontSize: FONT_NODE_S, color: M_PRUNO, align: 'center', valign: 'top',
+              x: b.x - 0.3, y: evArriba ? b.y - hEv - 0.03 : b.y + b.h + 0.02,
+              w: b.w + 0.6, h: hEv,
+              fontSize: FONT_NODE_S, color: M_PRUNO, align: 'center', valign: evArriba ? 'bottom' : 'top',
               fontFace: T_FONT, wrap: true, autoFit: false
             });
           } else if (n.label === 'Inicio') {
@@ -6931,9 +6976,13 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             x: b.x, y: b.y, w: b.w, h: b.h,
             fontSize: 20, bold: true, color: M_PRUNO, align: 'center', valign: 'middle', fontFace: T_FONT
           });
+          const hPar = altoEtiqueta(n.label, b.w + 0.6, FONT_NODE_S);
+          const parArriba = !!salidaAbajo[n.id];
           slide.addText(n.label || '', {
-            x: b.x - 0.3, y: b.y + b.h + 0.01, w: b.w + 0.6, h: altoEtiqueta(n.label, b.w + 0.6, FONT_NODE_S),
-            fontSize: FONT_NODE_S, align: 'center', valign: 'top', color: M_PRUNO, fontFace: T_FONT, wrap: true, autoFit: false
+            x: b.x - 0.3, y: parArriba ? b.y - hPar - 0.03 : b.y + b.h + 0.01,
+            w: b.w + 0.6, h: hPar,
+            fontSize: FONT_NODE_S, align: 'center', valign: parArriba ? 'bottom' : 'top',
+            color: M_PRUNO, fontFace: T_FONT, wrap: true, autoFit: false
           });
         } else if (n.type === 'decision') {
           // Gateway exclusivo formato Telered: diamante vino con "x" blanca,
@@ -6942,9 +6991,13 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             x: b.x, y: b.y, w: b.w, h: b.h,
             fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: T_FONT
           });
+          const hPreg = altoEtiqueta(n.label, b.w + 0.9, 9);
+          const arriba = !!salidaAbajo[n.id];
           slide.addText(n.label || '', {
-            x: b.x - 0.45, y: b.y + b.h + 0.01, w: b.w + 0.9, h: altoEtiqueta(n.label, b.w + 0.9, 9),
-            fontSize: 9, bold: true, align: 'center', valign: 'top', color: T_VINO, fontFace: T_FONT, wrap: true, autoFit: false
+            x: b.x - 0.45, y: arriba ? b.y - hPreg - 0.03 : b.y + b.h + 0.01,
+            w: b.w + 0.9, h: hPreg,
+            fontSize: 9, bold: true, align: 'center', valign: arriba ? 'bottom' : 'top',
+            color: T_VINO, fontFace: T_FONT, wrap: true, autoFit: false
           });
         } else {
           // Documento / data: label centrado
@@ -7076,20 +7129,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       }
 
       function emitirConector(slide, a, b, ba, bb, e, esMensaje) {
-        let ladoA, ladoB, p1, p2;
-        if (bb.x >= ba.x + ba.w - 0.01) {
-          ladoA = 'right'; ladoB = 'left';
-          p1 = { x: ba.x + ba.w, y: ba.cy }; p2 = { x: bb.x, y: bb.cy };
-        } else if (bb.x + bb.w <= ba.x + 0.01) {
-          ladoA = 'left'; ladoB = 'right';
-          p1 = { x: ba.x, y: ba.cy }; p2 = { x: bb.x + bb.w, y: bb.cy };
-        } else if (bb.cy >= ba.cy) {
-          ladoA = 'bottom'; ladoB = 'top';
-          p1 = { x: ba.cx, y: ba.y + ba.h }; p2 = { x: bb.cx, y: bb.y };
-        } else {
-          ladoA = 'top'; ladoB = 'bottom';
-          p1 = { x: ba.cx, y: ba.y }; p2 = { x: bb.cx, y: bb.y + bb.h };
-        }
+        const lados = ladoDeArista(a.id, b.id, ba, bb);
+        const ladoA = lados.ladoA, ladoB = lados.ladoB, p1 = lados.p1, p2 = lados.p2;
         slide.addShape('line', {
           x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y),
           w: Math.max(Math.abs(p2.x - p1.x), 0.01), h: Math.max(Math.abs(p2.y - p1.y), 0.01),

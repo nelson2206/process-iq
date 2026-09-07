@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.1.0 — la vista Ejecutiva pasa a ser etapas de punta a punta: 5-10 cajas, sin carriles
+> **Última actualización:** v3.1.1 — la flecha sale por el vértice inferior cuando el destino cambia de carril
 
 ---
 
@@ -152,6 +152,21 @@
   primera columna de la tabla de actividades del informe Word. OJO: la Ficha de
   Proceso (deriveFicha) nunca lo llevo; si hiciera falta cruzar lamina y ficha
   habria que anadirlo alli.
+- v3.1.1: el lado por el que sale y entra cada flecha lo decide ladoDeArista().
+  Hasta v3.1.0 mandaba la horizontal --si el destino estaba a la derecha se
+  salia por la derecha aunque estuviera tres carriles abajo-- y la flecha daba
+  un rodeo largo por el pasillo. Ahora, si la arista CAMBIA DE CARRIL, sale por
+  el vertice inferior del rombo y entra por arriba de la caja, que es como se
+  dibuja a mano. Ojo: no vale la dominancia de distancia; medido en Originacion
+  de Credito, dx 2,63" y dy 2,38", asi que por dominancia seguia saliendo por la
+  derecha. El criterio es el actor, no la distancia.
+- v3.1.1: cuando un rombo (o un evento) saca flecha por abajo, su etiqueta sube
+  ENCIMA de la figura; si no, sigue debajo. Sin esto la pregunta quedaba cruzada
+  por su propia flecha.
+- Medido sobre los 14 procesos de demo, ~50 laminas de flujo: solapes
+  texto-sobre-texto 18 -> 7, texto-sobre-figura 8 -> 7, cero fugas de lamina.
+  Comparativa hecha sirviendo el commit anterior en paralelo desde una copia
+  (git show HEAD:app.js), no de memoria.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

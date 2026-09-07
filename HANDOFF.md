@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.0.5 — el código de actividad sale del diagrama (sigue en el informe Word)
+> **Última actualización:** v3.1.0 — la vista Ejecutiva pasa a ser etapas de punta a punta: 5-10 cajas, sin carriles
 
 ---
 
@@ -69,18 +69,31 @@
 - Antes de generar se pregunta la PROFUNDIDAD (modal askProfundidad). No decide
   que se genera --siempre el proceso completo-- sino con cuanto detalle mira la
   IA y en que vista se abre.
-- v3.0.4: el nivel EJECUTIVO agrupa por SEGMENTO entre hitos, no por cadena
-  lineal. _gruposPorCadena exigia 1 entrada y 1 salida, y un BPMN real con
-  gateways casi no tiene esas cadenas: Venta de Lotes solo bajaba de 33 a 28
-  nodos y el usuario lo reporto como "no funciona". Ahora las tareas del mismo
-  carril que cuelgan de los mismos hitos previos --ramas hermanas de un gateway
-  incluidas-- son UN paso. Medido: 33 -> 28 (actividad) -> 20 (ejecutivo), con
-  ida y vuelta exacta. Nivel 2 pasa a cadenas de 2+ (antes 3+, casi nunca
-  disparaba).
+- v3.1.0: el nivel EJECUTIVO ya NO es "el BPMN con menos cajas". Es el proceso
+  de punta a punta en ETAPAS: no mira carriles (una etapa cruza varios actores),
+  absorbe los gateways (el "como se decide" es detalle) y conserva inicio y
+  fines, incluidas las salidas tempranas. Techo EJEC_MAX_CAJAS = 10; las etapas
+  se reparten por rank en tramos contiguos, con minimo 3 etapas. La proyeccion
+  pone owner = macroproceso en todos los nodos: un solo carril.
+  Medido en 9 procesos (ficha + 8 demos): todos entre 8 y 10 cajas, todos
+  restauran el detalle exacto. Venta de Lotes: 33 -> 28 (actividad) -> 9
+  (ejecutivo), y el PPTX ejecutivo cabe en UNA lamina con 0 conectores de letra
+  (antes 4 laminas y 15 conectores).
+  Camino recorrido, para no repetirlo: v3.0.4 agrupaba por carril + segmento
+  entre hitos y se quedaba en 20 cajas; antes de eso, por cadena lineal estricta
+  (1 entrada / 1 salida) y solo bajaba de 33 a 28. Con gateways de por medio
+  ninguna de las dos llega a una lamina de comite.
+  PENDIENTE: la etiqueta de etapa es la del primer paso + "(+N pasos)". Es
+  honesta pero floja; el nombre de etapa es trabajo para la IA cuando haya clave.
+- Nivel 2 (Actividad) usa cadenas de 2+ (antes 3+, casi nunca disparaba).
 - v3.0.4: si al colapsar todas las ramas de un gateway exclusivo acaban en el
   mismo paso, el gateway se elimina y sus entradas van directas al destino. Sin
   esto quedaba con una sola salida y ensureDecisionBranches le inventaba una
-  rama "Caso no procede" inexistente.
+  rama "Caso no procede" inexistente. Sigue como red de seguridad aunque en
+  v3.1.0 el nivel 1 ya absorbe los gateways.
+- v3.1.0 (export): sin rombos y con 1-2 carriles caben 9 columnas por banda en
+  vez de 6. Con 6, un flujo ejecutivo de 8 rangos se partia en dos bandas y
+  salian conectores con letra en un diagrama de 6 cajas.
 - v3.0.4 REGRESION corregida: _modeloVigente ahora ignora los nodos _autoGen.
   Nacen sin sello, asi que tras colapsar el modelo se daba por ajeno y se
   recapturaba la vista colapsada como si fuera el completo: volver a Detalle ya

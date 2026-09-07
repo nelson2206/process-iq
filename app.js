@@ -2765,65 +2765,75 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     return { grupos, grupoDe };
   }
 
-  // Agrupa por SEGMENTO entre hitos: todas las tareas del mismo carril que
-  // cuelgan de los mismos hitos previos (decisión, inicio, fin, evento) son
-  // UN paso. Es lo que promete el nivel Ejecutivo: "un paso por actor entre
-  // decisiones". _gruposPorCadena no lo lograba porque exigía cadena lineal
-  // estricta (1 entrada, 1 salida): un BPMN real con gateways casi no tiene
-  // esas cadenas y el nivel apenas quitaba 5 nodos de 33. Aquí las ramas
-  // hermanas de un mismo gateway y mismo actor también se funden.
-  function _gruposPorSegmento(nodes, edges) {
-    const salida = {}, entrada = {};
+  // Techo de cajas de la vista Ejecutiva. Una lamina de comite se lee de un
+  // vistazo; por encima de 10 cajas deja de ser ejecutiva.
+  const EJEC_MAX_CAJAS = 10;
+
+  // Rank por camino mas largo (Kahn). Los nodos en ciclo (bucles de reproceso)
+  // no salen de la cola: se les asigna el rank del predecesor mas avanzado.
+  function _ranksLocales(nodes, edges) {
+    const salida = {}, grado = {};
+    nodes.forEach(n => { grado[n.id] = 0; });
     edges.forEach(e => {
+      if (grado[e.from] === undefined || grado[e.to] === undefined) return;
       (salida[e.from] = salida[e.from] || []).push(e.to);
-      (entrada[e.to] = entrada[e.to] || []).push(e.from);
+      grado[e.to]++;
     });
-    const porId = {}; nodes.forEach(n => { porId[n.id] = n; });
-
-    // Hitos previos más cercanos: se retrocede atravesando tareas hasta topar
-    // con un hito. El conjunto (ordenado) identifica el segmento.
-    const segDe = {};
+    const rank = {}, cola = [];
+    nodes.forEach(n => { rank[n.id] = 0; if (!grado[n.id]) cola.push(n.id); });
+    const listos = {};
+    while (cola.length) {
+      const id = cola.shift();
+      listos[id] = true;
+      (salida[id] || []).forEach(t => {
+        rank[t] = Math.max(rank[t], rank[id] + 1);
+        if (--grado[t] === 0) cola.push(t);
+      });
+    }
+    // Nodos en ciclo: heredan del predecesor ya resuelto mas avanzado
     nodes.forEach(n => {
-      if (_esHito(n)) return;
-      const hitos = {}, vistos = {};
-      const cola = [n.id];
-      while (cola.length) {
-        const id = cola.shift();
-        (entrada[id] || []).forEach(pid => {
-          if (vistos[pid]) return;
-          vistos[pid] = true;
-          const p = porId[pid];
-          if (!p) return;
-          if (_esHito(p)) hitos[pid] = true; else cola.push(pid);
-        });
-      }
-      const k = Object.keys(hitos).sort().join(',');
-      segDe[n.id] = k || 'origen';
+      if (listos[n.id]) return;
+      let m = 0;
+      edges.forEach(e => { if (e.to === n.id && listos[e.from]) m = Math.max(m, rank[e.from] + 1); });
+      rank[n.id] = m;
     });
+    return rank;
+  }
 
-    const porClave = {};
-    nodes.forEach(n => {
-      if (_esHito(n)) return;
-      const k = _carrilDe(n) + '||' + segDe[n.id];
-      (porClave[k] = porClave[k] || []).push(n);
-    });
-
+  // ETAPAS EJECUTIVAS. La vista de comite no es un BPMN con menos cajas: es el
+  // proceso de punta a punta en unas pocas etapas. Por eso NO mira carriles
+  // --una etapa puede cruzar varios actores-- y absorbe tambien los gateways:
+  // el "como se decide" es detalle. Se conservan inicio y fines, que son los
+  // que dan el marco (incluida la salida temprana "venta no concretada").
+  // Antes se agrupaba por carril + segmento entre hitos y Venta de Lotes se
+  // quedaba en 20 cajas: seguia sin ser una lamina de comite.
+  function _etapasEjecutivas(nodes, edges, maxCajas) {
+    const rank = _ranksLocales(nodes, edges);
+    const eventos = nodes.filter(n => n.type === 'start' || n.type === 'end');
+    const resto = nodes.filter(n => n.type !== 'start' && n.type !== 'end')
+                       .sort((a, b) => (rank[a.id] - rank[b.id]) || 0);
     const grupos = [], grupoDe = {};
-    Object.keys(porClave).forEach(k => {
-      const miembros = porClave[k];
-      if (miembros.length < 2) return;
+    if (resto.length < 2) return { grupos, grupoDe };
+
+    // Cuantas etapas caben: el techo menos los eventos, y nunca menos de 3
+    // (con 1 o 2 etapas el diagrama deja de contar una historia).
+    const etapas = Math.max(3, Math.min(maxCajas - eventos.length, resto.length));
+    const tam = Math.ceil(resto.length / etapas);
+    for (let i = 0; i < resto.length; i += tam) {
+      const miembros = resto.slice(i, i + tam);
+      if (miembros.length < 2) continue;      // etapa de un solo paso: se deja tal cual
+      const cabeza = miembros.find(m => m.type !== 'decision') || miembros[0];
       const g = {
-        id: 'seg_' + miembros[0].id,
-        label: (miembros[0].label || 'Paso') + ' (+' + (miembros.length - 1) + ' pasos)',
+        id: 'eta_' + miembros[0].id,
+        label: (cabeza.label || 'Etapa') + ' (+' + (miembros.length - 1) + ' pasos)',
         type: 'task', marker: 'subprocess',
-        owner: miembros[0].owner, role: miembros[0].role,
         _hijos: miembros.map(m => m.id),
         _detalle: miembros.map(m => m.label).filter(Boolean),
         pains: miembros.reduce((a, m) => a.concat(m.pains || []), [])
       };
       grupos.push(g);
       miembros.forEach(m => { grupoDe[m.id] = g.id; });
-    });
+    }
     return { grupos, grupoDe };
   }
 
@@ -2879,7 +2889,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       });
     } else {
       const r = nivel === 1
-        ? _gruposPorSegmento(full.nodes, full.edges)
+        ? _etapasEjecutivas(full.nodes, full.edges, EJEC_MAX_CAJAS)
         : _gruposPorCadena(full.nodes, full.edges, 2);
       grupos = r.grupos; grupoDe = r.grupoDe;
     }
@@ -2904,7 +2914,12 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       vistas[k] = true;
       edges.push({ ...e, id: 'v_' + e.id, from: a, to: b });
     });
-    return nivel === 1 ? _colapsarGatewaysDegenerados(nodes, edges) : { nodes, edges };
+    if (nivel !== 1) return { nodes, edges };
+    // Una etapa que cruza varios actores no cabe en el carril de ninguno de
+    // ellos: la vista ejecutiva se dibuja en un solo carril, el del proceso.
+    const carril = state.meta.macroprocess || 'Proceso';
+    nodes.forEach(n => { n.owner = carril; n.role = ''; });
+    return _colapsarGatewaysDegenerados(nodes, edges);
   }
 
   // ¿El modelo completo guardado sigue siendo el de este proceso? Si se cargó
@@ -6491,7 +6506,12 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     // 4 columnas y no 6: medido sobre Venta de Lotes, 6 columnas dejaba las
     // celdas tan estrechas que las preguntas de los gateways se partían en 3-4
     // líneas y se pisaban. Con 4 el deck crece 2 láminas y los solapes caen a 0.
-    const ranksPerSlice = Math.max(3, Math.min(densidadAlta ? 4 : 6, totalRanks));
+    // Sin rombos y con uno o dos carriles (la vista Ejecutiva es justo eso) las
+    // columnas no necesitan ancho extra para las preguntas: caben 9. Con 6, un
+    // flujo ejecutivo de 8 rangos se partía en dos bandas y aparecían conectores
+    // con letra en un diagrama de 6 cajas.
+    const maxCols = densidadAlta ? 4 : (numDecisiones === 0 && numLanesAll <= 2 ? 9 : 6);
+    const ranksPerSlice = Math.max(3, Math.min(maxCols, totalRanks));
     let slicesCount = Math.ceil(totalRanks / ranksPerSlice);   // recalculado por el plan en escalera
     const colWInches_calc = drawableW_calc / ranksPerSlice;
     // Scale per slice: cada slice cubre ranksPerSlice ranks, ocupa drawableW_calc inches

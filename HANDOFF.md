@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.0.4 — fines adelantados en la lámina de origen; vista Ejecutiva que sí colapsa
+> **Última actualización:** v3.0.5 — el código de actividad sale del diagrama (sigue en el informe Word)
 
 ---
 
@@ -132,6 +132,13 @@
   su etiqueta, y se repite en cada banda que lo alcance (BPMN lo permite). Si un
   fin solo se alcanza asi, no se dibuja en su propia banda y su fila desaparece
   si queda vacia. Medido sobre Venta de Lotes: circulos con letra de 13 a 8.
+- v3.0.5: el codigo de actividad ([USR-02]) YA NO se dibuja en la lamina. Era
+  un cuadro de texto suelto de 7 pt que se montaba sobre el titulo de la tarea
+  (visto por el usuario en Venta de Lotes 2/4). Decidido por el usuario: quitar,
+  no fundir en el chip. Sigue en el modelo, en el panel de propiedades y como
+  primera columna de la tabla de actividades del informe Word. OJO: la Ficha de
+  Proceso (deriveFicha) nunca lo llevo; si hiciera falta cruzar lamina y ficha
+  habria que anadirlo alli.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

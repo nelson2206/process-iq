@@ -6869,7 +6869,6 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           // Caja compacta estilo Telered: el chip de tipo y el código sólo caben
           // si la caja es alta; si no, el texto usa toda la caja (como el deck ref).
           const compact = b.h < 0.62;
-          const hasCode = !!n.activityCode && !compact;
           if (exec && !compact) {
             // Marcador BPMN: chip de color con la sigla del tipo (USR, RCV, SRV...).
             // UN solo objeto: la forma lleva el texto dentro. Hasta v3.0.2 eran
@@ -6883,15 +6882,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
               objectName: 'Tipo ' + (exec.codePrefix || 'ACT') + ' · ' + nombreDe(n)
             });
           }
-          // Código de actividad junto al chip
-          if (hasCode) {
-            slide.addText('[' + n.activityCode + ']', {
-              x: b.x + (exec ? 0.5 : 0.08), y: b.y + 0.04, w: b.w - 0.55, h: 0.18,
-              fontSize: 7, bold: true, color: (exec ? colorExec(exec.color) : GRAY),
-              align: 'left', valign: 'middle', fontFace: T_FONT, margin: 0,
-              objectName: 'Código ' + n.activityCode + ' · ' + nombreDe(n)
-            });
-          }
+          // El código de actividad ([USR-02]) NO se dibuja en la lámina: era un
+          // cuadro de texto suelto de 7 pt que se montaba sobre el título de la
+          // tarea. Sigue en el modelo, en el panel de propiedades y como columna
+          // de la Ficha de Proceso (Word), que es donde se usa para cruzar.
           // El texto de la tarea ya va DENTRO de la forma (ver arriba)
           const hasMarker = n.marker && n.marker !== 'none' && MK_GLYPH[n.marker] && !compact;
           // Marcador de actividad BPMN en la base (centro inferior)

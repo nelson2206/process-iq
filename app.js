@@ -6632,17 +6632,45 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const GUT_IZQ = hayEntradaIzq ? 1.05 : 0.55;   // 0,55 = chip de rol
       const GUT_DER = haySalidaDer ? 0.60 : 0.05;
       const CONN_X_IZQ = 0.4 + (0.44 + GUT_IZQ) / 2;                  // centro del pasillo
-      const CONN_X_DER = 0.4 + (SLIDE_DRAW_W - 0.4) - GUT_DER / 2;
+      let CONN_X_DER = 0.4 + (SLIDE_DRAW_W - 0.4) - GUT_DER / 2;   // se acerca al contenido más abajo
 
       // ───── Grid de celdas: cada nodo en su columna-de-banda × fila ─────
-      const sliceColCount = Math.max.apply(null, bandas.map(b => b.fin - b.ini));
-      const cellInnerW = (SLIDE_DRAW_W - 0.4 - GUT_IZQ - GUT_DER) / sliceColCount;
+      // ───── Columnas compactas por banda ─────
+      // Un rank sin nodos en esta lámina (un fin adelantado, un nodo que vive
+      // en otra fila...) dejaba una columna vacía y el diagrama se estiraba con
+      // huecos, como vio el usuario en Originación 3/4. Se renumeran solo las
+      // columnas que tienen nodos, banda por banda.
+      const colUsadas = {};
+      nodesInSlice.forEach(n => {
+        const li = filaIdxOf(n); if (li < 0) return;
+        const f = filas[li];
+        (colUsadas[f.banda] = colUsadas[f.banda] || new Set()).add((ranks[n.id] || 0) - f.ini);
+      });
+      const colMapa = {};
+      Object.keys(colUsadas).forEach(bk => {
+        colMapa[bk] = {};
+        Array.from(colUsadas[bk]).sort((p, q) => p - q).forEach((c, i) => { colMapa[bk][c] = i; });
+      });
+      const sliceColCount = Math.max(1, ...Object.keys(colMapa).map(bk => Object.keys(colMapa[bk]).length));
+      // Tope de anchura por columna. Con pocas columnas el diagrama se estiraba
+      // a toda la lámina (2,6" por columna para cajas de 1,9") y quedaba lleno
+      // de aire, como vio el usuario en Originación 3/4. Se compacta a la
+      // izquierda y el pasillo de salida se pega al contenido, como lo
+      // reacomodó él a mano.
+      const MAX_CELL_W = 1.95;
+      const cellInnerW = Math.min(MAX_CELL_W, (SLIDE_DRAW_W - 0.4 - GUT_IZQ - GUT_DER) / sliceColCount);
+      CONN_X_DER = Math.min(CONN_X_DER, 0.4 + GUT_IZQ + sliceColCount * cellInnerW + GUT_DER / 2 + 0.1);
       const CELL_GAP_X = 0.18;
       const cellWFinal = cellInnerW - CELL_GAP_X;
 
       // Cuántos nodos comparten cada celda (fila × columna dentro de su banda)
       const cellCount = {}, cellIdx = {};
-      const colOf = (n) => (ranks[n.id] || 0) - (filas[filaIdxOf(n)] || { ini: 0 }).ini;
+      const colOf = (n) => {
+        const li = filaIdxOf(n); if (li < 0) return 0;
+        const f = filas[li], c = (ranks[n.id] || 0) - f.ini;
+        const m = colMapa[f.banda] || {};
+        return m[c] != null ? m[c] : c;
+      };
       const keyOf = (n) => filaIdxOf(n) + '|' + colOf(n);
       nodesInSlice.forEach(n => { const k = keyOf(n); cellCount[k] = (cellCount[k] || 0) + 1; });
 
@@ -6899,6 +6927,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           objectName: nombreDe(n)
         };
         if (kind === 'rect') shapeOpts.rectRadius = 0.08;
+        if (n.type === 'decision') shapeOpts.shape = 'diamond';
         if (esTarea) {
           // La tarea es UN solo objeto: la forma lleva el texto dentro, como en
           // el patrón corporativo. Antes eran forma + texto suelto encima, y al
@@ -6913,6 +6942,15 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
             fontSize: compactT ? 7.5 : FONT_NODE_S, align: 'center', valign: 'middle',
             color: T_TXT, fontFace: T_FONT, wrap: true, autoFit: false
           }));
+        } else if (n.type === 'decision') {
+          // El rombo lleva su glifo DENTRO: un solo objeto, como las tareas.
+          // Antes eran rombo + cuadro de texto y al moverlo en PowerPoint la
+          // "x" se quedaba atrás (pedido del usuario).
+          const par = n.gatewayType === 'parallel', inc = n.gatewayType === 'inclusive';
+          slide.addText(par ? '+' : (inc ? 'O' : 'x'), Object.assign({
+            margin: 0, fontSize: (par || inc) ? 20 : 12, bold: true,
+            color: (par || inc) ? M_PRUNO : 'FFFFFF', align: 'center', valign: 'middle', fontFace: T_FONT
+          }, shapeOpts));
         } else {
           slide.addShape(kind, shapeOpts);
         }
@@ -6999,10 +7037,6 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           }
         } else if (n.type === 'decision' && (n.gatewayType === 'parallel' || n.gatewayType === 'inclusive')) {
           // Gateway paralelo/inclusivo: marca (＋/○) al centro + label debajo
-          slide.addText(n.gatewayType === 'parallel' ? '+' : 'O', {
-            x: b.x, y: b.y, w: b.w, h: b.h,
-            fontSize: 20, bold: true, color: M_PRUNO, align: 'center', valign: 'middle', fontFace: T_FONT
-          });
           const hPar = altoEtiqueta(n.label, b.w + 0.6, FONT_NODE_S);
           const parArriba = !!salidaAbajo[n.id];
           slide.addText(n.label || '', {
@@ -7014,10 +7048,6 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         } else if (n.type === 'decision') {
           // Gateway exclusivo formato Telered: diamante vino con "x" blanca,
           // y la pregunta FUERA del diamante como etiqueta en vino
-          slide.addText('x', {
-            x: b.x, y: b.y, w: b.w, h: b.h,
-            fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: T_FONT
-          });
           const hPreg = altoEtiqueta(n.label, b.w + 0.9, 9);
           const arriba = !!salidaAbajo[n.id];
           slide.addText(n.label || '', {
@@ -7191,6 +7221,29 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       // hueco, vuelve al borde, que es el comportamiento de siempre.
       const usadasPorX = {};
       const usadasEn = (x) => (usadasPorX[x.toFixed(2)] = usadasPorX[x.toFixed(2)] || []);
+
+      // ───── La flecha de un conector nunca atraviesa una caja ─────
+      // Visto por el usuario en Originación 1/4: la entrada "B" cruzaba
+      // "Registrar solicitud" de lado a lado. Si el tramo recto pisa alguna
+      // caja, el círculo sube (o baja) al pasillo del carril y la flecha entra
+      // por arriba (o abajo) del nodo, como se dibujaría a mano.
+      function tramoPisaCaja(x1, x2, y, ignorar) {
+        const a = Math.min(x1, x2), z = Math.max(x1, x2);
+        for (const par of nodeBoxes) {
+          const id = par[0], bx = par[1];
+          if (ignorar[id]) continue;
+          if (bx.x + bx.w <= a + 0.02 || bx.x >= z - 0.02) continue;
+          if (y >= bx.y - 0.04 && y <= bx.y + bx.h + 0.04) return true;
+        }
+        return false;
+      }
+      function pasilloLibre(n, x1, x2) {
+        const li = filaIdxOf(n); if (li < 0) return null;
+        const arriba = laneY[li] + 0.21, abajo = laneY[li] + laneH[li] - 0.21;
+        if (!tramoPisaCaja(x1, x2, arriba, {})) return { y: arriba, lado: 'top' };
+        if (!tramoPisaCaja(x1, x2, abajo, {})) return { y: abajo, lado: 'bottom' };
+        return null;
+      }
       function columnaConector(n, dir, xBorde) {
         const li = filaIdxOf(n);
         if (li < 0) return xBorde;
@@ -7288,38 +7341,37 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const ba = nodeBoxes.get(a.id);
           const letter = edgeLetters[e.id] || '?';
           const targetSlice = laminaDeRank(ranks[b.id] || 0);
-          // Si el salto es a otra banda de ESTA misma lamina, la referencia
-          // no es un numero de lamina sino "sigue abajo".
           const marcaDer = targetSlice === sliceIdx + 1 ? '↓' : ('→ ' + targetSlice);
           const cx = columnaConector(a, +1, CONN_X_DER);
           const sy = ba.y + ba.h / 2;
           const usadas = usadasEn(cx);
-          const cy = reservaOffPage(usadas, sy);
-          // UN solo conector anclado nodo → círculo (antes eran tres líneas
-          // sueltas que no seguían a la caja). El círculo lleva nombre y se
-          // registra en nombresPorNodo con un id sintético para que el
-          // post-proceso lo encuentre. El codo vertical (adj1) se escalona por
-          // conector: con una x fija, cuatro salidas compartían el mismo tronco
-          // y se veían como una sola línea.
+          let cy = reservaOffPage(usadas, sy);
+          let ladoA = 'right', adjDer = [82000, 68000, 54000, 40000, 26000][(usadas.length - 1) % 5];
+          if (tramoPisaCaja(ba.x + ba.w, cx - 0.18, cy, { [a.id]: 1 })) {
+            const p = pasilloLibre(a, ba.cx, cx - 0.18);
+            if (p) { cy = p.y; ladoA = p.lado; adjDer = 0; usadas.push(cy); }   // vertical primero
+          }
           const idCirc = 'conn:' + sliceIdx + ':der:' + letter + ':' + Math.round(cy * 100);
           nombresPorNodo[idCirc] = 'Conector ' + letter + ' → ' + targetSlice;
-          const adjDer = [82000, 68000, 54000, 40000, 26000][(usadas.length - 1) % 5];
+          // La letra va DENTRO del círculo: un solo objeto que se mueve entero
+          slide.addText(letter, { shape: 'ellipse', x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
+            fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 }, margin: 0,
+            fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: T_FONT,
+            objectName: nombresPorNodo[idCirc] });
+          const p1 = ladoA === 'right' ? { x: ba.x + ba.w, y: sy } : { x: ba.cx, y: ladoA === 'top' ? ba.y : ba.y + ba.h };
           slide.addShape('line', {
-            x: ba.x + ba.w, y: Math.min(sy, cy),
-            w: Math.max(cx - 0.18 - (ba.x + ba.w), 0.01), h: Math.max(Math.abs(cy - sy), 0.01),
-            flipV: cy < sy, line: { color: '926979', width: 0.85 },
-            objectName: 'Flujo|' + a.id + '|' + idCirc + '|right|left|' + adjDer
+            x: p1.x, y: Math.min(p1.y, cy),
+            w: Math.max(cx - 0.18 - p1.x, 0.01), h: Math.max(Math.abs(cy - p1.y), 0.01),
+            flipV: cy < p1.y, line: { color: '926979', width: 0.85 },
+            objectName: 'Flujo|' + a.id + '|' + idCirc + '|' + ladoA + '|left|' + adjDer
           });
-          slide.addShape('ellipse', { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
-            fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 }, objectName: nombresPorNodo[idCirc] });
-          slide.addText(letter, { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
-            fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
-          // Rótulo corto bajo el círculo: la letra ya está dentro, "Conector C"
-          // sobraba y sus 2 pulgadas de ancho pisaban las cajas vecinas.
           slide.addText(marcaDer, { x: cx - 0.2, y: cy + 0.19, w: 0.4, h: 0.16,
             fontSize: 7, color: GRAY, italic: true, align: 'center' });
         }
         if (bIn) {
+          // Un fin adelantado ya se pintó como círculo de fin en la banda de
+          // origen: no se le dibuja además una entrada con letra "?".
+          if (esAristaAFinAdelantado(e)) return;
           // Entrada por la izquierda — misma letra que el origen
           const bb = nodeBoxes.get(b.id);
           const letter = edgeLetters[e.id] || '?';
@@ -7328,20 +7380,24 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           const cx = columnaConector(b, -1, CONN_X_IZQ);
           const ty = bb.y + bb.h / 2;
           const usadas = usadasEn(cx);
-          const cy = reservaOffPage(usadas, ty);
-          // UN solo conector anclado círculo → nodo (ver rama derecha)
+          let cy = reservaOffPage(usadas, ty);
+          let ladoB = 'left', adjIzq = [18000, 32000, 46000, 60000, 74000][(usadas.length - 1) % 5];
+          if (tramoPisaCaja(cx + 0.18, bb.x, cy, { [b.id]: 1 })) {
+            const p = pasilloLibre(b, cx + 0.18, bb.cx);
+            if (p) { cy = p.y; ladoB = p.lado; adjIzq = 100000; usadas.push(cy); }   // horizontal primero
+          }
           const idCirc = 'conn:' + sliceIdx + ':izq:' + letter + ':' + Math.round(cy * 100);
           nombresPorNodo[idCirc] = 'Conector ' + letter + ' ← ' + sourceSlice;
-          slide.addShape('ellipse', { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
-            fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 }, objectName: nombresPorNodo[idCirc] });
-          slide.addText(letter, { x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
-            fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
-          const adjIzq = [18000, 32000, 46000, 60000, 74000][(usadas.length - 1) % 5];
+          slide.addText(letter, { shape: 'ellipse', x: cx - 0.18, y: cy - 0.18, w: 0.36, h: 0.36,
+            fill: { color: MAGENTA }, line: { color: 'FFFFFF', width: 1.5 }, margin: 0,
+            fontSize: 12, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: T_FONT,
+            objectName: nombresPorNodo[idCirc] });
+          const p2 = ladoB === 'left' ? { x: bb.x, y: ty } : { x: bb.cx, y: ladoB === 'top' ? bb.y : bb.y + bb.h };
           slide.addShape('line', {
-            x: cx + 0.18, y: Math.min(cy, ty),
-            w: Math.max(bb.x - cx - 0.18, 0.01), h: Math.max(Math.abs(cy - ty), 0.01),
-            flipV: ty < cy, line: { color: '926979', width: 0.85, endArrowType: 'triangle' },
-            objectName: 'Flujo|' + idCirc + '|' + b.id + '|right|left|' + adjIzq
+            x: cx + 0.18, y: Math.min(cy, p2.y),
+            w: Math.max(p2.x - cx - 0.18, 0.01), h: Math.max(Math.abs(cy - p2.y), 0.01),
+            flipV: p2.y < cy, line: { color: '926979', width: 0.85, endArrowType: 'triangle' },
+            objectName: 'Flujo|' + idCirc + '|' + b.id + '|right|' + ladoB + '|' + adjIzq
           });
           slide.addText(marcaIzq, { x: cx - 0.19, y: cy + 0.19, w: 0.38, h: 0.16,
             fontSize: 7, color: GRAY, italic: true, align: 'center' });

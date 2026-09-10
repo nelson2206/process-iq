@@ -215,6 +215,32 @@
   ahi (columnaConector); si no, vuelve al borde. Medido en 4 procesos: mismo
   numero de circulos (53) y largo total de linea de conector 78,6" -> 56,6"
   (-28 %). Comparativa hecha sirviendo el commit anterior en paralelo.
+- v3.4.0: la flecha de un conector de pagina NUNCA atraviesa una caja. Si el
+  tramo recto pisa alguna (visto por el usuario: la entrada "B" cruzaba
+  "Registrar solicitud"), el circulo sube o baja al pasillo del carril
+  (laneY +/- 0,21") y la flecha entra por arriba/abajo del nodo: entrada
+  `right|top` con adj1 100000 (horizontal primero), salida `top|left` con
+  adj1 0 (vertical primero). Si ningun pasillo esta libre, se deja como estaba.
+  Helpers: tramoPisaCaja(x1,x2,y,ignorar) y pasilloLibre(nodo,x1,x2).
+- v3.4.0: la letra del circulo de continuidad y el glifo del rombo (x / + / O)
+  van DENTRO de la figura como un solo objeto (addText con shape). Antes eran
+  figura + cuadro de texto y al mover uno en PowerPoint el otro se quedaba.
+  Medido en 4 procesos: letras sueltas 54 -> 0, glifos sueltos 22 -> 0.
+  Pendiente: los eventos (inicio/fin con simbolo) siguen siendo dos objetos.
+- v3.4.0: un fin adelantado NO recibe ademas una entrada con letra "?" en su
+  propia lamina (la arista ya se dibujo como circulo de fin en la banda de
+  origen). Era el "? <- 1" de Originacion 3/4.
+- v3.4.0: tope de anchura por columna MAX_CELL_W = 1,95". Con 4 columnas el
+  diagrama se estiraba a toda la lamina (2,63" por columna para cajas de
+  1,9") y quedaba lleno de aire; ahora se compacta a la izquierda y el
+  pasillo de salida (CONN_X_DER, ahora `let`) se pega al contenido. Originacion
+  3/4: extension de cajas 9,05" -> 6,9", conector E de x 12,12 a 9,47.
+  Ademas las columnas se renumeran por banda (colMapa) por si un rank queda sin
+  nodos en la lamina; en las demos no ocurria, pero cuesta nada.
+- OJO metrica "fuera de lamina": los chips de rol se definen anchos y se giran
+  270 grados; su x sin girar sale negativa (-0,09) pero girados quedan dentro.
+  Descontar el giro (bench/harness.js caja()) o salen falsos positivos. Las
+  tablas van en EMU, no en pulgadas: excluirlas.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

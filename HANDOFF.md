@@ -250,7 +250,7 @@
   · 'mbc' (estandar): azul 003478, Ceramica E3E2DA, Fucsia FF0054, Montserrat,
     logotipo MBC (PNG rasterizado del SVG oficial), carátula calcada de la
     "Portada Básica" del Libro de estilo transitorio V2.
-  · 'bbva': calcado de Downloads\Flow_Value_BBVA (2).pptx — dk1 001391, fondo
+  · 'bbva': calcado de Documentos\Plantillas\BBVA\Flow_Value_BBVA.pptx — dk1 001391, fondo
     F7F8F8, acento 85C8FF, Lato + Source Serif 4, logotipo BBVA azul/blanco,
     carátula con logotipo arriba-izquierda y titulo abajo, lámina de cierre
     "Gracias". Los circulos de continuidad van en 001391 (el acento claro no

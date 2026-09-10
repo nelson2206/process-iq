@@ -263,6 +263,33 @@
 - Fuera del PPTX siguen diciendo Minsait el informe Word y la Ficha (cabecera
   "MINSAIT BUSINESS CONSULTING · PERÚ" y pie). No se tocaron: el pedido era el
   PPTX. Cambiarlos es trivial cuando se decida.
+- v3.6.0: el tema MBC ya no sale del .potx sino del CATALOGO DE RECURSOS
+  GRAFICOS MBC (Template Nuevo MBC.pptx, archivado en Documentos/Plantillas/MBC).
+  Paleta cerrada: laminas BLANCAS, azul marino 003478 (titulares), acento
+  147AFF (rotulos, reglas, flechas, circulos de continuidad), 33517F texto,
+  7A93B5 antetitulos, A8B6C8 foliado, C9D3E0 filetes, F2F3F5 tarjeta (cajas),
+  CFDDF2 chip de rol. No hay fucsia ni Ceramica. Eventos: inicio 147AFF, fin
+  003478 (la paleta prohibe verdes/rosas). Caratula calcada de la lamina 1 del
+  catalogo escalada 20x11,25 -> 13,33x7,5: banda blanca con logotipo, titulo
+  36 pt, subtitulo, filete 7FB0FF con la fecha, foto duotono (JPEG 51 KB en
+  base64) sobre panel 0A3F86 a la derecha. Chrome MBC: logotipo abajo a la
+  izquierda y foliado gris a la derecha (BBVA conserva su chrome).
+- v3.6.0: FUERA del deck, a pedido del usuario: leyenda BPMN, puntos
+  importantes, pain points, narrativa de pains, matriz impacto-esfuerzo,
+  diagnostico ejecutivo y 1-pager. Quedan: portada, flujo, KPIs, As-Is vs
+  To-Be, SIPOC, RACI y simulador (antetitulo renombrado de Diagnostico a
+  Simulacion para no confundir) y, en BBVA, el cierre Gracias. Los bloques se
+  cortaron por sus marcadores // ==== SLIDE con una guarda que comprueba que
+  ningun bloque conservado use variables declaradas en los eliminados.
+- v3.5.1: el SVG/PNG exportado lleva los estilos computados INLINE. Sin
+  ellos, un SVG suelto pinta cada <path> relleno de negro y el texto en serifa
+  (el usuario lo vio en la descarga PNG). OJO: la rejilla #gridBg se quita
+  DESPUES de recorrer original y clon en paralelo; si se quita antes, cada
+  elemento hereda el estilo del anterior y todo sale negro (paso por ahi).
+  Gancho de prueba: ProcessIQ.svg().
+- PENDIENTE (pregunta abierta del usuario): en el LIENZO la escalera repite
+  los 8 carriles aunque la segunda banda use dos; recomendado desactivar el
+  wrap del lienzo por defecto (state._wrap) y dejar la escalera solo en PPTX.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

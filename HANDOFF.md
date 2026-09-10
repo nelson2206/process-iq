@@ -29,6 +29,18 @@
   clicar fuera, solo con el mismo icono, la X o Esc. `activateTab()` equivale a
   apertura manual. `localStorage["processiq.ui"]` guarda `{panelOpen, tab}` solo
   si fue apertura manual.
+- v3.3.1 REGRESION corregida: el menu Exportar se destapaba pero quedaba
+  TAPADO por el lienzo. Causa: `.app-header` tiene `backdrop-filter`, que la
+  hace contexto de apilamiento propio con z-index auto; al posicionar
+  `.app-main` (relative) en v3.3.0, este se pintaba encima por orden del DOM.
+  Arreglo: `.app-header { z-index: 120 }`, por encima de rieles (30), cajon
+  (40) y desplegables (80/90). Regla para el futuro: cualquier capa nueva
+  posicionada en `.app-main` debe quedar por debajo de 120.
+- OJO al medir desde el Browser pane (pestana oculta): Chrome congela las
+  animaciones CSS igual que los temporizadores. `getAnimations()` reporta
+  `running` con `currentTime: 0` y `getComputedStyle().opacity` devuelve el
+  valor del primer fotograma (0). No es un bug de la app: confirmar con captura
+  de pantalla, que si fuerza el pintado, o con `elementFromPoint`.
 - Se retiraron `btnTogglePanel`, `btnToggleToolbar` y sus clases
   `panel-collapsed` / `toolbar-collapsed`; `btnLegend` vive ahora en el riel
   derecho. Nada del API `window.ProcessIQ` cambio.

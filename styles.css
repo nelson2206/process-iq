@@ -224,6 +224,10 @@ textarea:focus-visible {
 
 /* ====================== HEADER ====================== */
 .app-header {
+  /* v3.3.1: por encima de rieles (30), cajón (40) y desplegables (80/90). Al
+     posicionar .app-main en v3.3.0, la cabecera —contexto propio por su
+     backdrop-filter— quedaba debajo y el menú Exportar se veía tapado. */
+  z-index: 120;
   display: flex;
   align-items: center;
   gap: var(--space-4);

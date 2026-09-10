@@ -2780,6 +2780,13 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
           id: 'grp_' + cadena[0].id,
           label: cadena.length + ' pasos · ' + _carrilDe(n),
           type: 'task', marker: 'subprocess',
+          // GEOMETRIA OBLIGATORIA: autoLayout hace n.x = colX + (rankW - n.w)/2.
+          // Sin w/h eso da NaN, contamina el ancho de toda la columna y los
+          // nodos se quedan sin coordenadas (lienzo vacio en Ejecutivo y
+          // Actividad, reportado por el usuario). Hereda la posicion del primer
+          // miembro para tener un valor sensato antes del layout.
+          x: cadena[0].x, y: cadena[0].y,
+          w: SHAPE_DEFAULTS.task.w, h: SHAPE_DEFAULTS.task.h,
           owner: cadena[0].owner, role: cadena[0].role,
           _hijos: cadena.map(c => c.id),
           _detalle: cadena.map(c => c.label).filter(Boolean),
@@ -2854,6 +2861,8 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         id: 'eta_' + miembros[0].id,
         label: (cabeza.label || 'Etapa') + ' (+' + (miembros.length - 1) + ' pasos)',
         type: 'task', marker: 'subprocess',
+        x: miembros[0].x, y: miembros[0].y,          // ver nota en _gruposPorCadena
+        w: SHAPE_DEFAULTS.task.w, h: SHAPE_DEFAULTS.task.h,
         _hijos: miembros.map(m => m.id),
         _detalle: miembros.map(m => m.label).filter(Boolean),
         pains: miembros.reduce((a, m) => a.concat(m.pains || []), [])
@@ -3025,6 +3034,16 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   function autoLayout() {
     invalidarRutas();
     if (state.nodes.length === 0) return;
+    // Red de seguridad: un solo nodo sin w/h finitos propaga NaN al ancho de su
+    // columna y deja SIN coordenadas a todo el diagrama. Paso por ahi con los
+    // nodos-grupo de las vistas colapsadas; el sintoma era un lienzo en blanco.
+    state.nodes.forEach(n => {
+      const d = SHAPE_DEFAULTS[n.type] || SHAPE_DEFAULTS.task;
+      if (!isFinite(n.w) || n.w <= 0) n.w = d.w;
+      if (!isFinite(n.h) || n.h <= 0) n.h = d.h;
+      if (!isFinite(n.x)) n.x = 0;
+      if (!isFinite(n.y)) n.y = 0;
+    });
     ensureDecisionBranches();
 
     const starts = state.nodes.filter(n => n.type === 'start');

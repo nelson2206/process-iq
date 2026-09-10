@@ -311,6 +311,22 @@
   geometria y, si esta ocupado, el siguiente libre entre derecha/abajo/arriba/
   izquierda. salidaAbajo se deriva de ese reparto. Medido en Originacion:
   n7 top+right, n19 bottom+right, n22 top+right.
+- v3.6.2 BUG DE FONDO, corregido: los nodos-grupo de las vistas colapsadas
+  (_gruposPorCadena y _etapasEjecutivas) se creaban SIN w/h. autoLayout hace
+  n.x = colX[r] + (rankW[r] - n.w) / 2, asi que daba NaN, contaminaba el ancho
+  de la columna entera y NINGUN nodo recibia coordenadas: el lienzo salia en
+  blanco en Ejecutivo y Actividad. Arreglado dando geometria de tarea a los
+  grupos y con una red de seguridad al entrar en autoLayout (normaliza w/h/x/y
+  no finitos). Medido tras el arreglo: 3 procesos x 3 niveles = 9 casos, 0
+  nodos sin coordenadas.
+  LECCION PARA NO REPETIRLA: quality() devolvia "0 cruces, 0 flechas sobre
+  cajas" para Ejecutivo y Actividad porque sin coordenadas no hay nada que
+  cruzar. Aquellos ceros que celebre en v3.1.0 eran un artefacto, no calidad.
+  Un contador de defectos que baja a cero de golpe merece que se compruebe
+  ANTES si el diagrama existe: medir siempre nodos-sin-coordenadas junto a los
+  defectos, y mirar una captura del lienzo, no solo el conteo de nodos ni el
+  PPTX (que se salvo porque construye su rejilla con ranks y carriles, no con
+  n.x/n.y — por eso el export se veia bien con el lienzo roto).
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

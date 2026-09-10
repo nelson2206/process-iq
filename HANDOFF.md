@@ -290,6 +290,27 @@
 - PENDIENTE (pregunta abierta del usuario): en el LIENZO la escalera repite
   los 8 carriles aunque la segunda banda use dos; recomendado desactivar el
   wrap del lienzo por defecto (state._wrap) y dejar la escalera solo en PPTX.
+- v3.6.1: el LIENZO va en UNA banda (`doWrap = state._wrap === true`): la
+  escalera del lienzo repetia los 8 carriles aunque la 2a banda usara dos. La
+  escalera sigue viva en el PPTX, donde cada banda repite solo sus carriles.
+- v3.6.1: Word, Ficha y el rol de la IA dicen MBC (cadenas y las dos ternas
+  de color de Word/Ficha: 147AFF / 003478 / 7A93B5). Solo quedan menciones a
+  Minsait en comentarios.
+- v3.6.1: el nombre del carril se parte en DOS lineas por el espacio mas
+  central si no cabe en el chip a 8 pt, y baja de cuerpo hasta 6,5 pt como
+  ultimo recurso. `fit: shrink` no servia: PowerPoint solo recalcula al editar.
+  ANCHO_CAR = 0,56 (Montserrat) sustituye al 0,50 de ForFuture Sans en
+  altoEtiqueta y en el chip; OJO: declarado junto a T_FONT porque el chip lo
+  usa antes de que exista altoEtiqueta (un const posterior daba TDZ y el
+  export moria en silencio).
+- v3.6.1: la pregunta del rombo tiene b.w + 1,4" de ancho (con 0,9 y
+  Montserrat se partia a mitad de palabra) y se registra en etiqAristaUsadas
+  para que los rotulos Si/No la esquiven.
+- v3.6.1: REPARTO DE LADOS DE SALIDA (ladoSalidaDe): si de un nodo salen
+  varias flechas, cada una sale por un lado distinto — el preferido por
+  geometria y, si esta ocupado, el siguiente libre entre derecha/abajo/arriba/
+  izquierda. salidaAbajo se deriva de ese reparto. Medido en Originacion:
+  n7 top+right, n19 bottom+right, n22 top+right.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

@@ -3157,7 +3157,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 
     // --- Modo envolvente: procesos largos bajan en bandas en vez de irse a 6m de ancho ---
     const WRAP_AT = 14;                                   // ranks por banda
-    const doWrap = (state._wrap === true) || (state._wrap !== false && totalRanks > WRAP_AT);
+    const doWrap = state._wrap === true;   // v3.6.1: el lienzo va en UNA banda; la escalera es cosa del PPTX (repetia los 8 carriles aunque la 2a banda usara dos)
     const bandOf = (r) => doWrap ? Math.floor(r / WRAP_AT) : 0;
     const bandH = laneOrder.length * laneH + 70;          // alto de una banda + corredor
 
@@ -5799,7 +5799,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     if (state.nodes.length === 0) { alert('No hay proceso para documentar.'); return; }
     const meta = state.meta;
     const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-    const MAGENTA = '#FF0054', DARK = '#4F062A', GRAY = '#926979';   // paleta Minsait: Fucsia, Pruno, secundario
+    const MAGENTA = '#147AFF', DARK = '#003478', GRAY = '#7A93B5';   // paleta MBC (catalogo): acento, azul marino, secundario
     const fechaLarga = new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' });
 
     const tasks = state.nodes.filter(n => n.type === 'task' || n.type === 'system');
@@ -5919,7 +5919,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 </style></head>
 <body>
   <div class="cover">
-    <p class="tag">MINSAIT BUSINESS CONSULTING · PERÚ</p>
+    <p class="tag">MBC BUSINESS CONSULTING · PERÚ</p>
     <h1>${esc(meta.name || 'Diagnóstico de Proceso')}</h1>
     <p class="muted">Industria: <b>${esc(meta.industry || '—')}</b> &nbsp;·&nbsp; Macroproceso: <b>${esc(meta.macroprocess || '—')}</b> &nbsp;·&nbsp; ${esc(fechaLarga)}</p>
     <p class="muted">Informe generado por <b>ProcessIQ</b> · Documento confidencial — uso interno</p>
@@ -5978,7 +5978,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 
   ${guiaImpl}
 
-  <p class="muted" style="margin-top:30pt;border-top:1px solid #ccc;padding-top:8pt">Generado con ProcessIQ · Minsait Business Consulting · ${esc(fechaLarga)}</p>
+  <p class="muted" style="margin-top:30pt;border-top:1px solid #ccc;padding-top:8pt">Generado con ProcessIQ · MBC Business Consulting · ${esc(fechaLarga)}</p>
 </body></html>`;
 
     download('﻿' + html, filename('doc'), 'application/msword');
@@ -6087,7 +6087,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 
     return `
   <div class="ficha-cover">
-    <p class="tag">MINSAIT BUSINESS CONSULTING · PERÚ${meta.client ? ' · ' + esc(meta.client) : ''}</p>
+    <p class="tag">MBC BUSINESS CONSULTING · PERÚ${meta.client ? ' · ' + esc(meta.client) : ''}</p>
     <div class="ficha-code">${esc(f.code || '—')}${f.version ? ` &nbsp;·&nbsp; v${esc(f.version)}` : ''}</div>
     <h1>${esc(meta.name || 'Ficha de Proceso')}</h1>
     <p class="muted">Ficha de proceso &nbsp;·&nbsp; ${esc(meta.macroprocess || '')}${meta.industry ? ' · ' + esc(meta.industry) : ''} &nbsp;·&nbsp; ${esc(fechaLarga)}</p>
@@ -6142,11 +6142,11 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   <h2>11. Control de Cambios</h2>
   <table><tr><th style="width:60px;text-align:center">Versión</th><th style="width:120px;text-align:center">Fecha</th><th>Descripción del cambio</th></tr>${cambioRows}</table>
 
-  <p class="muted foot">Ficha generada con ProcessIQ · Minsait Business Consulting · ${esc(fechaLarga)}</p>`;
+  <p class="muted foot">Ficha generada con ProcessIQ · MBC Business Consulting · ${esc(fechaLarga)}</p>`;
   }
 
   function fichaStyles(forWord) {
-    const MAGENTA = '#FF0054', DARK = '#4F062A', GRAY = '#926979';   // paleta Minsait: Fucsia, Pruno, secundario
+    const MAGENTA = '#147AFF', DARK = '#003478', GRAY = '#7A93B5';   // paleta MBC (catalogo): acento, azul marino, secundario
     return `
   ${forWord ? '@page { size: A4; margin: 1.8cm; }' : ''}
   body { font-family: 'ForFuture Sans', Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: ${DARK}; line-height: 1.4; }
@@ -6463,6 +6463,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const T_TXT = M_PRUNO;         // texto dentro de las cajas
     const T_FONT = T.font;         // tipografia de cuerpo
     const T_FONT_TITULO = T.fontTitulo;
+    // Ancho medio de caracter respecto al cuerpo. Era 0,50 (ForFuture Sans);
+    // Montserrat y Lato son mas anchas y con 0,50 las cajas quedaban cortas.
+    // Va aqui, al principio: el chip de rol lo usa antes de que se declare altoEtiqueta.
+    const ANCHO_CAR = 0.56;
     const M_ANTETITULO = T.antetitulo || M_FUCSIA;
 
     // ---- Chrome corporativo (medidas en pulgadas del patron oficial) ----
@@ -6820,9 +6824,30 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           };
           slide.addShape('rect', Object.assign({}, chipBox, {
             fill: { color: T_NARANJA }, line: { type: 'none' } }));
-          slide.addText(laneName, Object.assign({}, chipBox, {
-            fontSize: 8, bold: false, color: M_PRUNO, align: 'center', valign: 'middle',
-            fontFace: T_FONT, wrap: false, fit: 'shrink' }));
+          // El nombre debe caber en la longitud visible del chip. 'fit: shrink'
+          // no basta: PowerPoint solo recalcula al editar, y hasta entonces el
+          // texto se sale ("Ejecutivo Comercial" desbordaba, captura del
+          // usuario). Si no cabe en una linea se parte en dos por el espacio
+          // mas central; si sigue sin caber, baja el cuerpo hasta 6,5 pt.
+          const cabe = (t, fs) => String(t).length * fs * ANCHO_CAR / 72 <= chipL - 0.08;
+          let nombreChip = laneName, fsChip = 8;
+          if (!cabe(laneName, 8) && /\s/.test(laneName)) {
+            const palabras = laneName.split(/\s+/);
+            let mejor = null, mejorDif = Infinity;
+            for (let k = 1; k < palabras.length; k++) {
+              const pa = palabras.slice(0, k).join(' '), pb = palabras.slice(k).join(' ');
+              const dif = Math.abs(pa.length - pb.length);
+              if (dif < mejorDif) { mejorDif = dif; mejor = [pa, pb]; }
+            }
+            nombreChip = mejor.join('\n');
+            const masLarga = Math.max(mejor[0].length, mejor[1].length);
+            while (fsChip > 6.5 && masLarga * fsChip * ANCHO_CAR / 72 > chipL - 0.08) fsChip -= 0.5;
+          } else {
+            while (fsChip > 6.5 && !cabe(laneName, fsChip)) fsChip -= 0.5;
+          }
+          slide.addText(nombreChip, Object.assign({}, chipBox, {
+            fontSize: fsChip, bold: false, color: M_PRUNO, align: 'center', valign: 'middle',
+            fontFace: T_FONT, wrap: true, margin: 0 }));
         });
       }
 
@@ -6847,7 +6872,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       }
 
       function altoEtiqueta(txt, ancho, fs) {
-        const lineas = Math.max(1, Math.ceil(String(txt || '').length * fs * 0.50 / 72 / Math.max(ancho, 0.3)));
+        const lineas = Math.max(1, Math.ceil(String(txt || '').length * fs * ANCHO_CAR / 72 / Math.max(ancho, 0.3)));
         return Math.max(0.2, lineas * fs * 1.25 / 72);
       }
 
@@ -6987,15 +7012,36 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
               p1: { x: ba.x, y: ba.cy }, p2: { x: bb.x + bb.w, y: bb.cy } };
       }
 
-      // Que nodos van a sacar una flecha por su vertice inferior: su etiqueta
-      // (la pregunta del rombo) tiene que subir encima para no quedar cruzada.
-      const salidaAbajo = {};
+      // ───── Reparto de lados de salida por nodo ─────
+      // Si de un mismo objeto salen varias flechas, cada una sale por un lado
+      // distinto (pedido del usuario): el preferido por geometria y, si ya esta
+      // ocupado, el siguiente libre. Un rombo con tres ramas sale por derecha,
+      // abajo y arriba en vez de amontonarlas en el mismo vertice.
+      const ladoSalidaDe = {}, ladosUsados = {};
+      const candidatos = (ba, bb) => {
+        const dx = bb.cx - ba.cx, dy = bb.cy - ba.cy;
+        const h = dx >= 0 ? 'right' : 'left', v = dy >= 0 ? 'bottom' : 'top';
+        const pref = Math.abs(dy) > Math.abs(dx) ? [v, h] : [h, v];
+        return pref.concat(['right', 'bottom', 'top', 'left'].filter(l => pref.indexOf(l) < 0));
+      };
       state.edges.forEach(e => {
         const ba = nodeBoxes.get(e.from), bb = nodeBoxes.get(e.to);
-        if (!ba || !bb) return;
+        if (!ba || !bb || e.from === e.to) return;
         const rA = ranks[e.from], rB = ranks[e.to];
         if (rA != null && rB != null && saltaBanda(rA, rB)) return;   // va por conector
-        if (ladoDeArista(e.from, e.to, ba, bb).ladoA === 'bottom') salidaAbajo[e.from] = true;
+        const usados = (ladosUsados[e.from] = ladosUsados[e.from] || {});
+        const pref = ladoDeArista(e.from, e.to, ba, bb).ladoA;
+        const lista = [pref].concat(candidatos(ba, bb).filter(l => l !== pref));
+        const lado = lista.find(l => !usados[l]) || pref;   // >4 salidas: se repite
+        usados[lado] = true;
+        ladoSalidaDe[e.id] = lado;
+      });
+      // Que nodos sacan una flecha por su vertice inferior: su etiqueta (la
+      // pregunta del rombo) tiene que subir encima para no quedar cruzada.
+      const salidaAbajo = {};
+      Object.keys(ladoSalidaDe).forEach(id => {
+        if (ladoSalidaDe[id] !== 'bottom') return;
+        const e = state.edges.find(x => x.id === id); if (e) salidaAbajo[e.from] = true;
       });
 
       // ───── Dibuja nodos ─────
@@ -7132,14 +7178,19 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         } else if (n.type === 'decision') {
           // Gateway exclusivo formato Telered: diamante vino con "x" blanca,
           // y la pregunta FUERA del diamante como etiqueta en vino
-          const hPreg = altoEtiqueta(n.label, b.w + 0.9, 9);
+          // 1,4" de margen extra: con 0,9" y Montserrat, "¿Documentación
+          // completa?" se partia a mitad de palabra ("Documentació / n").
+          const wPreg = b.w + 1.4;
+          const hPreg = altoEtiqueta(n.label, wPreg, 9);
           const arriba = !!salidaAbajo[n.id];
+          const yPreg = arriba ? b.y - hPreg - 0.03 : b.y + b.h + 0.01;
           slide.addText(n.label || '', {
-            x: b.x - 0.45, y: arriba ? b.y - hPreg - 0.03 : b.y + b.h + 0.01,
-            w: b.w + 0.9, h: hPreg,
+            x: b.x - 0.7, y: yPreg, w: wPreg, h: hPreg,
             fontSize: 9, bold: true, align: 'center', valign: arriba ? 'bottom' : 'top',
             color: T_VINO, fontFace: T_FONT, wrap: true, autoFit: false
           });
+          // La pregunta ocupa sitio: los rotulos Si/No de las ramas la esquivan
+          etiqAristaUsadas.push({ x: b.x + b.w / 2, y: yPreg, w: wPreg, h: hPreg });
         } else {
           // Documento / data: label centrado
           slide.addText(n.label || '', {
@@ -7271,7 +7322,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
 
       function emitirConector(slide, a, b, ba, bb, e, esMensaje) {
         const lados = ladoDeArista(a.id, b.id, ba, bb);
-        const ladoA = lados.ladoA, ladoB = lados.ladoB, p1 = lados.p1, p2 = lados.p2;
+        const ladoA = ladoSalidaDe[e.id] || lados.ladoA, ladoB = lados.ladoB, p2 = lados.p2;
+        const p1 = ladoA === 'right' ? { x: ba.x + ba.w, y: ba.cy }
+                 : ladoA === 'left' ? { x: ba.x, y: ba.cy }
+                 : ladoA === 'top' ? { x: ba.cx, y: ba.y } : { x: ba.cx, y: ba.y + ba.h };
         slide.addShape('line', {
           x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y),
           w: Math.max(Math.abs(p2.x - p1.x), 0.01), h: Math.max(Math.abs(p2.y - p1.y), 0.01),
@@ -8677,7 +8731,7 @@ Reglas:
   // Antes eran plantillas/reglas fijas. Ahora, si hay API key configurada,
   // cada accion analiza ESTE proceso con Claude; sin key cae al heuristico.
   // ============================================================
-  const AI_ROLE = 'Eres un consultor senior de procesos de negocio (estilo MBB) trabajando para Minsait Business Consulting Peru. Analizas el proceso concreto que se te entrega. Escribes en espanol de Peru, directo y accionable, sin relleno. Usas Markdown: negritas para lo clave, tablas cuando comparas, y numeros concretos cuando el proceso los aporta. Nunca inventes datos que el proceso no tenga: si falta un dato, dilo y explica como obtenerlo.';
+  const AI_ROLE = 'Eres un consultor senior de procesos de negocio (estilo MBB) trabajando para MBC Business Consulting Peru. Analizas el proceso concreto que se te entrega. Escribes en espanol de Peru, directo y accionable, sin relleno. Usas Markdown: negritas para lo clave, tablas cuando comparas, y numeros concretos cuando el proceso los aporta. Nunca inventes datos que el proceso no tenga: si falta un dato, dilo y explica como obtenerlo.';
 
   const AI_TASKS = {
     'suggest-kpis': {

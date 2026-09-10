@@ -107,7 +107,7 @@
     attachAiListeners();
     updateAiUi();
     // Hook para demos/pruebas (cargadores de ejemplo)
-    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob(), astar: (on) => { state._astar = !!on; invalidarRutas(); return !!on; }, nivel: (n) => aplicarNivel(n), niveles: () => NIVELES, askProfundidad: () => askProfundidad(), sinDescarga: (on) => { state._sinDescarga = !!on; }, ultimoPptx: () => state._ultimoPptx, nombresPptx: () => state._nombresPorNodo, modeloCompleto: () => state._modeloCompleto ? state._modeloCompleto.nodes.length : 0 };
+    window.ProcessIQ = { loadDemo: loadDemoProcess, loadComplex: loadComplexDemo, loadComplex2: loadComplexDemo2, loadComplex3: loadComplexDemo3, loadComplex4: loadComplexDemo4, loadComplex5: loadComplexDemo5, loadComplex6: loadComplexDemo6, loadComplex7: loadComplexDemo7, loadComplex8: loadComplexDemo8, loadComplex9: loadComplexDemo9, loadComplex10: loadComplexDemo10, loadComplex11: loadComplexDemo11, loadComplex12: loadComplexDemo12, loadFichaVentaLotes: loadFichaVentaLotes, exportFicha: exportFicha, openFichaPreview: openFichaPreview, deriveFicha: deriveFicha, importBpmnXml: (xml) => importBpmnXml(xml), generateBpmnXml: () => generateBpmnXml(), snapshot: () => ({ nodes: state.nodes.length, edges: state.edges.length, tasks: state.nodes.filter(n => n.type==='task'||n.type==='system').length, decisions: state.nodes.filter(n => n.type==='decision').length, name: state.meta.name }), aiReady: () => aiReady(), openAiSettings: openAiSettings, buildProcessFromAiSpec: (s) => buildProcessFromAiSpec(s, 'test'), addSource: (t,n,x) => addSource(t,n,x), sources: () => sourcesList(), runAiTask: (k) => runAiTask(k), aiTasks: () => Object.keys(AI_TASKS), aiAnalyzePains: () => aiAnalyzePains(), detectParticipants: (t) => detectParticipants(t), autoFit: (o) => autoFitDiagram(o), quality: () => diagramQuality(), runIngest: (src) => runIngest(src), cancelIngest: () => cancelIngestJob(), astar: (on) => { state._astar = !!on; invalidarRutas(); return !!on; }, nivel: (n) => aplicarNivel(n), niveles: () => NIVELES, askProfundidad: () => askProfundidad(), sinDescarga: (on) => { state._sinDescarga = !!on; }, ultimoPptx: () => state._ultimoPptx, nombresPptx: () => state._nombresPorNodo, modeloCompleto: () => state._modeloCompleto ? state._modeloCompleto.nodes.length : 0, svg: () => serializeCanvasSvg() };
   }
 
   function populateSelects() {
@@ -4654,9 +4654,35 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     clone.setAttribute('width', w);
     clone.setAttribute('height', h);
     clone.setAttribute('viewBox', `${minX - 20} ${minY - 20} ${w} ${h}`);
-    // Remove grid background
+    // Los estilos del lienzo viven en styles.css y el SVG serializado no los
+    // lleva: sin ellos todo <path> se rellena de negro y el texto sale en
+    // serifa (visto por el usuario en la descarga PNG: las flechas eran
+    // poligonos negros). Se copian los estilos computados relevantes como
+    // estilo inline, elemento a elemento, recorriendo original y clon en
+    // paralelo (querySelectorAll devuelve el mismo orden en ambos).
+    const PROPS = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linecap',
+                   'stroke-linejoin', 'opacity', 'font-family', 'font-size', 'font-weight', 'font-style',
+                   'letter-spacing', 'text-anchor', 'dominant-baseline', 'paint-order', 'text-transform'];
+    const orig = canvas.querySelectorAll('*'), cop = clone.querySelectorAll('*');
+    const ocultar = [];
+    for (let i = 0; i < orig.length && i < cop.length; i++) {
+      const cs = getComputedStyle(orig[i]);
+      if (cs.display === 'none' || cs.visibility === 'hidden') { ocultar.push(cop[i]); continue; }
+      let st = '';
+      PROPS.forEach(p => { const v = cs.getPropertyValue(p); if (v && v !== 'normal' && v !== 'auto') st += p + ':' + v + ';'; });
+      if (st) cop[i].setAttribute('style', st);
+    }
+    ocultar.forEach(el => el.remove());
+    // La rejilla se quita DESPUES del recorrido: si se quita antes, original y
+    // clon dejan de ir en paralelo y cada elemento hereda el estilo del anterior
+    // (todo salia negro).
     const grid = clone.querySelector('#gridBg');
     if (grid) grid.remove();
+    // Fondo blanco explicito: un SVG suelto se abre transparente
+    const fondo = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    fondo.setAttribute('x', minX - 20); fondo.setAttribute('y', minY - 20);
+    fondo.setAttribute('width', w); fondo.setAttribute('height', h); fondo.setAttribute('fill', '#FFFFFF');
+    clone.insertBefore(fondo, clone.firstChild);
     return new XMLSerializer().serializeToString(clone);
   }
 

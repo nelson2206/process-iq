@@ -241,6 +241,28 @@
   270 grados; su x sin girar sale negativa (-0,09) pero girados quedan dentro.
   Descontar el giro (bench/harness.js caja()) o salen falsos positivos. Las
   tablas van en EMU, no en pulgadas: excluirlas.
+- v3.5.0: EXPORT PPTX POR TEMA. `exportPptx(tema)` lee una entrada de
+  `TEMAS_PPTX` (paleta, tipografias, logotipos en base64, carátula, cierre).
+  Las constantes M_PRUNO / M_FUCSIA / T_FONT... conservan el nombre por sus
+  ~250 usos, pero su VALOR sale del tema: con 'mbc', M_PRUNO es el azul MBC
+  003478. Los literales '4F062A', 'FF0054', '926979', 'D0CEC1' que quedaban
+  sueltos dentro del export se sustituyeron por las constantes.
+  · 'mbc' (estandar): azul 003478, Ceramica E3E2DA, Fucsia FF0054, Montserrat,
+    logotipo MBC (PNG rasterizado del SVG oficial), carátula calcada de la
+    "Portada Básica" del Libro de estilo transitorio V2.
+  · 'bbva': calcado de Downloads\Flow_Value_BBVA (2).pptx — dk1 001391, fondo
+    F7F8F8, acento 85C8FF, Lato + Source Serif 4, logotipo BBVA azul/blanco,
+    carátula con logotipo arriba-izquierda y titulo abajo, lámina de cierre
+    "Gracias". Los circulos de continuidad van en 001391 (el acento claro no
+    aguanta texto blanco).
+  Para añadir un cliente: una entrada en TEMAS_PPTX + un boton
+  `data-export="pptx" data-tema="xxx"` en el menu Exportar. Medido: ambos temas
+  exportan Originacion sin rastro de Pruno; BBVA sin Fucsia.
+  OJO bench: la PALETA de bench/harness.js sigue siendo la Minsait; con temas
+  reportara fueraDePaleta. Actualizarla si se vuelve a correr el banco.
+- Fuera del PPTX siguen diciendo Minsait el informe Word y la Ficha (cabecera
+  "MINSAIT BUSINESS CONSULTING · PERÚ" y pie). No se tocaron: el pedido era el
+  PPTX. Cambiarlos es trivial cuando se decida.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

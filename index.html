@@ -12,7 +12,7 @@
   <meta property="og:title" content="ProcessIQ — Diagramador de procesos BPMN" />
   <meta property="og:description" content="Diagramación, diagnóstico y reingeniería de procesos con nomenclatura BPMN 2.0. Analítica 2026 y export a PPTX/BPMN/SVG/Word. MBC Business Consulting Perú." />
   <meta property="og:url" content="https://nelson2206.github.io/process-iq/" />
-  <meta property="og:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.2.0" />
+  <meta property="og:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.3.0" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="ProcessIQ — diagramador de procesos BPMN de MBC" />
@@ -20,11 +20,11 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="ProcessIQ — Diagramador de procesos BPMN" />
   <meta name="twitter:description" content="Diagramación, diagnóstico y reingeniería de procesos con BPMN 2.0. MBC Business Consulting Perú." />
-  <meta name="twitter:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.2.0" />
+  <meta name="twitter:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.3.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=3.2.0" />
+  <link rel="stylesheet" href="styles.css?v=3.3.0" />
   <script defer src="https://umami-mbc.vercel.app/script.js" data-website-id="0f3aaa08-7bb8-4aec-b09b-d9c4abf3868c"></script>
 </head>
 <body>
@@ -52,12 +52,21 @@
 
     <div class="process-meta-inline">
       <input id="processName" type="text" placeholder="Nombre del proceso (ej. Gestión de Reclamos)" />
-      <select id="processIndustry">
-        <option value="">— Industria —</option>
-      </select>
-      <select id="processMacro">
-        <option value="">— Macroproceso —</option>
-      </select>
+      <button id="btnMeta" class="meta-btn" title="Industria y macroproceso" aria-expanded="false" aria-controls="metaPopover">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div id="metaPopover" class="meta-popover" hidden>
+        <label>Industria
+          <select id="processIndustry">
+            <option value="">— Industria —</option>
+          </select>
+        </label>
+        <label>Macroproceso
+          <select id="processMacro">
+            <option value="">— Macroproceso —</option>
+          </select>
+        </label>
+      </div>
     </div>
 
     <div class="header-actions">
@@ -90,6 +99,7 @@
       <button id="btnAiSettings" class="btn btn-ghost btn-icon" title="Ajustes de IA (Claude)">
         <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg></span>
       </button>
+      <button id="btnPresent" class="btn btn-ghost" title="Modo presentación: oculta las barras y maximiza el diagrama (Esc para salir)">⛶ Presentar</button>
       <div class="export-menu">
         <button id="btnExportMenu" class="btn btn-ghost" title="Exportar">
           <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></svg></span>
@@ -135,65 +145,56 @@
   <main class="app-main">
 
     <!-- ====== TOOLBAR LEFT ====== -->
-    <aside class="toolbar-left">
-      <div class="toolbar-section-title toolbar-head">
-        <span>Shapes</span>
-        <button id="btnToggleToolbar" class="toolbar-collapse-btn" title="Comprimir/expandir la barra de shapes" aria-label="Comprimir barra de shapes">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    <!-- Riel de 48 px. Las formas viven en un desplegable: dibujar a mano es
+         la excepción (los procesos nacen por ingesta o IA), no merece 180 px fijos. -->
+    <aside class="toolbar-left" aria-label="Herramientas de dibujo">
+      <button id="btnShapes" class="rail-btn" title="Añadir forma al lienzo" aria-expanded="false" aria-controls="shapesFlyout">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        <span>Añadir</span>
+      </button>
+      <div id="shapesFlyout" class="shapes-flyout" hidden>
+        <div class="flyout-title">Arrastra al lienzo</div>
+        <button class="shape-btn" draggable="true" data-shape="start" title="Inicio">
+          <span class="shape-preview shape-start"></span>
+          <span class="shape-label">Inicio</span>
+        </button>
+        <button class="shape-btn" draggable="true" data-shape="task" title="Actividad">
+          <span class="shape-preview shape-task"></span>
+          <span class="shape-label">Actividad</span>
+        </button>
+        <button class="shape-btn" draggable="true" data-shape="decision" title="Decisión / gateway">
+          <span class="shape-preview shape-decision"></span>
+          <span class="shape-label">Decisión</span>
+        </button>
+        <button class="shape-btn" draggable="true" data-shape="document" title="Documento">
+          <span class="shape-preview shape-document"></span>
+          <span class="shape-label">Documento</span>
+        </button>
+        <button class="shape-btn" draggable="true" data-shape="data" title="Data">
+          <span class="shape-preview shape-data"></span>
+          <span class="shape-label">Data</span>
+        </button>
+        <button class="shape-btn" draggable="true" data-shape="system" title="Sistema">
+          <span class="shape-preview shape-system"></span>
+          <span class="shape-label">Sistema</span>
+        </button>
+        <button class="shape-btn" draggable="true" data-shape="end" title="Fin">
+          <span class="shape-preview shape-end"></span>
+          <span class="shape-label">Fin</span>
         </button>
       </div>
-      <button class="shape-btn" draggable="true" data-shape="start" title="Inicio">
-        <span class="shape-preview shape-start"></span>
-        <span class="shape-label">Inicio</span>
+      <button id="btnConnect" class="rail-btn" title="Modo conexión (C)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19 19 5"/><path d="M12 5h7v7"/></svg>
+        <span>Conectar</span>
       </button>
-      <button class="shape-btn" draggable="true" data-shape="task" title="Actividad">
-        <span class="shape-preview shape-task"></span>
-        <span class="shape-label">Actividad</span>
+      <button id="btnDelete" class="rail-btn" title="Eliminar selección (Supr)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+        <span>Eliminar</span>
       </button>
-      <button class="shape-btn" draggable="true" data-shape="decision" title="Decisión / gateway">
-        <span class="shape-preview shape-decision"></span>
-        <span class="shape-label">Decisión</span>
+      <button id="btnAutoLayout" class="rail-btn" title="Auto-layout: reordena el diagrama">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M10 6.5h4v7"/></svg>
+        <span>Ordenar</span>
       </button>
-      <button class="shape-btn" draggable="true" data-shape="document" title="Documento">
-        <span class="shape-preview shape-document"></span>
-        <span class="shape-label">Documento</span>
-      </button>
-      <button class="shape-btn" draggable="true" data-shape="data" title="Data">
-        <span class="shape-preview shape-data"></span>
-        <span class="shape-label">Data</span>
-      </button>
-      <button class="shape-btn" draggable="true" data-shape="system" title="Sistema">
-        <span class="shape-preview shape-system"></span>
-        <span class="shape-label">Sistema</span>
-      </button>
-      <button class="shape-btn" draggable="true" data-shape="end" title="Fin">
-        <span class="shape-preview shape-end"></span>
-        <span class="shape-label">Fin</span>
-      </button>
-
-      <div class="toolbar-section-title">Conexión</div>
-      <button id="btnConnect" class="shape-btn shape-btn-action" title="Modo conexión (C)">
-        <span class="shape-preview">↘</span>
-        <span class="shape-label">Conectar</span>
-      </button>
-      <button id="btnDelete" class="shape-btn shape-btn-action" title="Eliminar selección (Supr)">
-        <span class="shape-preview">✕</span>
-        <span class="shape-label">Eliminar</span>
-      </button>
-
-      <div class="toolbar-section-title">Layout</div>
-      <button id="btnAutoLayout" class="shape-btn shape-btn-action" title="Auto-layout">
-        <span class="shape-preview">⇲</span>
-        <span class="shape-label">Auto-layout</span>
-      </button>
-
-      <div class="toolbar-section-title">Nivel de detalle</div>
-      <div id="nivelVista" class="nivel-vista" role="group" aria-label="Nivel de detalle del flujo">
-        <button type="button" data-nivel="1" title="Ejecutivo: un paso por actor entre decisiones">Ejec.</button>
-        <button type="button" data-nivel="2" title="Actividad: agrupa tareas consecutivas del mismo actor">Activ.</button>
-        <button type="button" data-nivel="3" class="activo" title="Detalle: todas las tareas, como se levantó">Detalle</button>
-      </div>
-      <div id="nivelInfo" class="nivel-info"></div>
     </aside>
 
     <!-- ====== CANVAS ====== -->
@@ -238,7 +239,7 @@
             <button class="onboard-step" id="onbDraw">
               <span class="onboard-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.6 7.6"/><circle cx="11" cy="11" r="2"/></svg></span>
               <span class="onboard-step-t">Dibujar manual</span>
-              <span class="onboard-step-d">Arrastra shapes de la barra izquierda o usa el copiloto IA</span>
+              <span class="onboard-step-d">Pulsa ＋ en la barra izquierda o usa el copiloto IA</span>
             </button>
           </div>
         </div>
@@ -273,12 +274,9 @@
           <div class="sc-row"><kbd>Supr</kbd> / <kbd>Del</kbd><span>Eliminar selección</span></div>
           <div class="sc-row"><kbd>Esc</kbd><span>Deseleccionar / salir de modo</span></div>
           <div class="sc-row"><kbd>?</kbd><span>Mostrar/ocultar estos atajos</span></div>
-          <div class="shortcuts-note">Doble-clic en un nodo edita su etiqueta · arrastra shapes desde la barra izquierda</div>
+          <div class="shortcuts-note">Doble-clic en un nodo edita su etiqueta · ＋ abre las formas para arrastrar</div>
         </div>
       </div>
-      <button id="btnPresent" class="btn-present" title="Modo presentación (oculta paneles, maximiza el diagrama)">⛶ Presentar</button>
-      <button id="btnLegend" class="btn-legend" title="Mostrar/ocultar la leyenda de nomenclatura BPMN">⌕ Leyenda BPMN</button>
-      <button id="btnTogglePanel" class="btn-toggle-panel" title="Ocultar/mostrar el panel derecho (Props, Pains, KPIs…)">⇥ Ocultar panel</button>
       <div id="bpmnLegend" class="bpmn-legend" hidden>
         <div class="bpmn-legend-head">
           <strong>Nomenclatura BPMN 2.0</strong>
@@ -322,6 +320,12 @@
         <span id="statusEdges">0 conexiones</span>
         <span id="statusMode">Modo edición</span>
         <span id="statusSaved"><span class="dot"></span>Guardado</span>
+        <div id="nivelVista" class="nivel-vista" role="group" aria-label="Nivel de detalle del flujo" title="Nivel de detalle del flujo">
+          <button type="button" data-nivel="1" title="Ejecutivo: el proceso en 5-10 etapas, sin carriles">Ejecutivo</button>
+          <button type="button" data-nivel="2" title="Actividad: agrupa tareas consecutivas del mismo actor">Actividad</button>
+          <button type="button" data-nivel="3" class="activo" title="Detalle: todas las tareas, como se levantó">Detalle</button>
+        </div>
+        <span id="nivelInfo" class="nivel-info"></span>
         <div class="zoom-controls" id="zoomControls" title="Zoom · Ctrl/⌘ + rueda del mouse para acercar sobre el cursor · tecla F para ajustar">
           <button id="btnZoomOut" title="Alejar (Ctrl/⌘ −)" aria-label="Alejar zoom">−</button>
           <button id="btnZoomLevel" title="Restablecer a 100% (Ctrl/⌘ 0)" aria-label="Nivel de zoom; clic para restablecer a 100%">100%</button>
@@ -333,15 +337,46 @@
 
     <!-- ====== RIGHT PANEL (TABS) ====== -->
     <aside class="panel-right">
-      <nav class="tabs">
-        <button class="tab active" data-tab="properties" title="Propiedades del nodo">Props</button>
-        <button class="tab" data-tab="pains" title="Pain points">Pains</button>
-        <button class="tab" data-tab="kpis" title="Librería de KPIs">KPIs</button>
-        <button class="tab" data-tab="sim" title="Simulador FTE y lead time">Sim</button>
-        <button class="tab" data-tab="validations" title="Validaciones MBB · linter">Lint <span id="lintBadge" class="lint-badge" hidden>0</span></button>
-        <button class="tab" data-tab="ficha" title="Ficha de proceso corporativa">Ficha</button>
-        <button class="tab" data-tab="copilot" title="Copiloto IA">IA</button>
+      <nav class="tabs" aria-label="Paneles de análisis">
+        <button class="tab active" data-tab="properties" data-title="Propiedades del nodo seleccionado" title="Propiedades del nodo seleccionado">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>
+          <span>Props</span>
+        </button>
+        <button class="tab" data-tab="pains" data-title="Pain points" title="Pain points">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <span>Pains</span>
+        </button>
+        <button class="tab" data-tab="kpis" data-title="Librería de KPIs" title="Librería de KPIs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15v-4M12 15V7M17 15v-2"/></svg>
+          <span>KPIs</span>
+        </button>
+        <button class="tab" data-tab="sim" data-title="Simulador FTE y lead time" title="Simulador FTE y lead time">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <span>Sim</span>
+        </button>
+        <button class="tab" data-tab="validations" data-title="Validaciones MBB · linter" title="Validaciones MBB · linter">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="m9 11 3 3L22 4"/></svg>
+          <span>Lint</span> <span id="lintBadge" class="lint-badge" hidden>0</span>
+        </button>
+        <button class="tab" data-tab="ficha" data-title="Ficha de proceso corporativa" title="Ficha de proceso corporativa">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>
+          <span>Ficha</span>
+        </button>
+        <button class="tab" data-tab="copilot" data-title="Copiloto IA" title="Copiloto IA">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg>
+          <span>IA</span>
+        </button>
+        <span class="rail-spacer"></span>
+        <button id="btnLegend" class="tab rail-aux" title="Leyenda de nomenclatura BPMN">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg>
+          <span>Leyenda</span>
+        </button>
       </nav>
+      <div class="drawer" id="drawer" aria-live="polite">
+        <div class="drawer-head">
+          <span id="drawerTitle">Propiedades</span>
+          <button id="btnDrawerClose" class="drawer-close" title="Cerrar panel (Esc)" aria-label="Cerrar panel">✕</button>
+        </div>
 
       <!-- TAB: PROPIEDADES -->
       <section class="tab-panel active" data-panel="properties">
@@ -641,6 +676,7 @@
           <button id="btnCopilotSend" class="btn btn-primary">Enviar</button>
         </div>
       </section>
+      </div><!-- /.drawer -->
     </aside>
   </main>
 
@@ -773,6 +809,6 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="kpi-library.js?v=1.6.1"></script>
-  <script src="app.js?v=3.2.0"></script>
+  <script src="app.js?v=3.3.0"></script>
 </body>
 </html>

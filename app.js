@@ -345,6 +345,14 @@
 
   // =================== RENDER ===================
   function render() {
+    // Panel contextual: se abre solo al seleccionar algo y se cierra solo al
+    // deseleccionar, SI fue él quien lo abrió. Si el usuario lo abrió a mano
+    // desde el riel, se queda. Así el lienzo ocupa todo el ancho en reposo.
+    const selAhora = state.selectedNodeId || state.selectedEdgeId || null;
+    if (selAhora && selAhora !== state._selPrev) abrirPanel('properties', true);
+    else if (!selAhora && state._selPrev && state._panelAuto) cerrarPanel();
+    state._selPrev = selAhora;
+
     nodesLayer.innerHTML = '';
     edgesLayer.innerHTML = '';
     swimlanesLayer.innerHTML = '';
@@ -1490,14 +1498,18 @@
 
   // =================== TABS ===================
   function attachTabListeners() {
-    $$('.tab').forEach(tab => {
+    // Riel: clic en el icono activo con el cajón abierto lo cierra; cualquier
+    // otro clic abre ese panel (y lo deja fijo aunque se deseleccione).
+    $$('.tab[data-tab]').forEach(tab => {
       tab.addEventListener('click', () => {
-        $$('.tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
         const target = tab.dataset.tab;
-        $$('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === target));
+        const abierto = document.body.classList.contains('panel-open');
+        if (abierto && tab.classList.contains('active')) cerrarPanel();
+        else abrirPanel(target, false);
       });
     });
+    const cierra = $('#btnDrawerClose');
+    if (cierra) cierra.addEventListener('click', () => cerrarPanel());
   }
 
   // =================== PROPERTIES PANEL ===================
@@ -2046,10 +2058,28 @@
       .replace(/\n/g, '<br>');
   }
 
+  // Quien pide una pestaña quiere verla: el cajón se abre y queda fijo.
   function activateTab(name) {
-    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    abrirPanel(name, false);
+  }
+
+  // Cajón derecho. `auto` marca que lo abrió la selección (y que por tanto
+  // puede cerrarse solo al deseleccionar).
+  function abrirPanel(name, auto) {
+    document.body.classList.add('panel-open');
+    state._panelAuto = !!auto;
+    $$('.tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     $$('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === name));
+    const t = $('.tab[data-tab="' + name + '"]');
+    const titulo = $('#drawerTitle');
+    if (t && titulo) titulo.textContent = t.dataset.title || t.textContent.trim();
     if (name === 'ficha') renderFichaTab();
+    saveUiState();
+  }
+  function cerrarPanel() {
+    document.body.classList.remove('panel-open');
+    state._panelAuto = false;
+    saveUiState();
   }
 
   // =================== FICHA DE PROCESO — edición ===================
@@ -2471,7 +2501,11 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       if (e.key === 'c' || e.key === 'C') toggleConnectMode();
       if (e.key === 'Escape') {
         if (document.body.classList.contains('present-mode')) { togglePresentMode(false); return; }
+        if (window.cerrarDesplegables) window.cerrarDesplegables();
+        const habiaSeleccion = !!(state.selectedNodeId || state.selectedEdgeId);
         state.selectedNodeId = null; state.selectedEdgeId = null; state.connectSourceId = null; render();
+        // Esc sin selección cierra el cajón (con selección, primero deselecciona)
+        if (!habiaSeleccion && document.body.classList.contains('panel-open')) cerrarPanel();
       }
     });
   }
@@ -2499,23 +2533,22 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     onb('btnZoomLevel', () => setZoom(1));
     onb('btnZoomFit', () => zoomToFit());
 
-    // Ocultar/mostrar el panel derecho (Props, Pains, KPIs…)
-    onb('btnTogglePanel', () => {
-      const collapsed = document.body.classList.toggle('panel-collapsed');
-      const btn = $('#btnTogglePanel');
-      if (btn) { btn.textContent = collapsed ? '⇤ Mostrar panel' : '⇥ Ocultar panel'; btn.classList.toggle('active', collapsed); }
-      // El lienzo cambió de ancho → reajusta el SVG tras la transición del grid
-      render(); setTimeout(render, 220);
-      saveUiState();
-    });
-
-    // Comprimir/expandir la barra de shapes (formato compacto solo-iconos)
-    onb('btnToggleToolbar', () => {
-      const collapsed = document.body.classList.toggle('toolbar-collapsed');
-      const btn = $('#btnToggleToolbar');
-      if (btn) { btn.classList.toggle('active', collapsed); btn.title = collapsed ? 'Expandir la barra de shapes' : 'Comprimir la barra de shapes'; }
-      render(); setTimeout(render, 220);
-      saveUiState();
+    // Desplegables: formas (riel izquierdo) e industria/macroproceso (cabecera).
+    // Se cierran al hacer clic fuera, con Esc, y el de formas al empezar a arrastrar.
+    const flyout = $('#shapesFlyout'), btnShapes = $('#btnShapes');
+    const popover = $('#metaPopover'), btnMeta = $('#btnMeta');
+    const pon = (btn, caja, abierto) => {
+      if (!btn || !caja) return;
+      caja.hidden = !abierto;
+      btn.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+    };
+    window.cerrarDesplegables = () => { pon(btnShapes, flyout, false); pon(btnMeta, popover, false); };
+    onb('btnShapes', () => { const ab = flyout && flyout.hidden; pon(btnMeta, popover, false); pon(btnShapes, flyout, !!ab); });
+    onb('btnMeta',   () => { const ab = popover && popover.hidden; pon(btnShapes, flyout, false); pon(btnMeta, popover, !!ab); });
+    if (flyout) flyout.addEventListener('dragstart', () => setTimeout(() => pon(btnShapes, flyout, false), 0));
+    document.addEventListener('mousedown', (ev) => {
+      if (flyout && !flyout.hidden && !flyout.contains(ev.target) && !(btnShapes && btnShapes.contains(ev.target))) pon(btnShapes, flyout, false);
+      if (popover && !popover.hidden && !popover.contains(ev.target) && !(btnMeta && btnMeta.contains(ev.target))) pon(btnMeta, popover, false);
     });
   }
 
@@ -2523,25 +2556,18 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   const UI_KEY = 'processiq.ui';
   function saveUiState() {
     try {
+      const activa = $('.tab[data-tab].active');
       localStorage.setItem(UI_KEY, JSON.stringify({
-        panelCollapsed: document.body.classList.contains('panel-collapsed'),
-        toolbarCollapsed: document.body.classList.contains('toolbar-collapsed')
+        // Solo se recuerda un cajón abierto A MANO; el automático (selección) no
+        panelOpen: document.body.classList.contains('panel-open') && !state._panelAuto,
+        tab: activa ? activa.dataset.tab : 'properties'
       }));
     } catch (e) { /* ignore */ }
   }
   function restoreUiState() {
     try {
       const ui = JSON.parse(localStorage.getItem(UI_KEY) || '{}');
-      if (ui.panelCollapsed) {
-        document.body.classList.add('panel-collapsed');
-        const b = $('#btnTogglePanel');
-        if (b) { b.textContent = '⇤ Mostrar panel'; b.classList.add('active'); }
-      }
-      if (ui.toolbarCollapsed) {
-        document.body.classList.add('toolbar-collapsed');
-        const b = $('#btnToggleToolbar');
-        if (b) { b.classList.add('active'); b.title = 'Expandir la barra de shapes'; }
-      }
+      if (ui.panelOpen && ui.tab) abrirPanel(ui.tab, false);
     } catch (e) { /* ignore */ }
   }
 
@@ -2668,6 +2694,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   function togglePresentMode(force) {
     const on = force != null ? force : !document.body.classList.contains('present-mode');
     document.body.classList.toggle('present-mode', on);
+    if (on) { cerrarPanel(); if (window.cerrarDesplegables) window.cerrarDesplegables(); }
     const btn = $('#btnPresent');
     if (btn) btn.innerHTML = on ? '✕ Salir' : '⛶ Presentar';
     // Re-render para recalcular dimensiones del SVG al nuevo viewport

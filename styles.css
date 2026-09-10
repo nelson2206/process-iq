@@ -413,20 +413,18 @@ textarea:focus-visible {
 /* ====================== MAIN LAYOUT ====================== */
 .app-main {
   display: grid;
-  grid-template-columns: 180px 1fr 380px;
+  grid-template-columns: 48px 1fr 48px;   /* riel · lienzo · riel */
   height: calc(100vh - 64px);
+  position: relative;                     /* el cajón derecho se posiciona contra esto */
 }
-/* Combinaciones de colapso: toolbar (56px) y/o panel derecho (oculto) */
-body.toolbar-collapsed .app-main { grid-template-columns: 56px 1fr 380px; }
-body.panel-collapsed   .app-main { grid-template-columns: 180px 1fr; }
-body.toolbar-collapsed.panel-collapsed .app-main { grid-template-columns: 56px 1fr; }
 
 /* ====================== TOOLBAR LEFT ====================== */
 .toolbar-left {
   background: linear-gradient(180deg, rgba(20,10,32,0.35) 0%, var(--glass) 22%);
   border-right: 1px solid var(--glass-brd);
-  padding: var(--space-3) var(--space-2);
-  overflow-y: auto;
+  padding: var(--space-2) 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  position: relative; overflow: visible; z-index: 30;
 }
 
 .toolbar-section-title {
@@ -525,30 +523,6 @@ body.toolbar-collapsed.panel-collapsed .app-main { grid-template-columns: 56px 1
 .toolbar-collapse-btn:focus-visible { outline: 2px solid var(--indra-primary); outline-offset: 1px; }
 
 /* ───── Modo compacto de la barra de shapes (solo iconos) ───── */
-.toolbar-left { transition: padding var(--duration-base) var(--ease-out); }
-body.toolbar-collapsed .toolbar-left { padding-left: 6px; padding-right: 6px; }
-body.toolbar-collapsed .shape-label { display: none; }
-body.toolbar-collapsed .shape-btn {
-  justify-content: center;
-  padding: 10px 0;
-  gap: 0;
-}
-/* En compacto: feedback táctil con escala sutil en vez de desplazamiento lateral (Emil Kowalski) */
-body.toolbar-collapsed .shape-btn:hover { transform: scale(1.08); }
-body.toolbar-collapsed .shape-btn:active { transform: scale(0.96); }
-body.toolbar-collapsed .toolbar-head > span { display: none; }
-body.toolbar-collapsed .toolbar-head { justify-content: center; }
-/* Secciones como separador fino en compacto */
-body.toolbar-collapsed .toolbar-section-title:not(.toolbar-head) {
-  font-size: 0;
-  margin: var(--space-3) auto var(--space-2);
-  width: 22px;
-  border-top: 1px solid var(--glass-brd);
-  height: 0;
-  padding: 0;
-}
-/* Gira el chevron al estar comprimido */
-body.toolbar-collapsed .toolbar-collapse-btn svg { transform: rotate(180deg); }
 
 /* ====================== CANVAS ====================== */
 /* Contenedor externo: NO scrollea — ancla los botones flotantes y la barra de estado */
@@ -685,53 +659,8 @@ body.toolbar-collapsed .toolbar-collapse-btn svg { transform: rotate(180deg); }
 .onboard-step-d { font-size: var(--font-xs); color: var(--gray-500); line-height: 1.35; }
 
 /* Botón modo presentación (flotante top-right del lienzo) */
-.btn-present {
-  position: absolute;
-  top: 10px;
-  right: 14px;
-  z-index: 60;
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  padding: 6px 12px;
-  font-size: var(--font-sm);
-  font-weight: 500;
-  color: var(--gray-700);
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: background var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out),
-              color var(--duration-fast) var(--ease-out),
-              box-shadow var(--duration-fast) var(--ease-out),
-              transform var(--duration-fast) var(--ease-out);
-}
-.btn-present:hover { border-color: var(--indra-primary); color: var(--gray-950); transform: translateY(-1px); }
-.btn-present:active { transform: translateY(0) scale(0.97); }
 
-.btn-legend {
-  position: absolute;
-  top: 10px;
-  right: 132px;
-  z-index: 60;
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  padding: 6px 12px;
-  font-size: var(--font-sm);
-  font-weight: 500;
-  color: var(--gray-700);
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: background var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out),
-              color var(--duration-fast) var(--ease-out),
-              box-shadow var(--duration-fast) var(--ease-out),
-              transform var(--duration-fast) var(--ease-out);
-}
-.btn-legend:hover { border-color: var(--indra-primary); color: var(--gray-950); transform: translateY(-1px); }
-.btn-legend:active { transform: translateY(0) scale(0.97); }
 .btn-legend.active { background: var(--indra-primary); color: var(--bg-0); border-color: var(--indra-primary); }
-body.present-mode .btn-legend { right: 132px; }
 
 /* Panel de leyenda BPMN sobre el canvas */
 .bpmn-legend {
@@ -816,39 +745,13 @@ body.present-mode .bpmn-legend { z-index: 61; }
 #btnZoomFit { font-weight: 500; }
 
 /* Botón para ocultar/mostrar el panel derecho */
-.btn-toggle-panel {
-  position: absolute;
-  top: 10px;
-  right: 276px;
-  z-index: 60;
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  padding: 6px 12px;
-  font-size: var(--font-sm);
-  font-weight: 500;
-  color: var(--gray-700);
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: background var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out),
-              color var(--duration-fast) var(--ease-out),
-              box-shadow var(--duration-fast) var(--ease-out),
-              transform var(--duration-fast) var(--ease-out);
-}
-.btn-toggle-panel:hover { border-color: var(--indra-primary); color: var(--gray-950); transform: translateY(-1px); }
-.btn-toggle-panel:active { transform: translateY(0) scale(0.97); }
-.btn-toggle-panel.active { background: var(--indra-primary); color: var(--bg-0); border-color: var(--indra-primary); }
 /* Panel derecho colapsado: oculta el aside (el grid se ajusta arriba) */
-body.panel-collapsed .panel-right { display: none; }
 
 /* Modo presentación: oculta toolbar izq y panel derecho, maximiza lienzo */
 body.present-mode .toolbar-left,
 body.present-mode .panel-right { display: none; }
 body.present-mode .app-main { grid-template-columns: 1fr; }
-body.present-mode .btn-present {
-  background: var(--indra-primary); color: var(--bg-0); border-color: var(--indra-primary);
-}
+body.present-mode #btnPresent { background: var(--indra-primary); color: var(--bg-0); border-color: var(--indra-primary); }
 
 .canvas-statusbar {
   position: absolute;
@@ -1004,57 +907,39 @@ body.present-mode .btn-present {
 .prop-check span { font-size: var(--font-sm); }
 
 /* ====================== RIGHT PANEL ====================== */
+/* Riel derecho: 48 px de iconos. El contenido vive en .drawer, que se desliza
+   sobre el lienzo solo cuando hace falta (selección de nodo o clic en un icono). */
 .panel-right {
   background: linear-gradient(180deg, rgba(20,10,32,0.35) 0%, var(--glass) 22%);
   border-left: 1px solid var(--glass-brd);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
   color: var(--nexus-text);
+  position: static;
 }
 
 .tabs {
-  display: flex;
-  border-bottom: 1px solid var(--glass-brd);
-  background: rgba(255,255,255,0.03);
-  flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: stretch;
+  height: 100%; padding: var(--space-2) 4px; gap: 2px;
 }
+.rail-spacer { flex: 1; }
 
 .tab {
-  flex: 1;
-  border: none;
-  background: transparent;
-  padding: var(--space-3) 6px;
-  cursor: pointer;
+  border: none; background: transparent; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 7px 2px 6px; border-radius: 8px; position: relative;
   color: var(--nexus-text-soft);
-  font-weight: 500;
-  font-size: var(--font-sm);
-  letter-spacing: var(--tracking-tight);
-  position: relative;
-  transition: color var(--duration-fast) var(--ease-out);
+  font-size: 9px; font-weight: 600; letter-spacing: 0.02em; line-height: 1;
+  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
 }
-
-.tab:hover { color: var(--nexus-text); }
-
-.tab::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  right: 50%;
-  bottom: -1px;
-  height: 2px;
-  background: var(--indra-primary);
-  border-radius: 1px;
-  transition: left var(--duration-base) var(--ease-out),
-              right var(--duration-base) var(--ease-out);
+.tab svg { width: 18px; height: 18px; }
+.tab:hover { color: var(--nexus-text); background: rgba(255,255,255,0.06); }
+.tab.active { color: var(--nexus-text); background: rgba(255,255,255,0.10); }
+.tab.active::before {
+  content: ''; position: absolute; left: -4px; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 0 2px 2px 0; background: var(--indra-primary);
 }
-
-.tab.active {
-  color: var(--nexus-text);
-  background: rgba(255,255,255,0.05);
-}
-
-.tab.active::after { left: 0; right: 0; }
+body:not(.panel-open) .tab.active { background: transparent; color: var(--nexus-text-soft); }
+body:not(.panel-open) .tab.active::before { display: none; }
+.tab .lint-badge { position: absolute; top: 3px; right: 3px; }
 
 .tab-panel {
   display: none;
@@ -2513,20 +2398,17 @@ code {
 
 
 /* ── Selector de nivel de detalle ─────────────────────────── */
-.nivel-vista { display: flex; gap: 2px; margin: 4px 0 2px; }
+/* Nivel de detalle: vive en la barra inferior junto al zoom (misma familia visual) */
+.nivel-vista { display: flex; gap: 0; margin-left: auto; border: 1px solid var(--glass-brd); border-radius: 6px; overflow: hidden; }
 .nivel-vista button {
-  flex: 1; padding: 5px 2px; font-size: 10px; font-weight: 600;
-  border: 1px solid var(--border, #d8d4cc); background: var(--surface, #fff);
-  color: var(--text-muted, #6b6b6b); cursor: pointer; border-radius: 4px;
-  transition: background .12s ease, color .12s ease, border-color .12s ease;
+  padding: 3px 9px; font-size: 10.5px; font-weight: 600; border: none; cursor: pointer;
+  background: transparent; color: var(--nexus-text-soft); border-right: 1px solid var(--glass-brd);
+  transition: background .12s ease, color .12s ease;
 }
-.nivel-vista button:first-child { border-radius: 5px 0 0 5px; }
-.nivel-vista button:last-child  { border-radius: 0 5px 5px 0; }
-.nivel-vista button:hover { border-color: var(--accent, #FF0054); color: var(--accent, #FF0054); }
-.nivel-vista button.activo {
-  background: var(--accent, #FF0054); border-color: var(--accent, #FF0054); color: #fff;
-}
-.nivel-info { font-size: 10px; color: var(--text-muted, #8a8a8a); text-align: center; min-height: 13px; }
+.nivel-vista button:last-child { border-right: none; }
+.nivel-vista button:hover { color: var(--nexus-text); background: rgba(255,255,255,0.08); }
+.nivel-vista button.activo { background: var(--indra-primary); color: var(--bg-0); }
+.nivel-info { font-size: 10px; color: var(--nexus-text-soft); white-space: nowrap; }
 
 /* Opciones de profundidad del levantamiento */
 .prof-opts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
@@ -2540,3 +2422,69 @@ code {
 .prof-opt input { margin-top: 3px; accent-color: var(--accent, #FF0054); }
 .prof-opt span { display: flex; flex-direction: column; gap: 2px; }
 .prof-opt small { color: var(--text-muted, #7a7a7a); font-size: 11px; line-height: 1.35; }
+
+/* ============================================================
+   v3.3.0 — "Lienzo primero": rieles, cajón deslizante, desplegables
+   ============================================================ */
+.rail-btn {
+  width: 40px; border: none; background: transparent; cursor: pointer; border-radius: 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0 6px;
+  color: var(--nexus-text-soft); font-size: 9px; font-weight: 600; letter-spacing: 0.02em; line-height: 1;
+  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.rail-btn svg { width: 18px; height: 18px; }
+.rail-btn:hover { color: var(--nexus-text); background: rgba(255,255,255,0.06); }
+.rail-btn.active, .rail-btn[aria-expanded="true"] { color: var(--nexus-text); background: rgba(255,255,255,0.12); }
+#btnConnect.active { color: var(--bg-0); background: var(--indra-primary); }
+
+.shapes-flyout {
+  position: absolute; left: 52px; top: 56px; z-index: 80; width: 176px;   /* bajo la barra de deshacer */
+  background: var(--white); color: var(--gray-900);
+  border: 1px solid var(--gray-200); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); padding: 8px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.shapes-flyout .flyout-title { font-size: 10px; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 8px 6px; }
+.shapes-flyout .shape-btn { background: transparent; border: 1px solid transparent; color: var(--gray-800); }
+.shapes-flyout .shape-btn:hover { background: var(--gray-50); border-color: var(--gray-200); }
+
+.drawer {
+  position: absolute; top: 0; bottom: 0; right: 48px; width: 360px; z-index: 40;
+  background: linear-gradient(180deg, rgba(20,10,32,0.35) 0%, var(--glass) 22%);
+  backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  border-left: 1px solid var(--glass-brd); box-shadow: -18px 0 40px rgba(0,0,0,0.28);
+  color: var(--nexus-text); display: flex; flex-direction: column;
+  transform: translateX(16px); opacity: 0; pointer-events: none;
+  transition: transform var(--duration-base) var(--ease-out), opacity var(--duration-base) var(--ease-out);
+}
+body.panel-open .drawer { transform: none; opacity: 1; pointer-events: auto; }
+body.present-mode .drawer { display: none; }
+.drawer-head {
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--glass-brd);
+  font-size: var(--font-sm); font-weight: 600; letter-spacing: var(--tracking-tight);
+}
+.drawer-close {
+  border: none; background: transparent; color: var(--nexus-text-soft); cursor: pointer;
+  width: 26px; height: 26px; border-radius: 6px; font-size: 13px;
+}
+.drawer-close:hover { color: var(--nexus-text); background: rgba(255,255,255,0.08); }
+
+.process-meta-inline { position: relative; }
+.meta-btn {
+  border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.75);
+  width: 28px; height: 30px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.meta-btn:hover, .meta-btn[aria-expanded="true"] { background: rgba(255,255,255,0.14); color: #fff; }
+.meta-popover {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 90; width: 320px;
+  background: var(--white); color: var(--gray-900); border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.meta-popover label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--gray-600); text-transform: uppercase; letter-spacing: 0.06em; }
+.process-meta-inline .meta-popover select {
+  flex: none; width: 100%; min-width: 0; background: var(--white); color: var(--gray-900);
+  border: 1px solid var(--gray-200); border-radius: 8px; padding: 7px 9px; font-size: var(--font-base); font-weight: 500;
+}
+.process-meta-inline .meta-popover select option { background: var(--white); color: var(--gray-900); }

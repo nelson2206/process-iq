@@ -5,6 +5,37 @@
 
 ---
 
+## 0. Interfaz "Lienzo primero" (v3.3.0) y arte MBC (v3.2.0)
+
+- **Arte MBC** (v3.2.0): azul `003478`, fucsia `FF0054`, Gris Ceramica `E3E2DA`,
+  Montserrat, logotipo oficial en cabecera, favicon e imagen Open Graph
+  (`og-image.png`, 1200x630, renderizada con Chrome headless). La fuente de
+  verdad es `Documentos\Plantillas\MBC\Libro de estilo transitorio_V2.potx`.
+  El export PPTX SIGUE en Pruno: migrarlo es decision pendiente del usuario.
+- **Por que se rediseño la UI**: medido a 1440 px habia 51 controles a la vista
+  y el lienzo ocupaba el 61 % del ancho; el panel derecho (380 px, 7 pestañas)
+  estaba siempre abierto aunque no hubiera nada seleccionado. El usuario lo
+  reporto como "muy cargada" y eligio la opcion "A - Lienzo primero" entre tres.
+- **Como queda**: rejilla `48px 1fr 48px`. Riel izquierdo: `+` (desplegable
+  `#shapesFlyout` con las 7 formas arrastrables), Conectar, Eliminar, Ordenar.
+  Riel derecho: los 7 paneles como iconos + Leyenda; el contenido vive en
+  `.drawer`, que se desliza SOBRE el lienzo (no lo encoge) cuando `body` lleva
+  `panel-open`. Nivel de detalle y zoom juntos en la barra inferior. Industria y
+  macroproceso en `#metaPopover` tras el nombre. Presentar pasa a la cabecera.
+  Lienzo en reposo: 93 % del ancho; en Presentar, 100 %.
+- **Reglas del cajon** (`abrirPanel(name, auto)` / `cerrarPanel()`):
+  seleccionar un nodo lo abre en Props con `auto=true` y deseleccionar lo cierra;
+  clic en un icono del riel lo abre con `auto=false` y entonces NO se cierra al
+  clicar fuera, solo con el mismo icono, la X o Esc. `activateTab()` equivale a
+  apertura manual. `localStorage["processiq.ui"]` guarda `{panelOpen, tab}` solo
+  si fue apertura manual.
+- Se retiraron `btnTogglePanel`, `btnToggleToolbar` y sus clases
+  `panel-collapsed` / `toolbar-collapsed`; `btnLegend` vive ahora en el riel
+  derecho. Nada del API `window.ProcessIQ` cambio.
+- Verificado con DOM en Browser pane: apertura/cierre automatico y manual,
+  desplegables que cierran al clicar fuera, 7 formas `draggable` en el
+  desplegable, Presentar oculta rieles y cajon, 0 errores de consola.
+
 ## 1. Qué es y dónde vive
 
 **ProcessIQ** — herramienta web de diagramación, diagnóstico y reingeniería de procesos con notación **BPMN 2.0**, para Minsait Business Consulting Perú.

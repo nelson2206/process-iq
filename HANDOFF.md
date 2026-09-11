@@ -364,6 +364,17 @@
   PENDIENTE: (1) el usuario carga los secretos ANTHROPIC_API_KEY y
   ACCESS_CODE; (2) /health desde fuera de Indra debe dar configurado: true;
   (3) ticket a TI para habilitar *.mbc-latam.com.
+  OJO SECRETOS (11-sep-2026): en el panel de Cloudflare el desplegable Type
+  viene en Text. El usuario guardo ANTHROPIC_API_KEY como variable de TEXTO
+  (visible en claro en el panel) y ACCESS_CODE no llego a guardarse; el Worker
+  habria respondido 500. Se limpio redesplegando (version 4edd5a5e):
+  `wrangler deploy` sin keep_vars sustituye las variables de texto del panel
+  por las de wrangler.toml; los Secret sobreviven a los despliegues. Via mas
+  segura para cargarlos: `npx wrangler secret put <NOMBRE> --name processiq-api`,
+  que siempre crea tipo Secret y pide el valor sin mostrarlo. Verificar con
+  `wrangler secret list` (solo nombres). NUNCA listar bindings sin filtrar:
+  `wrangler versions view` imprime en claro el valor de las variables de texto;
+  filtrar a nombres y tipos con grep -oE "env\.[A-Za-z0-9_]+|Secret|Environment Variable".
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

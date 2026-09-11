@@ -20,7 +20,7 @@
  *   ALLOWED_ORIGINS    texto    origenes que pueden llamar, separados por coma
  *                               (por defecto solo https://procesos.mbc-latam.com)
  *
- * Limites deliberados: solo los modelos de la app, max_tokens topado a 32000 y
+ * Limites deliberados: solo los modelos de la app, max_tokens topado a 64000 y
  * cuerpo de hasta 2 MB. El streaming SSE se reenvia tal cual (la app lo usa
  * para respuestas largas). fallbacks solo admite "default" y el Worker anade su
  * cabecera beta. El techo de GASTO se fija en la consola de Anthropic (Limits):
@@ -29,7 +29,7 @@
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const MODELOS = new Set(['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']);
-const MAX_TOKENS = 32000;
+const MAX_TOKENS = 64000;
 const MAX_BODY = 2 * 1024 * 1024;
 
 function origenPermitido(req, env) {

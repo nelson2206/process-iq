@@ -8697,7 +8697,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     }
     if (errorSse) throw new Error('La IA devolvió un error a mitad de la respuesta: ' + errorSse);
     if (stop === 'refusal') throw new Error('El modelo rechazó la solicitud por políticas de seguridad.');
-    if (stop === 'max_tokens') throw new Error('La respuesta de la IA se cortó por longitud (tope de ' + body.max_tokens + ' tokens). Divide el documento por capítulos o genera por partes.');
+    // Lo que se corta es la RESPUESTA (razonamiento + JSON), no el texto de
+    // entrada: el aviso lo dice asi, porque "limite de caracteres" hacia pensar
+    // al usuario que habia pegado demasiado texto.
+    if (stop === 'max_tokens') throw new Error('El proceso que generó la IA es más largo de lo que puede devolver en una sola respuesta (' + body.max_tokens.toLocaleString('es-PE') + ' tokens). Tu texto está bien: vuelve a generarlo eligiendo el nivel "Actividad" o "Ejecutivo", o divide el procedimiento por capítulos.');
     return texto.trim();
   }
 
@@ -9159,7 +9162,7 @@ Reglas:
       3: 'Levantamiento exhaustivo: recoge cada paso operativo que el texto mencione, incluidos sistemas y validaciones intermedias.'
     })[opts.vista]) : '';
     const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.${merge}${roles}${prof}\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, MAX_AI_CHARS)}`;
-    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: 32000,
+    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: 64000,
       onProgress: (n) => setStatus('Recibiendo el proceso de la IA… ' + n.toLocaleString('es-PE') + ' caracteres') });
     const spec = parseJsonLoose(raw);
     buildProcessFromAiSpec(spec, sourceLabel);

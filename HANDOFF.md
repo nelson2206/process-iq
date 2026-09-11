@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.8.0 — la ingesta usa la IA por defecto (pide el código del equipo si falta), streaming SSE y fallbacks
+> **Última actualización:** v3.8.1 — tope de respuesta de la IA a 64.000 tokens y aviso de longitud que no culpa al texto de entrada
 
 ---
 
@@ -413,6 +413,12 @@
   bloquea el intermediario; la primera ingesta real la hace el usuario fuera.
   Mejora pendiente: salida estructurada (output_config.format con esquema JSON)
   en lugar de parseJsonLoose sobre texto libre.
+- v3.8.1: el usuario vio "se cortó por longitud" al pegar un procedimiento y
+  lo leyo como limite de caracteres de SU texto. Era la RESPUESTA: con el
+  razonamiento de Opus 5 activo (consume max_tokens) y un proceso detallado,
+  32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
+  recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
+  dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

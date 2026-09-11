@@ -361,9 +361,16 @@
   *.mbc-latam.com. WebFetch externo tambien dio 403, sin poder distinguir si
   fue Netskope o el anti-bots de Cloudflare: la verificacion decisiva es abrir
   /health desde una red que no sea la de Indra (movil con datos).
-  PENDIENTE: (1) el usuario carga los secretos ANTHROPIC_API_KEY y
-  ACCESS_CODE; (2) /health desde fuera de Indra debe dar configurado: true;
-  (3) ticket a TI para habilitar *.mbc-latam.com.
+  ESTADO 11-sep-2026: FUNCIONANDO. Secretos ANTHROPIC_API_KEY y ACCESS_CODE
+  cargados por el usuario como secret_text (verificado con `wrangler secret
+  list`; version desplegada 89c35cdc). /health desde datos moviles (fuera de
+  Indra) devuelve configurado: true — verificado por el usuario.
+  PENDIENTE: (1) ticket a TI para habilitar *.mbc-latam.com en Netskope; hasta
+  entonces la IA solo funciona fuera de la red de Indra; (2) primera llamada
+  real desde la app: ✨ > Clave del equipo > codigo > Probar conexion, y luego
+  ingestar un documento real; (3) opcional: revocar el token OAuth de Wrangler
+  en Cloudflare > My Profile > API Tokens (hara falta volver a `wrangler login`
+  para redesplegar).
   OJO SECRETOS (11-sep-2026): en el panel de Cloudflare el desplegable Type
   viene en Text. El usuario guardo ANTHROPIC_API_KEY como variable de TEXTO
   (visible en claro en el panel) y ACCESS_CODE no llego a guardarse; el Worker

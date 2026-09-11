@@ -327,6 +327,28 @@
   defectos, y mirar una captura del lienzo, no solo el conteo de nodos ni el
   PPTX (que se salvo porque construye su rejilla con ranks y carriles, no con
   n.x/n.y — por eso el export se veia bien con el lienzo roto).
+- v3.7.0 CLAVE CENTRALIZADA ("modo equipo"). La web es estatica y publica:
+  una API key en ella la copiaria cualquiera. La clave vive como SECRETO en un
+  Cloudflare Worker (worker/processiq-api.js); el dominio mbc-latam.com ya
+  esta en Cloudflare (NS jarred/jean.ns.cloudflare.com), asi que no hace falta
+  Vercel ni cuenta nueva. Contrato: POST {intermediario}/v1/messages con
+  cabecera x-processiq-code y el JSON de Anthropic; GET /health sin codigo.
+  Secretos del Worker: ANTHROPIC_API_KEY y ACCESS_CODE (los carga el usuario,
+  nunca el asistente); variable ALLOWED_ORIGINS. El Worker solo acepta los
+  modelos de la app, topa max_tokens a 16000, quita stream, limita el cuerpo a
+  2 MB, compara el codigo en tiempo constante y traduce un 401 de Anthropic a
+  502 (la clave central falla, no el usuario).
+  Verificado: 12/12 casos del Worker en local con Anthropic simulado (Node 24,
+  scratchpad/test_worker.mjs); en la app, modo equipo llama al intermediario
+  con el codigo y SIN x-api-key, modo clave propia intacto, 401 con mensaje
+  claro, aiReady exige codigo en modo equipo.
+  App: aiConfig gana modo/codigo/proxyUrl (compatible: sin 'modo' se asume
+  clave propia). PROXY_POR_DEFECTO = https://api.mbc-latam.com.
+  PENDIENTE: desplegar el Worker y asignarle api.mbc-latam.com. La extension
+  Claude in Chrome no conecto en la sesion, asi que no se pudo hacer desde el
+  navegador del usuario. Mientras no este desplegado, el modo equipo falla con
+  error de conexion (esperado); el modo clave propia sigue funcionando. Pedir a
+  TI que habilite *.mbc-latam.com en el proxy corporativo.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

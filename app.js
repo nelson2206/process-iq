@@ -8551,6 +8551,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   // anthropic-dangerous-direct-browser-access para permitir la llamada CORS.
   // ============================================================
   const AI_KEY = 'processiq.ai';
+  // Intermediario con la clave central (worker/processiq-api.js, Cloudflare).
+  const PROXY_POR_DEFECTO = 'https://api.mbc-latam.com';
   const AI_MODELS = [
     { id: 'claude-opus-5', label: 'Claude Opus — máxima calidad de interpretación' },
     { id: 'claude-sonnet-5', label: 'Claude Sonnet — rápido y económico' },
@@ -8558,13 +8560,28 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   ];
   function aiConfig() { try { return JSON.parse(localStorage.getItem(AI_KEY)) || {}; } catch (e) { return {}; } }
   function saveAiConfig(c) { try { localStorage.setItem(AI_KEY, JSON.stringify(c)); } catch (e) {} }
-  function aiReady() { return !!(aiConfig().key || '').trim(); }
+  // Lista si hay forma de llegar a Claude: codigo de equipo (intermediario)
+  // o clave propia. Sin 'modo' guardado se asume clave propia (configs viejas).
+  function aiReady() {
+    const c = aiConfig();
+    return c.modo === 'equipo' ? !!(c.codigo || '').trim() : !!(c.key || '').trim();
+  }
 
   async function callClaude(userText, opts) {
     opts = opts || {};
     const cfg = aiConfig();
-    const key = (cfg.key || '').trim();
-    if (!key) throw new Error('Falta la API key. Configúrala en Ajustes de IA (⚙).');
+    const equipo = cfg.modo === 'equipo';
+    const key = (cfg.key || '').trim(), codigo = (cfg.codigo || '').trim();
+    if (equipo && !codigo) throw new Error('Falta el código de acceso del equipo. Configúralo en Ajustes de IA (✨).');
+    if (!equipo && !key) throw new Error('Falta la API key. Configúrala en Ajustes de IA (✨).');
+    // Modo equipo: la clave NO sale del intermediario; aqui solo viaja el codigo.
+    const destino = equipo
+      ? (cfg.proxyUrl || PROXY_POR_DEFECTO).replace(/\/+$/, '') + '/v1/messages'
+      : 'https://api.anthropic.com/v1/messages';
+    const cabeceras = equipo
+      ? { 'content-type': 'application/json', 'x-processiq-code': codigo }
+      : { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true' };
     const body = {
       model: cfg.model || 'claude-opus-5',
       max_tokens: opts.maxTokens || 16000,
@@ -8580,14 +8597,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     if (ingestAbort) ingestAbort.controller.signal.addEventListener('abort', onCancel);
     let res;
     try {
-      res = await fetch('https://api.anthropic.com/v1/messages', {
+      res = await fetch(destino, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
+        headers: cabeceras,
         body: JSON.stringify(body),
         signal: ctrl.signal
       });
@@ -8596,7 +8608,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         if (ingestAbort && ingestAbort.cancelled) throw new Error('CANCELLED');
         throw new Error('La IA tardó más de ' + Math.round(timeoutMs / 1000) + 's y se canceló. Prueba con un documento más corto o con el modelo Sonnet (más rápido) en Ajustes de IA.');
       }
-      throw new Error('No se pudo conectar con Anthropic. Revisa tu conexión a internet. (' + e.message + ')');
+      throw new Error(equipo
+        ? 'No se pudo conectar con el intermediario (' + destino.replace('/v1/messages', '') + '). Si estás en la red de Indra, puede que el proxy corporativo lo bloquee. (' + e.message + ')'
+        : 'No se pudo conectar con Anthropic. Revisa tu conexión a internet. (' + e.message + ')');
     } finally {
       clearTimeout(timer);
       if (ingestAbort) { try { ingestAbort.controller.signal.removeEventListener('abort', onCancel); } catch (_) {} }
@@ -8604,7 +8618,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     if (!res.ok) {
       let msg = 'Error ' + res.status;
       try { const j = await res.json(); msg += ': ' + (j.error?.message || JSON.stringify(j).slice(0, 200)); } catch (_) {}
-      if (res.status === 401) msg = 'API key inválida o revocada (401). Revísala en Ajustes de IA.';
+      if (res.status === 401) msg = equipo ? 'Código de acceso del equipo incorrecto (401). Revísalo en Ajustes de IA.'
+                                           : 'API key inválida o revocada (401). Revísala en Ajustes de IA.';
+      if (res.status === 403 && equipo) msg = 'El intermediario rechazó este origen (403): abre la app desde procesos.mbc-latam.com.';
       if (res.status === 429) msg = 'Límite de uso alcanzado (429). Espera unos segundos y reintenta.';
       throw new Error(msg);
     }
@@ -9089,15 +9105,33 @@ Reglas:
   // ----------- Panel de Ajustes de IA (BYOK) -----------
   function openAiSettings() {
     const cfg = aiConfig();
+    const modo = cfg.modo || (cfg.key ? 'propia' : 'equipo');
     const esc = s => String(s == null ? '' : s).replace(/"/g, '&quot;');
     const opts = AI_MODELS.map(m => `<option value="${m.id}"${(cfg.model || 'claude-opus-5') === m.id ? ' selected' : ''}>${m.label}</option>`).join('');
     const html = `
       <div class="ai-settings">
-        <p class="panel-hint">ProcessIQ usa el <b>API de Anthropic (Claude)</b> con tu propia API key. La key se guarda <b>solo en este navegador</b> (localStorage) y se envía directo a Anthropic — nunca pasa por ningún servidor de ProcessIQ.</p>
+        <p class="panel-hint">ProcessIQ usa el <b>API de Anthropic (Claude)</b>. En <b>modo equipo</b> la clave vive en el intermediario de MBC y en este navegador solo se guarda tu código de acceso. Con <b>tu propia API key</b>, la key se guarda solo en este navegador y va directo a Anthropic.</p>
+        <label>Modo
+          <select id="aiModo">
+            <option value="equipo"${modo === 'equipo' ? ' selected' : ''}>Clave del equipo (intermediario MBC)</option>
+            <option value="propia"${modo === 'propia' ? ' selected' : ''}>Mi propia API key</option>
+          </select>
+        </label>
+        <div id="aiBloqueEquipo">
+          <label>Código de acceso del equipo
+            <input type="password" id="aiCodigo" value="${esc(cfg.codigo || '')}" autocomplete="off" />
+          </label>
+          <label>Dirección del intermediario
+            <input type="text" id="aiProxy" value="${esc(cfg.proxyUrl || PROXY_POR_DEFECTO)}" autocomplete="off" />
+          </label>
+          <p class="ai-hint">El código te lo da quien administra ProcessIQ. La clave de Anthropic vive en el intermediario: tu navegador nunca la ve.</p>
+        </div>
+        <div id="aiBloquePropia">
         <label>API key de Anthropic
           <input type="password" id="aiKey" placeholder="sk-ant-..." value="${esc(cfg.key || '')}" autocomplete="off" />
         </label>
         <p class="ai-hint">La obtienes en <b>console.anthropic.com → API Keys</b>. Empieza con <code>sk-ant-</code>.</p>
+        </div>
         <label>Modelo
           <select id="aiModel">${opts}</select>
         </label>
@@ -9107,16 +9141,27 @@ Reglas:
         </div>
         <p class="ai-hint" style="margin-top:10px">⚠️ Modo BYOK: úsalo para trabajo interno o demos. Para un link público compartido, conviene un proxy con la key en el servidor.</p>
       </div>`;
+    function leerFormIa() {
+      return { key: ($('#aiKey').value || '').trim(), model: $('#aiModel').value,
+               modo: $('#aiModo').value, codigo: ($('#aiCodigo').value || '').trim(),
+               proxyUrl: ($('#aiProxy').value || '').trim() };
+    }
     openModal('⚙ Ajustes de IA (Claude)', html, () => {
-      saveAiConfig({ key: ($('#aiKey').value || '').trim(), model: $('#aiModel').value });
+      saveAiConfig(leerFormIa());
       updateAiUi();
     });
     const ok = $('#modalOk'); if (ok) ok.textContent = 'Guardar';
+    const selModo = $('#aiModo');
+    const pintarModo = () => {
+      const eq = selModo.value === 'equipo';
+      $('#aiBloqueEquipo').hidden = !eq; $('#aiBloquePropia').hidden = eq;
+    };
+    if (selModo) { selModo.addEventListener('change', pintarModo); pintarModo(); }
     const test = $('#aiTest');
     if (test) test.addEventListener('click', async () => {
       const st = $('#aiTestStatus');
       const prev = aiConfig();
-      saveAiConfig({ key: ($('#aiKey').value || '').trim(), model: $('#aiModel').value });
+      saveAiConfig(leerFormIa());
       st.textContent = '⏳ Probando…'; st.className = 'ai-test-status';
       try {
         const r = await callClaude('Responde solo con la palabra: OK', { maxTokens: 16 });

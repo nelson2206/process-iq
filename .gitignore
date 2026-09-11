@@ -16,3 +16,7 @@ _test_*
 
 # Banco de pruebas: los fixtures son procesos reales de cliente
 bench/fixtures/
+
+# Estado local de Wrangler (Cloudflare)
+.wrangler/
+worker/.wrangler/

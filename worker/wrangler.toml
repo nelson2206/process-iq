@@ -1,0 +1,16 @@
+# Cloudflare Worker de ProcessIQ: intermediario con la clave de Anthropic.
+# Desplegar (desde esta carpeta):  npx wrangler deploy
+# Secretos, NUNCA en este archivo (los carga el administrador):
+#   npx wrangler secret put ANTHROPIC_API_KEY
+#   npx wrangler secret put ACCESS_CODE
+name = "processiq-api"
+main = "processiq-api.js"
+compatibility_date = "2026-08-01"
+workers_dev = false   # solo el dominio propio; la cuenta no tiene subdominio workers.dev
+
+[vars]
+ALLOWED_ORIGINS = "https://procesos.mbc-latam.com"
+
+[[routes]]
+pattern = "api.mbc-latam.com"
+custom_domain = true

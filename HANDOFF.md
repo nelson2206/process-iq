@@ -344,11 +344,26 @@
   claro, aiReady exige codigo en modo equipo.
   App: aiConfig gana modo/codigo/proxyUrl (compatible: sin 'modo' se asume
   clave propia). PROXY_POR_DEFECTO = https://api.mbc-latam.com.
-  PENDIENTE: desplegar el Worker y asignarle api.mbc-latam.com. La extension
-  Claude in Chrome no conecto en la sesion, asi que no se pudo hacer desde el
-  navegador del usuario. Mientras no este desplegado, el modo equipo falla con
-  error de conexion (esperado); el modo clave propia sigue funcionando. Pedir a
-  TI que habilite *.mbc-latam.com en el proxy corporativo.
+  DESPLEGADO el 11-sep-2026: Worker processiq-api con dominio propio
+  api.mbc-latam.com (version 67f7436d, cuenta Cloudflare 0ba46cab...), con
+  `npx wrangler deploy` desde worker/ (config en worker/wrangler.toml;
+  workers_dev = false porque la cuenta no tiene subdominio workers.dev).
+  Login de Wrangler por OAuth: da SOLO 2 MINUTOS para pulsar Allow; el primer
+  intento expiro. Hacerlo con el usuario delante del navegador y pegarle el
+  enlace al instante. La extension Claude in Chrome nunca conecto.
+  BLOQUEO CORPORATIVO: desde la red de Indra, Netskope intercepta
+  api.mbc-latam.com (politica "[SWG] RBI Compliance Policy", categoria
+  "Newly Observed Domain") y devuelve 403 con su pagina HTML. Sintoma en
+  curl de Windows: schannel CRYPT_E_NO_REVOCATION_CHECK (TLS interceptado);
+  con --ssl-no-revoke se ve el 403. En el navegador se manifiesta como error
+  de red (el bloqueo no lleva cabeceras CORS), y la app ya muestra el mensaje
+  que menciona el proxy corporativo. Solucion: TI debe habilitar
+  *.mbc-latam.com. WebFetch externo tambien dio 403, sin poder distinguir si
+  fue Netskope o el anti-bots de Cloudflare: la verificacion decisiva es abrir
+  /health desde una red que no sea la de Indra (movil con datos).
+  PENDIENTE: (1) el usuario carga los secretos ANTHROPIC_API_KEY y
+  ACCESS_CODE; (2) /health desde fuera de Indra debe dar configurado: true;
+  (3) ticket a TI para habilitar *.mbc-latam.com.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

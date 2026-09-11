@@ -20,14 +20,16 @@
  *   ALLOWED_ORIGINS    texto    origenes que pueden llamar, separados por coma
  *                               (por defecto solo https://procesos.mbc-latam.com)
  *
- * Limites deliberados: solo los modelos de la app, max_tokens topado, cuerpo
- * de hasta 2 MB y sin streaming. El techo de GASTO se fija en la consola de
- * Anthropic (Limits): es la red de seguridad real.
+ * Limites deliberados: solo los modelos de la app, max_tokens topado a 32000 y
+ * cuerpo de hasta 2 MB. El streaming SSE se reenvia tal cual (la app lo usa
+ * para respuestas largas). fallbacks solo admite "default" y el Worker anade su
+ * cabecera beta. El techo de GASTO se fija en la consola de Anthropic (Limits):
+ * es la red de seguridad real.
  * ============================================================ */
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const MODELOS = new Set(['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']);
-const MAX_TOKENS = 16000;
+const MAX_TOKENS = 32000;
 const MAX_BODY = 2 * 1024 * 1024;
 
 function origenPermitido(req, env) {
@@ -99,17 +101,17 @@ export default {
     try { body = await req.json(); } catch (e) { return error('Cuerpo JSON invalido', 400, cors); }
     if (!body || !MODELOS.has(body.model)) return error('Modelo no permitido: ' + (body && body.model), 400, cors);
     body.max_tokens = Math.min(Math.max(1, +body.max_tokens || 1024), MAX_TOKENS);
-    delete body.stream;
+    if (body.fallbacks !== undefined && body.fallbacks !== 'default') delete body.fallbacks;
 
     let r;
     try {
       r = await fetch(ANTHROPIC_URL, {
         method: 'POST',
-        headers: {
+        headers: Object.assign({
           'content-type': 'application/json',
           'x-api-key': env.ANTHROPIC_API_KEY,
           'anthropic-version': '2023-06-01'
-        },
+        }, body.fallbacks ? { 'anthropic-beta': 'server-side-fallback-2026-07-01' } : {}),
         body: JSON.stringify(body)
       });
     } catch (e) {

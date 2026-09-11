@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.2.0 — arte MBC oficial en la web; círculos de continuidad a media lámina
+> **Última actualización:** v3.8.0 — la ingesta usa la IA por defecto (pide el código del equipo si falta), streaming SSE y fallbacks
 
 ---
 
@@ -382,6 +382,37 @@
   `wrangler secret list` (solo nombres). NUNCA listar bindings sin filtrar:
   `wrangler versions view` imprime en claro el valor de las variables de texto;
   filtrar a nombres y tipos con grep -oE "env\.[A-Za-z0-9_]+|Secret|Environment Variable".
+- v3.8.0 IA POR DEFECTO EN LA INGESTA. Si el navegador no tiene codigo de
+  equipo ni clave propia, runIngest llama a pedirCodigoEquipo() ANTES de decidir
+  el motor: el usuario escribe el codigo (se guarda en processiq.ai como modo
+  equipo) o elige "Modo basico" a sabiendas. Antes caia en silencio al modo de
+  palabras clave. pedirCodigoEquipo resuelve tambien con Esc o clic fuera (un
+  MutationObserver vigila #modal) y restaura los textos de los botones.
+- v3.8.0 callClaude EN STREAMING (SSE). Motivo: Opus 5 razona por defecto y el
+  razonamiento consume max_tokens y tiempo; sin streaming una ingesta larga se
+  cortaba a los 180 s. Ahora el limite es de INACTIVIDAD (90 s sin datos),
+  rearmado en cada trozo; Cancelar sigue abortando durante la lectura. Se
+  acumulan solo los text_delta (los bloques thinking se ignoran). stop_reason
+  max_tokens y refusal dan mensajes claros. Tope de la ingesta: 32000 tokens
+  (el Worker topa igual). Probar conexion: 256 tokens y effort low (con 16 el
+  razonamiento podia agotarlos antes de escribir OK).
+- v3.8.0 FALLBACKS: en claude-opus-5 la app envia fallbacks: "default" (beta
+  server-side-fallback-2026-07-01): si un clasificador declina, la API repite la
+  peticion con el modelo de respaldo en la misma llamada. En modo equipo la
+  cabecera beta la pone el Worker; en clave propia, la app. En streaming el
+  cambio llega como un bloque de tipo 'fallback' y lo ya recibido NO se
+  invalida: callClaude vacia el texto acumulado al ver ese bloque, porque el
+  modelo de respaldo repite la respuesta entera (si no, se mezclan dos JSON).
+- v3.8.0 Worker: MAX_TOKENS 32000, stream permitido (el SSE se reenvia tal
+  cual), fallbacks solo "default" (otro valor se elimina).
+  Verificado: Worker 13 casos nuevos + 12 de la bateria anterior, en local con
+  Anthropic simulado; app con SSE simulado troceado en fragmentos de 37 bytes:
+  proceso completo, fallback a mitad, max_tokens, refusal, primer uso pidiendo
+  codigo, eleccion de modo basico y Probar conexion.
+  NO verificado: una llamada real a Claude. Desde la red de Indra Netskope
+  bloquea el intermediario; la primera ingesta real la hace el usuario fuera.
+  Mejora pendiente: salida estructurada (output_config.format con esquema JSON)
+  en lugar de parseJsonLoose sobre texto libre.
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

@@ -8260,6 +8260,20 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       throwIfCancelled();
       if (!text) throw new Error('No hay texto que interpretar. Carga un archivo o pega el texto del proceso.');
 
+      // La IA es el camino por defecto. Si este navegador aun no tiene el codigo
+      // del equipo (ni clave propia) se pide AHORA, en vez de caer en silencio al
+      // modo basico; quien no lo tenga sigue en modo basico a sabiendas.
+      if (!aiReady()) {
+        ingestBusy(false);
+        const codigo = await pedirCodigoEquipo();
+        ingestBusy(true);
+        if (codigo) {
+          const c = aiConfig();
+          saveAiConfig(Object.assign({}, c, { modo: 'equipo', codigo: codigo,
+            proxyUrl: c.proxyUrl || PROXY_POR_DEFECTO, model: c.model || 'claude-opus-5' }));
+          updateAiUi();
+        }
+      }
       const useAi = aiReady();
       ingestProgress(
         useAi ? 'Interpretando con IA ' + text.length.toLocaleString('es-PE') + ' caracteres... (puede tardar hasta 1 min)'
@@ -8589,12 +8603,27 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     };
     if (opts.system) body.system = opts.system;
     if (opts.effort) body.output_config = { effort: opts.effort };
-    // Timeout propio + cancelación desde el botón Cancelar (si no, parece colgada)
+    // Si los clasificadores de seguridad declinan, la API repite la peticion
+    // con el modelo de respaldo recomendado dentro de la misma llamada. En modo
+    // equipo la cabecera beta la pone el intermediario.
+    if (String(body.model).indexOf('claude-opus-5') === 0) body.fallbacks = 'default';
+    if (body.fallbacks && !equipo) cabeceras['anthropic-beta'] = 'server-side-fallback-2026-07-01';
+    // STREAMING (SSE). Con el razonamiento de Opus 5 activo y documentos largos,
+    // una respuesta de 16-32K tokens puede tardar minutos: sin streaming se
+    // cortaba a los 180 s. En streaming los datos fluyen desde el primer
+    // segundo, asi que el limite es de INACTIVIDAD (90 s sin recibir nada), no
+    // de duracion total. El boton Cancelar sigue abortando durante la lectura.
+    body.stream = true;
     const ctrl = new AbortController();
-    const timeoutMs = opts.timeoutMs || 180000;   // 3 min
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const timeoutMs = opts.timeoutMs || 90000;
+    let timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const rearmar = () => { clearTimeout(timer); timer = setTimeout(() => ctrl.abort(), timeoutMs); };
     const onCancel = () => ctrl.abort();
     if (ingestAbort) ingestAbort.controller.signal.addEventListener('abort', onCancel);
+    const limpiar = () => {
+      clearTimeout(timer);
+      if (ingestAbort) { try { ingestAbort.controller.signal.removeEventListener('abort', onCancel); } catch (_) {} }
+    };
     let res;
     try {
       res = await fetch(destino, {
@@ -8604,6 +8633,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         signal: ctrl.signal
       });
     } catch (e) {
+      limpiar();
       if (e.name === 'AbortError') {
         if (ingestAbort && ingestAbort.cancelled) throw new Error('CANCELLED');
         throw new Error('La IA tardó más de ' + Math.round(timeoutMs / 1000) + 's y se canceló. Prueba con un documento más corto o con el modelo Sonnet (más rápido) en Ajustes de IA.');
@@ -8611,9 +8641,6 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       throw new Error(equipo
         ? 'No se pudo conectar con el intermediario (' + destino.replace('/v1/messages', '') + '). Si estás en la red de Indra, puede que el proxy corporativo lo bloquee. (' + e.message + ')'
         : 'No se pudo conectar con Anthropic. Revisa tu conexión a internet. (' + e.message + ')');
-    } finally {
-      clearTimeout(timer);
-      if (ingestAbort) { try { ingestAbort.controller.signal.removeEventListener('abort', onCancel); } catch (_) {} }
     }
     if (!res.ok) {
       let msg = 'Error ' + res.status;
@@ -8622,11 +8649,56 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
                                            : 'API key inválida o revocada (401). Revísala en Ajustes de IA.';
       if (res.status === 403 && equipo) msg = 'El intermediario rechazó este origen (403): abre la app desde procesos.mbc-latam.com.';
       if (res.status === 429) msg = 'Límite de uso alcanzado (429). Espera unos segundos y reintenta.';
+      limpiar();
       throw new Error(msg);
     }
-    const data = await res.json();
-    if (data.stop_reason === 'refusal') throw new Error('El modelo rechazó la solicitud por políticas de seguridad.');
-    return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+
+    // Lectura del stream: se acumulan solo los deltas de TEXTO (el razonamiento
+    // llega en bloques thinking y se ignora). Si aparece un bloque 'fallback',
+    // el modelo de respaldo repite la respuesta entera: lo recibido hasta ahi se
+    // descarta para no mezclar dos JSON.
+    let texto = '', stop = null, errorSse = null, buf = '';
+    const lector = res.body.getReader();
+    const dec = new TextDecoder();
+    try {
+      for (;;) {
+        const paso = await lector.read();
+        if (paso.done) break;
+        rearmar();
+        buf += dec.decode(paso.value, { stream: true }).replace(/\r\n/g, '\n');
+        let corte;
+        while ((corte = buf.indexOf('\n\n')) !== -1) {
+          const evento = buf.slice(0, corte);
+          buf = buf.slice(corte + 2);
+          const linea = evento.split('\n').find(l => l.indexOf('data:') === 0);
+          if (!linea) continue;
+          let d;
+          try { d = JSON.parse(linea.slice(5).trim()); } catch (_) { continue; }
+          if (d.type === 'content_block_start' && d.content_block && d.content_block.type === 'fallback') {
+            texto = '';
+          } else if (d.type === 'content_block_delta' && d.delta && d.delta.type === 'text_delta') {
+            texto += d.delta.text;
+            if (opts.onProgress) opts.onProgress(texto.length);
+          } else if (d.type === 'message_delta' && d.delta && d.delta.stop_reason) {
+            stop = d.delta.stop_reason;
+          } else if (d.type === 'error') {
+            errorSse = (d.error && d.error.message) || 'error desconocido';
+          }
+        }
+      }
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        if (ingestAbort && ingestAbort.cancelled) throw new Error('CANCELLED');
+        throw new Error('La IA dejó de responder durante ' + Math.round(timeoutMs / 1000) + ' s y se canceló. Vuelve a intentarlo; si se repite, prueba con un documento más corto.');
+      }
+      throw new Error('Se cortó la conexión mientras la IA respondía (' + e.message + ').');
+    } finally {
+      limpiar();
+    }
+    if (errorSse) throw new Error('La IA devolvió un error a mitad de la respuesta: ' + errorSse);
+    if (stop === 'refusal') throw new Error('El modelo rechazó la solicitud por políticas de seguridad.');
+    if (stop === 'max_tokens') throw new Error('La respuesta de la IA se cortó por longitud (tope de ' + body.max_tokens + ' tokens). Divide el documento por capítulos o genera por partes.');
+    return texto.trim();
   }
 
   // Extrae el primer objeto JSON de una respuesta (tolera fences ```json y prosa alrededor)
@@ -9008,6 +9080,43 @@ Reglas:
   // genera el proceso completo-- sino con cuanto detalle lo mira la IA y en que
   // vista se abre. Elegir mal no cuesta nada: el selector de nivel cambia la
   // vista al instante y sin volver a llamar a la IA.
+  // Pide el codigo de acceso del equipo la primera vez que se ingesta.
+  // Resuelve con el codigo, o con '' si el usuario elige el modo basico (boton,
+  // Esc o clic fuera: el MutationObserver cubre los cierres que no pasan por
+  // los botones, para que la ingesta nunca se quede esperando).
+  function pedirCodigoEquipo() {
+    return new Promise(resolve => {
+      const modal = $('#modal'), ok = $('#modalOk'), cancel = $('#modalCancel');
+      const txtOk = ok ? ok.textContent : '', txtCancel = cancel ? cancel.textContent : '';
+      let hecho = false, obs = null;
+      const fin = (v) => {
+        if (hecho) return;
+        hecho = true;
+        if (obs) obs.disconnect();
+        if (ok) ok.textContent = txtOk;
+        if (cancel) cancel.textContent = txtCancel;
+        resolve(v);
+      };
+      const html =
+        '<p class="panel-hint">ProcessIQ interpreta el documento con <b>IA (Claude)</b> usando la clave del equipo. ' +
+        'Escribe el <b>código de acceso</b> que te dio quien administra la herramienta: se guarda solo en este ' +
+        'navegador y no se te volverá a pedir.</p>' +
+        '<label>Código de acceso del equipo<input type="password" id="ingestCodigo" autocomplete="off" /></label>' +
+        '<p class="ai-hint">Sin código puedes seguir en <b>modo básico</b>: extrae actividades por palabras clave, sin IA.</p>';
+      openModal('Interpretar con IA', html, () => fin((($('#ingestCodigo') || {}).value || '').trim()));
+      if (ok) ok.textContent = 'Usar IA';
+      if (cancel) {
+        cancel.textContent = 'Modo básico';
+        const prev = cancel.onclick;
+        cancel.onclick = (e) => { fin(''); if (prev) prev(e); };
+      }
+      if (modal) {
+        obs = new MutationObserver(() => { if (modal.hidden) setTimeout(() => fin(''), 0); });
+        obs.observe(modal, { attributes: true, attributeFilter: ['hidden'] });
+      }
+    });
+  }
+
   function askProfundidad() {
     return new Promise(resolve => {
       const html =
@@ -9050,7 +9159,8 @@ Reglas:
       3: 'Levantamiento exhaustivo: recoge cada paso operativo que el texto mencione, incluidos sistemas y validaciones intermedias.'
     })[opts.vista]) : '';
     const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.${merge}${roles}${prof}\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, MAX_AI_CHARS)}`;
-    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: 16000 });
+    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: 32000,
+      onProgress: (n) => setStatus('Recibiendo el proceso de la IA… ' + n.toLocaleString('es-PE') + ' caracteres') });
     const spec = parseJsonLoose(raw);
     buildProcessFromAiSpec(spec, sourceLabel);
     return spec;
@@ -9164,7 +9274,7 @@ Reglas:
       saveAiConfig(leerFormIa());
       st.textContent = '⏳ Probando…'; st.className = 'ai-test-status';
       try {
-        const r = await callClaude('Responde solo con la palabra: OK', { maxTokens: 16 });
+        const r = await callClaude('Responde solo con la palabra: OK', { maxTokens: 256, effort: 'low' });
         st.textContent = /ok/i.test(r) ? '✓ Conexión correcta' : '✓ Respondió: ' + r.slice(0, 20);
         st.className = 'ai-test-status ok';
       } catch (e) {
@@ -9226,7 +9336,7 @@ Reglas:
       el.innerHTML = `Se interpretará con <b>IA (${escapeHtml(m)})</b>: reconstruye actividades, roles y decisiones.`;
       el.className = 'ingest-mode on';
     } else {
-      el.innerHTML = `Modo básico (sin IA): extrae actividades por palabras clave. Para interpretar el documento de verdad, configura la <b>IA</b> con el botón ⚙ de la cabecera.`;
+      el.innerHTML = `Se interpretará con <b>IA (Claude)</b> usando la clave del equipo. Al generar te pediremos el código de acceso; sin él seguirá el <b>modo básico</b> por palabras clave.`;
       el.className = 'ingest-mode';
     }
   }

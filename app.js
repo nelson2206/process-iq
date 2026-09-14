@@ -365,6 +365,9 @@
       // En modo envolvente el bloque de carriles se repite en cada banda
       const bandCount = Math.max(1, L.bands || 1);
       const bandH = L.bandH || (L.list.length * L.laneH + 70);
+      // Alturas por carril (v3.8.3); un snapshot viejo sin laneHs cae en el fijo
+      const altoDe = (idx) => (L.laneHs && L.laneHs[idx]) || L.laneH;
+      const topDe = (idx) => (L.laneTops && L.laneTops[idx] != null) ? L.laneTops[idx] : idx * L.laneH;
       for (let band = 0; band < bandCount; band++) {
       // Ancho de esta banda: cubre sus propios nodos
       let maxRight = L.padX + L.headerW + L.innerPadL + 240;
@@ -375,14 +378,15 @@
       const lanesWidth = maxRight - L.padX;
 
       L.list.forEach((laneName, idx) => {
-        const y = L.padY + band * bandH + idx * L.laneH;
+        const y = L.padY + band * bandH + topDe(idx);
+        const lh = altoDe(idx);
 
         // ===== Capa fondo (bg + separadores) =====
         const bg = document.createElementNS(ns, 'rect');
         bg.setAttribute('x', L.padX);
         bg.setAttribute('y', y);
         bg.setAttribute('width', lanesWidth);
-        bg.setAttribute('height', L.laneH);
+        bg.setAttribute('height', lh);
         bg.setAttribute('fill', idx % 2 === 0 ? 'rgba(247, 247, 247, 0.45)' : 'rgba(255, 255, 255, 0.0)');
         bg.setAttribute('stroke', '#E5E5E5');
         bg.setAttribute('stroke-width', '1');
@@ -394,7 +398,7 @@
         header.setAttribute('x', L.padX);
         header.setAttribute('y', y);
         header.setAttribute('width', L.headerW);
-        header.setAttribute('height', L.laneH);
+        header.setAttribute('height', lh);
         header.setAttribute('fill', '#FFFFFF');
         header.setAttribute('stroke', '#D6D6D6');
         header.setAttribute('stroke-width', '1');
@@ -406,14 +410,14 @@
         accent.setAttribute('x', L.padX);
         accent.setAttribute('y', y);
         accent.setAttribute('width', 4);
-        accent.setAttribute('height', L.laneH);
+        accent.setAttribute('height', lh);
         accent.setAttribute('fill', laneColor(laneName, idx));
         laneHeadersLayer.appendChild(accent);
 
         // Texto del rol — wrap si es largo
         const label = document.createElementNS(ns, 'text');
         label.setAttribute('x', L.padX + L.headerW / 2 + 2);
-        label.setAttribute('y', y + L.laneH / 2);
+        label.setAttribute('y', y + lh / 2);
         label.setAttribute('text-anchor', 'middle');
         label.setAttribute('dominant-baseline', 'middle');
         label.setAttribute('font-family', "'Inter', -apple-system, sans-serif");
@@ -1073,8 +1077,9 @@
     const idx = L.list.indexOf(L.laneOf[node.id]);
     if (idx < 0) return null;
     const bandY = (node._band || 0) * (L.bandH || 0);
-    const laneTop = L.padY + bandY + idx * L.laneH;
-    return laneTop + L.laneH - 13;      // dentro del carril, bajo las cajas
+    const top = (L.laneTops && L.laneTops[idx] != null) ? L.laneTops[idx] : idx * L.laneH;
+    const lh = (L.laneHs && L.laneHs[idx]) || L.laneH;
+    return L.padY + bandY + top + lh - 13;      // dentro del carril, bajo las cajas
   }
 
   // ============================================================
@@ -3152,7 +3157,9 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 
     // Layout parámetros
     const headerW = 140;            // ancho del header de la swimlane (label izquierda)
-    const laneH = 170;              // altura de cada carretera (caja 76 + meta + holgura)
+    const laneH = 170;              // altura MÍNIMA de un carril (caja 76 + meta + holgura)
+    const STACK_GAP = 26;           // hueco entre cajas apiladas en la misma columna (meta debajo)
+    const LANE_PAD = 56;            // aire arriba+abajo cuando el carril crece por apilado
     const padX = 30;
     const padY = 30;
     const innerPadL = 30;
@@ -3178,7 +3185,25 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     const WRAP_AT = 14;                                   // ranks por banda
     const doWrap = state._wrap === true;   // v3.6.1: el lienzo va en UNA banda; la escalera es cosa del PPTX (repetia los 8 carriles aunque la 2a banda usara dos)
     const bandOf = (r) => doWrap ? Math.floor(r / WRAP_AT) : 0;
-    const bandH = laneOrder.length * laneH + 70;          // alto de una banda + corredor
+
+    // --- Grupos: varios nodos en el mismo rank+lane se apilan verticalmente ---
+    const groups = {};
+    state.nodes.forEach(n => {
+      const key = laneOf(n) + '|' + (ranks[n.id] || 0);
+      (groups[key] = groups[key] || []).push(n);
+    });
+    // v3.8.3: cada carril mide lo que pida su pila más alta. Antes eran 170px
+    // fijos y tres actividades del mismo rol en una columna (ramas paralelas
+    // de una decisión) se montaban entre sí y sobre el carril siguiente.
+    const laneHs = laneOrder.map(() => laneH);
+    Object.values(groups).forEach(grp => {
+      const idx = laneOrder.indexOf(laneOf(grp[0]));
+      const pila = grp.reduce((a, n) => a + n.h, 0) + (grp.length - 1) * STACK_GAP + LANE_PAD;
+      if (idx >= 0) laneHs[idx] = Math.max(laneHs[idx], pila);
+    });
+    const laneTops = [];
+    laneHs.reduce((acc, h, i) => { laneTops[i] = acc; return acc + h; }, 0);
+    const bandH = laneHs.reduce((a, h) => a + h, 0) + 70;   // alto de una banda + corredor
 
     const colX = {};
     let cx = padX + headerW + innerPadL;
@@ -3191,20 +3216,15 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     // Posiciona cada nodo: x = columna compacta, y = su carril (+ banda)
     state.nodes.forEach(n => {
       const r = ranks[n.id] || 0;
-      const laneIdx = laneOrder.indexOf(laneOf(n));
+      const laneIdx = Math.max(0, laneOrder.indexOf(laneOf(n)));
       const band = bandOf(r);
       n._band = band;
       n.x = colX[r] + (rankW[r] - n.w) / 2;               // centrado en su columna
-      n.y = padY + band * bandH + laneIdx * laneH + (laneH - n.h) / 2;
+      n.y = padY + band * bandH + laneTops[laneIdx] + (laneHs[laneIdx] - n.h) / 2;
     });
 
     // Colisiones: varios nodos en mismo rank+lane → reparte verticalmente DENTRO de la lane,
     // centrados, con gap suficiente (caja + meta) para que no se superpongan.
-    const groups = {};
-    state.nodes.forEach(n => {
-      const key = laneOf(n) + '|' + (ranks[n.id] || 0);
-      (groups[key] = groups[key] || []).push(n);
-    });
     Object.values(groups).forEach(grp => {
       if (grp.length < 2) return;
       // Anti-cruces dentro del grupo: ordena por la altura media de sus vecinos
@@ -3217,12 +3237,12 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         return ys.length ? ys.reduce((a, c) => a + c, 0) / ys.length : n.y;
       };
       grp.sort((p, q) => neighborY(p) - neighborY(q));
-      const laneIdx = laneOrder.indexOf(laneOf(grp[0]));
-      const laneTop = padY + (grp[0]._band || 0) * bandH + laneIdx * laneH;
-      const gap = grp[0].h + 26;                     // alto de caja + espacio para meta
-      const totalH = (grp.length - 1) * gap;
-      const startY = laneTop + (laneH - grp[0].h) / 2 - totalH / 2;
-      grp.forEach((n, i) => { n.y = Math.max(laneTop + 4, startY + i * gap); });
+      const laneIdx = Math.max(0, laneOrder.indexOf(laneOf(grp[0])));
+      const laneTop = padY + (grp[0]._band || 0) * bandH + laneTops[laneIdx];
+      // Cada caja con SU alto (una pila mezcla tareas de 76 con eventos de 54)
+      const totalH = grp.reduce((a, n) => a + n.h, 0) + (grp.length - 1) * STACK_GAP;
+      let y = laneTop + (laneHs[laneIdx] - totalH) / 2;
+      grp.forEach(n => { n.y = y; y += n.h + STACK_GAP; });
     });
 
     // Guarda metadata de lanes para render
@@ -3230,7 +3250,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       list: laneOrder,
       laneOf: ownerMap,
       ranks: ranks,
-      headerW, colW: BASE_GAP + 158, laneH, padX, padY, innerPadL,
+      headerW, colW: BASE_GAP + 158, laneH, laneHs, laneTops, padX, padY, innerPadL,
       colX, rankW, bandH, wrap: doWrap, wrapAt: WRAP_AT,
       bands: doWrap ? Math.ceil(totalRanks / WRAP_AT) : 1,
       totalRanks,

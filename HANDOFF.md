@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.8.2 — las preguntas de la ingesta ya no se abren detrás de la ventana de Ingestar; spinner, cronómetro y barra de progreso visibles
+> **Última actualización:** v3.8.3 — los carriles del lienzo crecen con lo que apilan (ramas paralelas del mismo rol ya no se montan); el intermediario recorta los secretos y /health delata una clave mal pegada
 
 ---
 
@@ -419,6 +419,32 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.8.3 SOLAPES EN EL LIENZO, corregido: autoLayout daba a todo carril 170px
+  fijos. Con la primera ingesta real por IA (procedimiento de 86 nodos), una
+  decision abria 3 ramas del mismo rol en la misma columna: la pila pedia
+  ~330px y las cajas se montaban entre si y sobre el carril de abajo.
+  Ahora laneHs[i] = max(170, suma de altos de la pila + 26px entre cajas +
+  56px de aire) y laneTops[] acumula; render y laneGutterY leen laneHs/
+  laneTops de state._lanes (con fallback a laneH para snapshots viejos de
+  localStorage). La pila usa el alto de CADA caja (mezcla tarea 76 con
+  documento 70 o evento 54). Verificado en navegador con un caso de 3 ramas:
+  0 solapes, 0 cajas fuera de carril, hueco minimo 26px, carriles 336/234px;
+  regresion en loadComplex/3/8/12 y niveles 1-2-3 sin solapes ni errores.
+  El PPTX no se toca: tiene su propio apilaFila desde v3.3.
+- Intermediario (Worker) v3.8.3: CLAVE y CODIGO se leen con .trim() (un salto
+  de linea pegado al cargar el secreto invalidaba la clave sin que se viera);
+  /health devuelve formatoClave: 'ok' | 'vacia' | 'sospechoso' (solo si el
+  valor TIENE FORMATO sk-ant-…; no revela nada). Bateria test_trim.mjs (7) +
+  regresion (13 + 12) en verde; desplegado como version f31fcdac.
+  LECCION DE SEGURIDAD: el usuario pego la clave de Anthropic EN LUGAR del
+  nombre ANTHROPIC_API_KEY en `wrangler secret put`, con lo que la clave quedo
+  como NOMBRE de un secreto (visible en secret list) y en el historial de
+  PowerShell. Esa clave se dio por comprometida y se elimino en la consola de
+  Anthropic; queda un secreto muerto con ese nombre en el Worker (borrar desde
+  el panel). Desde entonces las cargas de clave se hacen con la ventana guiada
+  que valida el formato y prueba la clave contra /v1/models ANTES de subirla.
+  Otra leccion: una clave creada a nivel de organizacion (sin workspace) da
+  400 "not scoped to a workspace"; hay que crearla DENTRO de un workspace.
 - v3.8.2 BUG DE CAPAS, corregido: #modal (ventana generica: codigo del
   equipo, nivel de detalle, roles) y #ingestModal tenian el mismo z-index
   (1000); #ingestModal va despues en el HTML y se pintaba ENCIMA. Las

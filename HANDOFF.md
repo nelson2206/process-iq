@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.8.1 — tope de respuesta de la IA a 64.000 tokens y aviso de longitud que no culpa al texto de entrada
+> **Última actualización:** v3.8.2 — las preguntas de la ingesta ya no se abren detrás de la ventana de Ingestar; spinner, cronómetro y barra de progreso visibles
 
 ---
 
@@ -419,6 +419,20 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.8.2 BUG DE CAPAS, corregido: #modal (ventana generica: codigo del
+  equipo, nivel de detalle, roles) y #ingestModal tenian el mismo z-index
+  (1000); #ingestModal va despues en el HTML y se pintaba ENCIMA. Las
+  preguntas de la ingesta se abrian invisibles y "Generar proceso" parecia no
+  hacer nada (esperaba respuesta a una pregunta que no se veia). Nunca se
+  habia visto porque ese camino solo corre con IA configurada. Arreglo:
+  #modal { z-index: 1100 }. Verificado con elementFromPoint: el cuerpo de la
+  pregunta es lo que queda encima.
+  Feedback anadido: ingestBusy pone spinner + "Generando…" en #btnIngestGo
+  (guarda y restaura la etiqueta, que renderSources cambia), trae la barra a
+  la vista, y un cronometro #ingestElapsed (0:00) corre entre startIngestJob
+  y endIngestJob. Verificado con respuesta SSE simulada: boton ocupado,
+  barra visible, cronometro avanzando, texto "Recibiendo el proceso de la
+  IA… N caracteres", y al terminar todo restaurado (4 nodos generados).
 - El banco bench/ mide el modelo ANTES de serializar: no ve el post-proceso.
   Verificar el post-proceso con el replay en worker descrito en Quirks.
 - Pendiente (Tier 3): inyectar tema y patron oficial para que titulo y pie sean

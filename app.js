@@ -8169,9 +8169,27 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   const MAX_AI_CHARS = 60000;         // lo que enviamos al modelo
   function ingestBusy(on) {
     const box = $('#ingestProgress');
-    if (box) box.hidden = !on;
+    if (box) {
+      box.hidden = !on;
+      // La barra vive mas arriba que el boton: se trae a la vista para que el
+      // usuario vea que la app esta trabajando sin tener que desplazarse.
+      if (on) { try { box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {} }
+    }
     const btn = $('#btnIngestGo');
-    if (btn) btn.disabled = !!on;
+    if (btn) {
+      btn.disabled = !!on;
+      // Feedback en el mismo boton que se pulso: spinner + "Generando…". Se
+      // guarda la etiqueta anterior porque renderSources la cambia
+      // ("Combinar N fuentes y generar").
+      const lbl = btn.querySelector('.go-label');
+      if (on && !btn.classList.contains('is-busy')) {
+        btn.classList.add('is-busy');
+        if (lbl) { btn.dataset.labelPrevia = lbl.textContent; lbl.textContent = 'Generando…'; }
+      } else if (!on && btn.classList.contains('is-busy')) {
+        btn.classList.remove('is-busy');
+        if (lbl && btn.dataset.labelPrevia) lbl.textContent = btn.dataset.labelPrevia;
+      }
+    }
   }
   function ingestProgress(msg, pct) {
     const t = $('#ingestProgressText');
@@ -8188,12 +8206,27 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   function throwIfCancelled() {
     if (ingestAbort && ingestAbort.cancelled) throw new Error('CANCELLED');
   }
+  // Cronometro del trabajo: con documentos largos la IA tarda uno o dos
+  // minutos, y un contador que avanza distingue "trabajando" de "colgada".
+  let ingestReloj = null;
   function startIngestJob() {
     ingestAbort = { cancelled: false, controller: new AbortController() };
     ingestBusy(true);
+    const t0 = Date.now(), el = $('#ingestElapsed');
+    clearInterval(ingestReloj);
+    if (el) el.textContent = '0:00';
+    ingestReloj = setInterval(() => {
+      const s = Math.floor((Date.now() - t0) / 1000);
+      if (el) el.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }, 1000);
     return ingestAbort;
   }
-  function endIngestJob() { ingestAbort = null; ingestBusy(false); }
+  function endIngestJob() {
+    ingestAbort = null;
+    ingestBusy(false);
+    clearInterval(ingestReloj); ingestReloj = null;
+    const el = $('#ingestElapsed'); if (el) el.textContent = '';
+  }
   function cancelIngestJob() {
     if (!ingestAbort) return;
     ingestAbort.cancelled = true;

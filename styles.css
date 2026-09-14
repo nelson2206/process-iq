@@ -2499,3 +2499,20 @@ body.present-mode .drawer { display: none; }
   color: var(--nexus-text-soft); padding: 8px 12px 4px;
 }
 .export-hint { margin-left: auto; font-size: 10px; font-weight: 400; color: var(--nexus-text-soft); padding-left: 10px; }
+
+/* v3.8.2 — la ventana generica (#modal) SIEMPRE por encima de las demas.
+   Tenia el mismo z-index (1000) que la de Ingestar y, al ir antes en el HTML,
+   quedaba debajo: la pregunta del codigo del equipo y la del nivel de detalle
+   se abrian invisibles y "Generar proceso" parecia no hacer nada. */
+#modal { z-index: 1100; }
+
+/* Boton Generar ocupado: spinner en lugar del icono */
+.btn-go.is-busy { cursor: progress; opacity: 0.85; }
+.btn-go.is-busy .icon { display: none; }
+.btn-go.is-busy::before {
+  content: ''; width: 14px; height: 14px; border-radius: 50%; display: inline-block;
+  border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff;
+  animation: goSpin 0.8s linear infinite;
+}
+@keyframes goSpin { to { transform: rotate(360deg); } }
+.ip-elapsed { font-size: 11.5px; color: var(--nexus-text-soft, #9aa7bd); font-variant-numeric: tabular-nums; margin-left: auto; margin-right: 10px; }

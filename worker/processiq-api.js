@@ -11,7 +11,7 @@
  *   cabecera  x-processiq-code: <codigo de equipo>
  *   cuerpo    el mismo JSON que acepta la API de Anthropic
  *   respuesta la de Anthropic, tal cual (salvo errores del propio Worker)
- *   GET  {intermediario}/health  -> { ok, configurado }  (sin codigo; para probar)
+ *   GET  {intermediario}/health  -> { ok, configurado, formatoClave }  (sin codigo; para probar)
  *
  * Configuracion en el panel de Cloudflare (Workers & Pages > processiq-api >
  * Settings > Variables and Secrets):
@@ -76,21 +76,28 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const origen = origenPermitido(req, env);
+    // Secretos recortados: un espacio o salto de linea pegado por error al
+    // cargarlos invalidaria la clave o el codigo sin que se viera en el panel.
+    const CLAVE = (env.ANTHROPIC_API_KEY || '').trim();
+    const CODIGO = (env.ACCESS_CODE || '').trim();
     const cors = cabecerasCors(origen);
 
     if (url.pathname === '/health') {
       return responderJson({
         ok: true, servicio: 'processiq-api',
-        configurado: !!(env.ANTHROPIC_API_KEY && env.ACCESS_CODE)
+        configurado: !!(CLAVE && CODIGO),
+        // Diagnostico que no revela nada: solo si el valor TIENE FORMATO de
+        // clave de Anthropic. Delata un pegado fallido (vacio, "^V", recortado).
+        formatoClave: !CLAVE ? 'vacia' : (/^sk-ant-[A-Za-z0-9_-]{80,}$/.test(CLAVE) ? 'ok' : 'sospechoso')
       }, 200, cors);
     }
     if (req.method === 'OPTIONS') return new Response(null, { status: origen ? 204 : 403, headers: cors });
     if (url.pathname !== '/v1/messages' || req.method !== 'POST') return error('Ruta no encontrada', 404, cors);
     if (!origen) return error('Origen no permitido', 403, cors);
-    if (!env.ANTHROPIC_API_KEY || !env.ACCESS_CODE) {
+    if (!CLAVE || !CODIGO) {
       return error('El intermediario no tiene configurados sus secretos', 500, cors);
     }
-    if (!igualSeguro(req.headers.get('x-processiq-code') || '', env.ACCESS_CODE)) {
+    if (!igualSeguro(req.headers.get('x-processiq-code') || '', CODIGO)) {
       return error('Codigo de acceso incorrecto', 401, cors);
     }
     if (+(req.headers.get('content-length') || 0) > MAX_BODY) {
@@ -109,7 +116,7 @@ export default {
         method: 'POST',
         headers: Object.assign({
           'content-type': 'application/json',
-          'x-api-key': env.ANTHROPIC_API_KEY,
+          'x-api-key': CLAVE,
           'anthropic-version': '2023-06-01'
         }, body.fallbacks ? { 'anthropic-beta': 'server-side-fallback-2026-07-01' } : {}),
         body: JSON.stringify(body)

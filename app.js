@@ -8292,6 +8292,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   // ============================================================
   async function runIngest(source) {
     if (ingestAbort) return;                       // ya hay un trabajo corriendo
+    state._ultimoCosteIa = null;
     startIngestJob();
     const t0 = Date.now();
     try {
@@ -8366,7 +8367,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           ingestProgress('Interpretando con IA...', null);
         }
         ingestBusy(false);
-        const vista = await askProfundidad();
+        const vista = await askProfundidad({ chars: text.length });
         ingestBusy(true);
         ingestProgress('Interpretando con IA...', null);
         const spec = await aiBuildProcess(text, label, (m) => ingestProgress(m, null), { roles, vista });
@@ -8379,7 +8380,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         renderFichaTab();
         const n = (spec.nodes || []).length;
         copilotPost('ai', `**Proceso interpretado con IA desde ${escapeHtml(label)}.** ${n} elementos con roles, sistemas y decisiones. Revisa el diagrama y completa la pestaña **Ficha**; luego exporta a **Ficha de Proceso**.` +
-          (text.length > MAX_AI_CHARS ? `\n\nNota: el documento excedía ${(MAX_AI_CHARS / 1000) | 0}K caracteres, interpreté la primera parte. Si falta el final del proceso, pega esa sección y vuelve a generar.` : ''));
+          (text.length > MAX_AI_CHARS ? `\n\nNota: el documento excedía ${(MAX_AI_CHARS / 1000) | 0}K caracteres, interpreté la primera parte. Si falta el final del proceso, pega esa sección y vuelve a generar.` : '') + lineaCosteIa());
       } else {
         buildProcessFromText(text, label);
         ingestProgress('Proceso generado', 100);
@@ -8397,6 +8398,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         setTimeout(() => ingestBusy(false), 900);
       } else {
         console.error('[ProcessIQ] ingesta:', err);
+        // Aunque falle (p. ej. respuesta cortada), lo consumido se cobra: se dice
+        if (state._ultimoCosteIa) err = new Error((err.message || err) + '\n\nEsta ejecución igual consumió ' + fmtUsd(state._ultimoCosteIa.usd) + ' a precio de lista.');
         ingestProgress('', 0);
         ingestBusy(false);
         alert('No se pudo completar:\n\n' + (err.message || err));
@@ -8652,6 +8655,67 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   ];
   function aiConfig() { try { return JSON.parse(localStorage.getItem(AI_KEY)) || {}; } catch (e) { return {}; } }
   function saveAiConfig(c) { try { localStorage.setItem(AI_KEY, JSON.stringify(c)); } catch (e) {} }
+
+  // ---- Coste por ejecucion (v3.8.6) ----
+  // Precios de LISTA por millon de tokens, en US$ (referencia oficial de la API
+  // de Claude, tabla del 24-jun-2026). El respaldo automatico de Opus 5 usa
+  // modelos de la misma tarifa. Si Anthropic cambia precios, se actualiza aqui.
+  const PRECIOS_IA = {
+    'claude-opus-5':    { entrada: 5, salida: 25, nombre: 'Claude Opus 5' },
+    'claude-sonnet-5':  { entrada: 2, salida: 10, nombre: 'Claude Sonnet 5' },
+    'claude-haiku-4-5': { entrada: 1, salida: 5,  nombre: 'Claude Haiku 4.5' }
+  };
+  const COSTES_KEY = 'processiq.ia.costes';
+  const GEN_MAX_TOKENS = 64000;            // tope de respuesta de la generacion (aiBuildProcess)
+  // Supuestos SOLO hasta tener ejecuciones reales en este navegador: ~3
+  // caracteres por token en espanol y un rango de tokens de SALIDA por nivel
+  // (la salida incluye el razonamiento de la IA, que se cobra como salida).
+  const CAR_POR_TOKEN_INICIAL = 3;
+  const SALIDA_INICIAL = { 1: [5000, 15000], 2: [10000, 30000], 3: [20000, 50000] };
+
+  function precioModelo(m) { return PRECIOS_IA[m] || PRECIOS_IA['claude-opus-5']; }
+  function usd(tokensEntrada, tokensSalida, modelo) {
+    const p = precioModelo(modelo);
+    return (tokensEntrada * p.entrada + tokensSalida * p.salida) / 1e6;
+  }
+  function fmtUsd(v) { return 'US$ ' + (v < 0.1 ? v.toFixed(3) : v.toFixed(2)); }
+  function historialCostes() { try { return JSON.parse(localStorage.getItem(COSTES_KEY)) || []; } catch (e) { return []; } }
+  function registrarCoste(r) {
+    try { const h = historialCostes(); h.push(r); localStorage.setItem(COSTES_KEY, JSON.stringify(h.slice(-20))); } catch (e) {}
+  }
+  const mediana = (a) => { const s = a.slice().sort((x, y) => x - y), k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; };
+
+  // Coste ANTES de generar: rango probable + maximo posible. El maximo es
+  // exacto (entrada + el tope completo de respuesta); el rango es estimado y
+  // se calibra con las ejecuciones reales guardadas en este navegador.
+  function estimarCosteGeneracion(charsTexto, nivel) {
+    const modelo = aiConfig().model || 'claude-opus-5';
+    const charsEntrada = Math.min(charsTexto, MAX_AI_CHARS) + AI_SYSTEM.length + 800;   // +800: reglas de fusion y profundidad
+    const h = historialCostes().filter(x => x.modelo === modelo && x.entrada > 0 && x.chars > 0);
+    const carPorToken = h.length ? mediana(h.map(x => x.chars / x.entrada)) : CAR_POR_TOKEN_INICIAL;
+    const entrada = Math.round(charsEntrada / carPorToken);
+    const delNivel = h.filter(x => x.nivel === nivel && x.salida > 0);
+    let salida;
+    if (delNivel.length) {
+      // salida por token de entrada observada en este nivel, aplicada a este texto, +-30%
+      const ratio = mediana(delNivel.map(x => x.salida / x.entrada));
+      salida = [entrada * ratio * 0.7, entrada * ratio * 1.3];
+    } else {
+      salida = SALIDA_INICIAL[nivel] || SALIDA_INICIAL[2];
+    }
+    salida = salida.map(t => Math.round(Math.min(GEN_MAX_TOKENS, Math.max(500, t))));
+    return {
+      modelo, precio: precioModelo(modelo), entrada, salida, muestras: delNivel.length,
+      min: usd(entrada, salida[0], modelo), max: usd(entrada, salida[1], modelo),
+      tope: usd(entrada, GEN_MAX_TOKENS, modelo)
+    };
+  }
+  function lineaCosteIa() {
+    const c = state._ultimoCosteIa;
+    return c ? '\n\nCoste de esta ejecución: **' + fmtUsd(c.usd) + '** (' + c.entrada.toLocaleString('es-PE') +
+      ' tokens de entrada y ' + c.salida.toLocaleString('es-PE') + ' de salida, precio de lista de ' +
+      precioModelo(c.modelo).nombre + ').' : '';
+  }
   // Lista si hay forma de llegar a Claude: codigo de equipo (intermediario)
   // o clave propia. Sin 'modo' guardado se asume clave propia (configs viejas).
   function aiReady() {
@@ -8736,6 +8800,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     // el modelo de respaldo repite la respuesta entera: lo recibido hasta ahi se
     // descarta para no mezclar dos JSON.
     let texto = '', stop = null, errorSse = null, buf = '';
+    // Consumo real (v3.8.6): message_start trae los tokens de entrada y
+    // message_delta el acumulado de salida. Se toma el maximo por si llegan en ambos.
+    const uso = { modelo: body.model, entrada: 0, salida: 0 };
+    const tokensEntrada = (u) => (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
     const lector = res.body.getReader();
     const dec = new TextDecoder();
     try {
@@ -8752,13 +8820,20 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           if (!linea) continue;
           let d;
           try { d = JSON.parse(linea.slice(5).trim()); } catch (_) { continue; }
-          if (d.type === 'content_block_start' && d.content_block && d.content_block.type === 'fallback') {
+          if (d.type === 'message_start' && d.message) {
+            if (d.message.usage) uso.entrada = Math.max(uso.entrada, tokensEntrada(d.message.usage));
+            if (d.message.model) uso.modelo = d.message.model;
+          } else if (d.type === 'content_block_start' && d.content_block && d.content_block.type === 'fallback') {
             texto = '';
           } else if (d.type === 'content_block_delta' && d.delta && d.delta.type === 'text_delta') {
             texto += d.delta.text;
             if (opts.onProgress) opts.onProgress(texto.length);
-          } else if (d.type === 'message_delta' && d.delta && d.delta.stop_reason) {
-            stop = d.delta.stop_reason;
+          } else if (d.type === 'message_delta') {
+            if (d.delta && d.delta.stop_reason) stop = d.delta.stop_reason;
+            if (d.usage) {
+              uso.salida = Math.max(uso.salida, d.usage.output_tokens || 0);
+              uso.entrada = Math.max(uso.entrada, tokensEntrada(d.usage));
+            }
           } else if (d.type === 'error') {
             errorSse = (d.error && d.error.message) || 'error desconocido';
           }
@@ -8773,6 +8848,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     } finally {
       limpiar();
     }
+    // Se informa ANTES de los errores: una respuesta cortada tambien se cobra.
+    if (opts.onUsage && (uso.entrada || uso.salida)) { try { opts.onUsage(uso); } catch (_) {} }
     if (errorSse) throw new Error('La IA devolvió un error a mitad de la respuesta: ' + errorSse);
     if (stop === 'refusal') throw new Error('El modelo rechazó la solicitud por políticas de seguridad.');
     // Lo que se corta es la RESPUESTA (razonamiento + JSON), no el texto de
@@ -9271,7 +9348,8 @@ Reglas:
     });
   }
 
-  function askProfundidad() {
+  function askProfundidad(info) {
+    const chars = (info && info.chars) || 0;
     return new Promise(resolve => {
       const html =
         '<p class="panel-hint">El proceso se genera <b>completo</b> en cualquier caso. Esto define ' +
@@ -9284,11 +9362,28 @@ Reglas:
         '<span><b>Actividad</b><small>Lo que hace cada rol de principio a fin. El equilibrio habitual.</small></span></label>' +
         '<label class="prof-opt"><input type="radio" name="prof" value="3" />' +
         '<span><b>Detalle</b><small>Cada paso operativo. Para manual de procedimientos o automatizacion.</small></span></label>' +
-        '</div>';
+        '</div>' +
+        (chars ? '<div id="profCoste" class="prof-coste"></div>' : '');
       openModal('Nivel de detalle del levantamiento', html, () => {
         const sel = document.querySelector('#modalBody input[name="prof"]:checked');
         resolve(sel ? +sel.value : 2);
       });
+      // v3.8.6: coste estimado de ESTA ejecucion, antes de gastar; cambia con el nivel
+      const pintarCoste = () => {
+        const box = $('#profCoste');
+        if (!box) return;
+        const sel = document.querySelector('#modalBody input[name="prof"]:checked');
+        const e = estimarCosteGeneracion(chars, sel ? +sel.value : 2);
+        box.innerHTML =
+          '<div class="pc-cifra">Coste estimado de esta ejecución: <b>' + fmtUsd(e.min) + ' – ' + fmtUsd(e.max) + '</b></div>' +
+          '<small>Máximo posible ' + fmtUsd(e.tope) + ', si la IA usa toda la respuesta (' + GEN_MAX_TOKENS.toLocaleString('es-PE') + ' tokens). ' +
+          e.precio.nombre + ' a precio de lista: US$ ' + e.precio.entrada + ' por millón de tokens de entrada y US$ ' + e.precio.salida +
+          ' de salida; ~' + e.entrada.toLocaleString('es-PE') + ' tokens de entrada. ' +
+          (e.muestras ? 'Rango ajustado con ' + e.muestras + (e.muestras === 1 ? ' ejecución real' : ' ejecuciones reales') + ' de este nivel en este navegador.'
+                      : 'Estimación inicial: se afina con tus ejecuciones reales.') + '</small>';
+      };
+      pintarCoste();
+      document.querySelectorAll('#modalBody input[name="prof"]').forEach(r => r.addEventListener('change', pintarCoste));
       const ok = $('#modalOk'); if (ok) ok.textContent = 'Generar';
       const cancel = $('#modalCancel');
       if (cancel) { const prev = cancel.onclick; cancel.onclick = (e) => { resolve(2); if (prev) prev(e); }; }
@@ -9313,8 +9408,14 @@ Reglas:
       3: 'Levantamiento exhaustivo: recoge cada paso operativo que el texto mencione, incluidos sistemas y validaciones intermedias.'
     })[opts.vista]) : '';
     const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.${merge}${roles}${prof}\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, MAX_AI_CHARS)}`;
-    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: 64000,
-      onProgress: (n) => setStatus('Recibiendo el proceso de la IA… ' + n.toLocaleString('es-PE') + ' caracteres') });
+    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: GEN_MAX_TOKENS,
+      onProgress: (n) => setStatus('Recibiendo el proceso de la IA… ' + n.toLocaleString('es-PE') + ' caracteres'),
+      onUsage: (u) => {
+        const coste = { fecha: new Date().toISOString(), modelo: u.modelo, nivel: (opts && opts.vista) || 2,
+          chars: prompt.length + AI_SYSTEM.length, entrada: u.entrada, salida: u.salida, usd: usd(u.entrada, u.salida, u.modelo) };
+        registrarCoste(coste);
+        state._ultimoCosteIa = coste;
+      } });
     const spec = parseJsonLoose(raw);
     buildProcessFromAiSpec(spec, sourceLabel);
     return spec;

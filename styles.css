@@ -2401,6 +2401,12 @@ code {
 .src-hint { font-size: 10.5px; line-height: 1.4; color: var(--nexus-text-soft, #a99fce); margin: 7px 0 0; }
 .src-warn { font-size: 11px; line-height: 1.4; color: #ffc46b; background: rgba(255,176,32,.10);
   border: 1px solid rgba(255,176,32,.35); border-radius: 7px; padding: 6px 9px; margin: 8px 0 0; }
+/* v3.8.6: coste estimado en la ventana de nivel de detalle */
+.prof-coste { margin-top: 12px; padding: 9px 11px; border-radius: 8px; background: rgba(20,122,255,.08);
+  border: 1px solid rgba(20,122,255,.28); line-height: 1.45; }
+.prof-coste .pc-cifra { font-size: 13px; margin-bottom: 3px; }
+.prof-coste .pc-cifra b { font-variant-numeric: tabular-nums; }
+.prof-coste small { display: block; font-size: 11px; opacity: .8; }
 
 
 /* ── Selector de nivel de detalle ─────────────────────────── */

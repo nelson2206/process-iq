@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.8.5 — varios documentos a la vez para el levantamiento: se listan y se combinan al pulsar el botón; tope de entrada a la IA de 60K a 180K caracteres con reparto justo
+> **Última actualización:** v3.8.6 — coste por ejecución: estimación antes de generar (rango + máximo posible) y coste real al terminar, a precio de lista
 
 ---
 
@@ -419,6 +419,33 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.8.6 COSTE POR EJECUCION. Pedido: "que el usuario sepa cuanto va a costar
+  aprox la ejecucion de su proceso". Solo cubre la GENERACION del proceso
+  (aiBuildProcess); pains, tareas del copiloto y la prueba de Ajustes no.
+  Precios de LISTA en PRECIOS_IA (US$ por millon de tokens, referencia oficial
+  de la API de Claude, tabla del 24-jun-2026): Opus 5 5/25, Sonnet 5 2/10,
+  Haiku 4.5 1/5. Si Anthropic cambia tarifas, se actualiza ahi.
+  ANTES: askProfundidad(info) pinta #profCoste con estimarCosteGeneracion:
+  - entrada = (min(chars, MAX_AI_CHARS) + AI_SYSTEM + 800) / car-por-token
+  - rango de salida: sin historial, SALIDA_INICIAL por nivel (1: 5-15K,
+    2: 10-30K, 3: 20-50K tokens; la salida incluye el razonamiento); con
+    historial del mismo nivel y modelo, mediana(salida/entrada) aplicada al
+    texto +-30%; car-por-token tambien sale de la mediana real (inicial 3).
+  - "maximo posible" = entrada + GEN_MAX_TOKENS (64K) completos: es exacto.
+  El recuadro se recalcula al cambiar de nivel y dice si es estimacion
+  inicial o ajustada con N ejecuciones reales.
+  DESPUES: callClaude lee usage de message_start (input + cache) y de
+  message_delta (output_tokens acumulado), toma el maximo y llama a
+  opts.onUsage ANTES de lanzar errores (una respuesta cortada tambien se
+  cobra). aiBuildProcess registra {fecha ISO, modelo, nivel, chars, entrada,
+  salida, usd} en localStorage 'processiq.ia.costes' (ultimas 20, por
+  navegador) y en state._ultimoCosteIa; runIngest lo anade al mensaje del
+  copiloto y, si falla, al aviso de error. Modelo de respaldo: se usa el
+  modelo que informa message_start; Opus 4.8 tiene la misma tarifa.
+  Verificado en navegador con SSE simulado (14.000 entrada / 18.500 salida):
+  muestra US$ 0.53 (= 0,07 + 0,4625), estimacion inicial Actividad 30K car.
+  US$ 0.31-0.81 con maximo 1.66, cambia al pasar a Detalle, se calibra tras
+  una ejecucion real, y el aviso de max_tokens incluye lo consumido.
 - v3.8.5 VARIOS DOCUMENTOS. Pedido: "permitir anadir multiples documentos
   para el relevamiento". La base de fuentes multiples ya existia (v3.x:
   sourcesList/addSource/combinedSourceText/MERGE_RULES), pero en la practica

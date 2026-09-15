@@ -1963,7 +1963,7 @@
             const desc = $('#modalInput').value.trim();
             if (!desc) return;
             copilotPost('user', 'Generar proceso: ' + desc);
-            generateProcessFromDescription(desc);
+            ingestarDescripcion(desc);
           });
         break;
       case 'detect-pains':
@@ -2458,13 +2458,27 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 
   function titleCaseFirst(s) { s = (s || '').trim(); return s.charAt(0).toUpperCase() + s.slice(1); }
 
+  // v3.8.4: una descripcion escrita en el copiloto se interpreta con Claude por
+  // la misma ingesta que un documento (codigo del equipo, nivel, progreso).
+  // Antes elegia una PLANTILLA de ejemplo por palabras clave y parecia IA sin
+  // serlo. setTimeout: openModal cierra su ventana DESPUES del callback y la
+  // ingesta reutiliza esa misma ventana para pedir el codigo o el nivel.
+  function ingestarDescripcion(desc) {
+    const notas = $('#notesInput');
+    if (notas) notas.value = desc;
+    openIngestModal();
+    const mas = document.querySelector('#ingestModal .ingest-more');
+    if (mas) mas.open = true;
+    setTimeout(() => runIngest(null), 0);
+  }
+
   function mockCopilotResponse(prompt) {
     // F7: intenta interpretar como comando de edición primero
     const cmd = tryNlCommand(prompt);
     if (cmd !== null) return cmd;
     const p = prompt.toLowerCase();
     if (p.includes('hola') || p.includes('buenos') || p.includes('buenas')) return '¡Hola! ¿En qué proceso te ayudo hoy?';
-    if (p.includes('genera') || p.includes('levanta') || p.includes('dibuja')) { generateProcessFromDescription(prompt); return 'Procesando…'; }
+    if (p.includes('genera') || p.includes('levanta') || p.includes('dibuja')) { ingestarDescripcion(prompt); return 'Interpretando tu descripción con IA…'; }
     if (p.includes('pain') || p.includes('dolor')) { detectPainsMock(); return ''; }
     if (p.includes('kpi') || p.includes('indicador')) { suggestKpisMock(); return ''; }
     if (p.includes('to-be') || p.includes('tobe') || p.includes('reingenier')) { proposeToBeMock(); return ''; }
@@ -8036,7 +8050,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
 
   function openIngestModal() {
     $('#ingestModal').hidden = false;
-    activateIngestTab('audio');
+    activateIngestTab('notes');   // v3.8.4: documento/texto es el camino principal (antes abria en Audio)
   }
 
   function closeIngestModal() {
@@ -8055,12 +8069,16 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     // Audio
     $('#btnRecStart').addEventListener('click', startSpeechRecognition);
     $('#btnRecStop').addEventListener('click', stopSpeechRecognition);
-    $('#btnIngestAudio').addEventListener('click', guardIngest(() => {
+    $('#btnIngestAudio').addEventListener('click', () => {
       const txt = $('#audioTranscript').value.trim();
       if (!txt) { alert('No hay transcripción.'); return; }
-      buildProcessFromText(txt, 'Transcripción de audio');
-      closeIngestModal();
-    }));
+      // v3.8.4: la transcripcion va por el MISMO camino que los documentos (IA con
+      // la clave del equipo). Antes llamaba al extractor por palabras clave y
+      // generaba al instante sin IA aunque la clave estuviera configurada.
+      if (!sourcesList().some(x => x.texto === txt)) addSource('transcripcion', 'Transcripción de audio', txt);
+      activateIngestTab('notes');   // ahi viven la barra de progreso y el cronometro
+      runIngest(null);
+    });
 
     // Selección de archivo (desde la zona de arrastrar) → flujo único
     const docInput = $('#docFileInput');
@@ -8364,6 +8382,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         ingestProgress('Proceso generado', 100);
         closeIngestModal();
         maybeFitOnLoad();
+        // Que nunca se confunda con una interpretacion por IA
+        copilotPost('ai', '**Proceso generado en modo básico (sin IA)** desde ' + escapeHtml(label) +
+          '. Las actividades se extrajeron por palabras clave: revisa roles y decisiones. ' +
+          'Para interpretarlo con Claude, pon el código del equipo en Ajustes de IA (✨) y vuelve a generar.');
       }
       console.info('[ProcessIQ] ingesta OK en', ((Date.now() - t0) / 1000).toFixed(1) + 's');
     } catch (err) {

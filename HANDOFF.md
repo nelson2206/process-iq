@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.8.3 — los carriles del lienzo crecen con lo que apilan (ramas paralelas del mismo rol ya no se montan); el intermediario recorta los secretos y /health delata una clave mal pegada
+> **Última actualización:** v3.8.4 — todas las entradas de texto pasan por la IA (antes Audio y el Copiloto generaban sin IA, al instante)
 
 ---
 
@@ -419,6 +419,29 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.8.4 ENTRADAS SIN IA, corregido. Sintoma del usuario: "pego el texto,
+  le doy procesar y genera al instante; no parece usar la API key". Habia TRES
+  caminos que nunca llamaban a Claude aunque la clave estuviera lista:
+  1) Ingestar abria en la pestana Audio/Transcripcion, cuya caja invita a
+     pegar texto y cuyo boton llamaba a buildProcessFromText (palabras clave).
+  2) Copiloto > "Generar proceso desde descripcion" llamaba a
+     generateProcessFromDescription: elige una PLANTILLA de ejemplo por
+     palabras clave (reclamo, compra...). Parecia IA sin serlo.
+  3) El chat del copiloto con "genera/levanta/dibuja" hacia lo mismo.
+  Ahora: Ingestar abre en Notas/Documentacion (primera pestana); el boton de
+  Audio agrega la transcripcion como fuente y llama a runIngest; el copiloto
+  (accion y chat) usa ingestarDescripcion(desc), que rellena #notesInput, abre
+  Ingestar y llama a runIngest en un setTimeout (openModal cierra su ventana
+  DESPUES del callback y la ingesta reutiliza #modal para el codigo/nivel; sin
+  el setTimeout el MutationObserver de pedirCodigoEquipo resolveria '' y caeria
+  en modo basico). Si el usuario elige Modo basico, el copiloto lo dice:
+  "Proceso generado en modo basico (sin IA)".
+  Unico uso restante de buildProcessFromText: esa rama de modo basico.
+  generateProcessFromDescription queda sin llamadas (codigo muerto).
+  Verificado en navegador con SSE simulado: A abre en notes; B audio, C accion
+  y D chat llaman a api.mbc-latam.com/v1/messages con x-processiq-code y
+  publican "Proceso interpretado con IA"; E sin codigo pregunta, Modo basico no
+  llama a la IA y avisa. Consola sin errores.
 - v3.8.3 SOLAPES EN EL LIENZO, corregido: autoLayout daba a todo carril 170px
   fijos. Con la primera ingesta real por IA (procedimiento de 86 nodos), una
   decision abria 3 ramas del mismo rol en la misma columna: la pila pedia

@@ -8688,8 +8688,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   // Coste ANTES de generar: rango probable + maximo posible. El maximo es
   // exacto (entrada + el tope completo de respuesta); el rango es estimado y
   // se calibra con las ejecuciones reales guardadas en este navegador.
-  function estimarCosteGeneracion(charsTexto, nivel) {
-    const modelo = aiConfig().model || 'claude-opus-5';
+  function estimarCosteGeneracion(charsTexto, nivel, modeloElegido) {
+    const modelo = modeloElegido || aiConfig().model || 'claude-opus-5';
     const charsEntrada = Math.min(charsTexto, MAX_AI_CHARS) + AI_SYSTEM.length + 800;   // +800: reglas de fusion y profundidad
     const h = historialCostes().filter(x => x.modelo === modelo && x.entrada > 0 && x.chars > 0);
     const carPorToken = h.length ? mediana(h.map(x => x.chars / x.entrada)) : CAR_POR_TOKEN_INICIAL;
@@ -9363,9 +9363,25 @@ Reglas:
         '<label class="prof-opt"><input type="radio" name="prof" value="3" />' +
         '<span><b>Detalle</b><small>Cada paso operativo. Para manual de procedimientos o automatizacion.</small></span></label>' +
         '</div>' +
-        (chars ? '<div id="profCoste" class="prof-coste"></div>' : '');
-      openModal('Nivel de detalle del levantamiento', html, () => {
+        // v3.8.7: el modelo se elige AQUI, viendo lo que cuesta cada uno (antes
+        // solo estaba en Ajustes de IA). Se guarda como preferencia del navegador.
+        (chars ? (() => {
+          const actual = aiConfig().model === 'claude-sonnet-5' ? 'claude-sonnet-5' : 'claude-opus-5';
+          const opcion = (id, titulo, texto) =>
+            '<label class="prof-opt"><input type="radio" name="modelo" value="' + id + '"' + (actual === id ? ' checked' : '') + ' />' +
+            '<span><b>' + titulo + '</b><small>' + texto + '</small><em class="pm-coste" data-modelo="' + id + '"></em></span></label>';
+          return '<div class="prof-modelo"><div class="pm-titulo">Modelo de IA</div><div class="prof-opts">' +
+            opcion('claude-opus-5', 'Claude Opus 5', 'Máxima calidad de interpretación. Para procedimientos largos, ambiguos o con muchas decisiones.') +
+            opcion('claude-sonnet-5', 'Claude Sonnet 5', 'Más rápido y 2,5 veces más barato por token. Suele bastar con textos claros y bien estructurados.') +
+            '</div></div><div id="profCoste" class="prof-coste"></div>';
+        })() : '');
+      openModal(chars ? 'Nivel de detalle y modelo' : 'Nivel de detalle del levantamiento', html, () => {
         const sel = document.querySelector('#modalBody input[name="prof"]:checked');
+        const mod = document.querySelector('#modalBody input[name="modelo"]:checked');
+        if (mod) {
+          const c = aiConfig();
+          if (c.model !== mod.value) { saveAiConfig(Object.assign({}, c, { model: mod.value })); updateAiUi(); }
+        }
         resolve(sel ? +sel.value : 2);
       });
       // v3.8.6: coste estimado de ESTA ejecucion, antes de gastar; cambia con el nivel
@@ -9373,7 +9389,14 @@ Reglas:
         const box = $('#profCoste');
         if (!box) return;
         const sel = document.querySelector('#modalBody input[name="prof"]:checked');
-        const e = estimarCosteGeneracion(chars, sel ? +sel.value : 2);
+        const nivel = sel ? +sel.value : 2;
+        const mod = document.querySelector('#modalBody input[name="modelo"]:checked');
+        const e = estimarCosteGeneracion(chars, nivel, mod ? mod.value : undefined);
+        // Rango de cada modelo en su tarjeta, para comparar antes de elegir
+        document.querySelectorAll('#modalBody .pm-coste').forEach(el => {
+          const x = estimarCosteGeneracion(chars, nivel, el.dataset.modelo);
+          el.textContent = 'Estimado: ' + fmtUsd(x.min) + ' – ' + fmtUsd(x.max);
+        });
         box.innerHTML =
           '<div class="pc-cifra">Coste estimado de esta ejecución: <b>' + fmtUsd(e.min) + ' – ' + fmtUsd(e.max) + '</b></div>' +
           '<small>Máximo posible ' + fmtUsd(e.tope) + ', si la IA usa toda la respuesta (' + GEN_MAX_TOKENS.toLocaleString('es-PE') + ' tokens). ' +
@@ -9383,7 +9406,7 @@ Reglas:
                       : 'Estimación inicial: se afina con tus ejecuciones reales.') + '</small>';
       };
       pintarCoste();
-      document.querySelectorAll('#modalBody input[name="prof"]').forEach(r => r.addEventListener('change', pintarCoste));
+      document.querySelectorAll('#modalBody input[name="prof"], #modalBody input[name="modelo"]').forEach(r => r.addEventListener('change', pintarCoste));
       const ok = $('#modalOk'); if (ok) ok.textContent = 'Generar';
       const cancel = $('#modalCancel');
       if (cancel) { const prev = cancel.onclick; cancel.onclick = (e) => { resolve(2); if (prev) prev(e); }; }

@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.8.6 — coste por ejecución: estimación antes de generar (rango + máximo posible) y coste real al terminar, a precio de lista
+> **Última actualización:** v3.8.7 — el usuario elige Opus 5 o Sonnet 5 al generar, viendo el coste estimado de cada uno
 
 ---
 
@@ -419,6 +419,20 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.8.7 ELEGIR MODELO AL GENERAR. Pedido: "que el usuario pueda elegir el
+  modelo de Opus o Sonnet". El selector ya existia en Ajustes de IA (con Haiku
+  4.5 incluido), pero escondido. Ahora askProfundidad (titulo "Nivel de detalle
+  y modelo" cuando hay IA) muestra dos tarjetas, Opus 5 y Sonnet 5, cada una con
+  su rango estimado para el nivel marcado (.pm-coste), y el recuadro principal
+  usa el modelo elegido: estimarCosteGeneracion(chars, nivel, modeloElegido).
+  Al pulsar Generar se guarda como preferencia en processiq.ai.model (la misma
+  que Ajustes), y callClaude ya lo lee de ahi: no cambio. fallbacks:'default'
+  sigue solo en Opus 5. Si la preferencia era Haiku, la ventana preselecciona
+  Opus 5 (Haiku sigue disponible solo en Ajustes).
+  Verificado en navegador (30K car., nivel Actividad, sin historial): Opus
+  US$ 0.31-0.81, Sonnet US$ 0.12-0.32; elegir Sonnet cambia el recuadro, la
+  peticion sale con claude-sonnet-5 sin fallbacks, el coste real con 12.000/
+  15.000 tokens es US$ 0.17 (= 0,024 + 0,15) y al reabrir recuerda Sonnet.
 - v3.8.6 COSTE POR EJECUCION. Pedido: "que el usuario sepa cuanto va a costar
   aprox la ejecucion de su proceso". Solo cubre la GENERACION del proceso
   (aiBuildProcess); pains, tareas del copiloto y la prueba de Ajustes no.

@@ -8084,9 +8084,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const docInput = $('#docFileInput');
     if (docInput) {
       docInput.addEventListener('change', (e) => {
-        const f = e.target.files[0];
-        if (f) { const n = $('#docFileName'); if (n) n.textContent = f.name; const ao = !!window.__addOnly; window.__addOnly = false; runIngest({ file: f, addOnly: ao }); }
+        const files = Array.from(e.target.files || []);   // copiar ANTES de vaciar el input
         e.target.value = '';
+        addFilesAsSources(files);
       });
     }
 
@@ -8204,7 +8204,10 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   let ingestAbort = null;             // { cancelled: bool, controller: AbortController }
   const MAX_FILE_MB = 40;             // por encima de esto avisamos antes de intentar
   const MAX_PDF_PAGES = 120;          // tope de páginas a extraer
-  const MAX_AI_CHARS = 60000;         // lo que enviamos al modelo
+  // Lo que enviamos al modelo (~45-50K tokens). v3.8.5: de 60K a 180K para que
+  // quepa un levantamiento con varios documentos; el otro limite es la
+  // RESPUESTA (64K tokens), no la entrada.
+  const MAX_AI_CHARS = 180000;
   function ingestBusy(on) {
     const box = $('#ingestProgress');
     if (box) {
@@ -8847,6 +8850,58 @@ Reglas:
     renderSources();
   }
 
+  // v3.8.5: varios documentos a la vez para el levantamiento. Elegir o soltar
+  // archivos ya NO genera el proceso: los lee y los deja en la lista de fuentes;
+  // se genera con el boton cuando el usuario termino de reunir el material.
+  // Excepcion: un unico .bpmn sin otras fuentes se importa directo, como antes.
+  async function addFilesAsSources(fileList) {
+    const files = Array.from(fileList || []).filter(Boolean);
+    if (!files.length || ingestAbort) return;
+    if (files.length === 1 && /\.(bpmn|xml)$/i.test(files[0].name || '') && !sourcesList().length) {
+      const n = $('#docFileName'); if (n) n.textContent = files[0].name;
+      return runIngest({ file: files[0] });
+    }
+    startIngestJob();
+    const lbl = $('#btnIngestGo .go-label');
+    if (lbl) lbl.textContent = 'Leyendo documentos…';
+    const fallos = [];
+    let nuevos = 0;
+    try {
+      for (let i = 0; i < files.length; i++) {
+        throwIfCancelled();
+        const f = files[i];
+        ingestProgress('Leyendo ' + (i + 1) + ' de ' + files.length + ': ' + f.name, Math.round((i / files.length) * 100));
+        await uiTick();
+        try {
+          const r = await extractFileText(f);
+          if (r.kind === 'bpmn') {
+            const desc = describeCurrentProcessAsText();
+            if (desc && addSource('diagrama', r.name, 'Diagrama existente del proceso:' + String.fromCharCode(10) + desc)) nuevos++;
+            continue;
+          }
+          const texto = String(r.text || '').trim();
+          if (sourcesList().some(s => s.nombre === r.name && s.chars === texto.length)) continue;   // ya estaba
+          const tipo = /transcrip|audio|reunion|llamada|teams|zoom/i.test(r.name) ? 'transcripcion' : 'documento';
+          if (addSource(tipo, r.name, texto)) nuevos++;
+          else fallos.push(f.name + ': no tiene texto legible');
+        } catch (err) {
+          if (String(err.message) === 'CANCELLED' || err.name === 'AbortError') throw err;
+          fallos.push(f.name + ': ' + (err.message || err));
+        }
+      }
+    } catch (err) {
+      // Cancelado: se conserva lo que ya se leyo
+    } finally {
+      endIngestJob();
+      renderSources();   // endIngestJob restaura una etiqueta vieja del boton
+    }
+    const n = sourcesList().length, aviso = $('#docFileName');
+    if (aviso) aviso.textContent = !nuevos ? '' :
+      (nuevos === 1 ? '1 documento añadido' : nuevos + ' documentos añadidos') + ' · añade más o pulsa ' +
+      (n > 1 ? 'Combinar y generar' : 'Generar proceso');
+    if (fallos.length) alert('No se pudieron leer ' + fallos.length + ' archivo(s):\n\n' + fallos.join('\n'));
+  }
+
   const SRC_ICON = { documento: 'DOC', transcripcion: 'AUDIO', diagrama: 'BPMN', texto: 'TEXTO', eventlog: 'CSV' };
 
   function renderSources() {
@@ -8866,6 +8921,18 @@ Reglas:
     const n = arr.length;
     const lbl = $('#sourcesCount');
     if (lbl) lbl.textContent = n === 1 ? '1 fuente lista' : n + ' fuentes listas para combinar';
+    const total = arr.reduce((a, s) => a + s.chars, 0);
+    if (lbl && n > 1) lbl.textContent += ' · ' + total.toLocaleString('es-PE') + ' car.';
+    const warn = $('#sourcesWarn');
+    if (warn) {
+      const excede = total > MAX_AI_CHARS;
+      warn.hidden = !excede;
+      warn.textContent = excede
+        ? 'Entre todas suman ' + total.toLocaleString('es-PE') + ' caracteres y la IA lee hasta ' +
+          MAX_AI_CHARS.toLocaleString('es-PE') + ': se recortará el final de las fuentes más largas. ' +
+          'Quita las que no aporten o deja solo los capítulos del proceso.'
+        : '';
+    }
     const go = $('#btnIngestGo');
     if (go) {
       const span = go.querySelector('.go-label');
@@ -8893,10 +8960,19 @@ Reglas:
     const arr = sourcesList();
     const NL = String.fromCharCode(10);
     if (arr.length === 1) return arr[0].texto;
-    const perFuente = Math.max(6000, Math.floor(MAX_AI_CHARS / Math.max(1, arr.length)));
+    // v3.8.5: solo se recorta si entre todas superan el tope, y por reparto
+    // justo: las fuentes cortas entran enteras y el resto del presupuesto se
+    // divide entre las largas. Antes cada una quedaba en 60K/n aunque sobrara
+    // espacio (tres documentos = 20K cada uno).
+    const tope = {};
+    let presupuesto = MAX_AI_CHARS;
+    arr.slice().sort((a, b) => a.chars - b.chars).forEach((s, i, orden) => {
+      tope[s.id] = Math.min(s.chars, Math.floor(presupuesto / (orden.length - i)));
+      presupuesto -= tope[s.id];
+    });
     return arr.map((s, i) =>
       '=== FUENTE ' + (i + 1) + ' de ' + arr.length + ': "' + s.nombre + '" (' + s.tipo + ') ===' + NL +
-      s.texto.slice(0, perFuente)
+      s.texto.slice(0, tope[s.id])
     ).join(NL + NL);
   }
 
@@ -9378,7 +9454,7 @@ Reglas:
     if (go) go.addEventListener('click', () => runIngest(null));
 
     const addSrc = $('#btnAddSource');
-    if (addSrc) addSrc.addEventListener('click', () => { window.__addOnly = true; $('#docFileInput').click(); });
+    if (addSrc) addSrc.addEventListener('click', () => { if (!ingestAbort) $('#docFileInput').click(); });
 
     const cancel = $('#btnIngestCancel');
     if (cancel) cancel.addEventListener('click', cancelIngestJob);
@@ -9398,8 +9474,8 @@ Reglas:
         dz.classList.remove('over');
       }));
       dz.addEventListener('drop', (e) => {
-        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (f) { $('#docFileName').textContent = f.name; runIngest({ file: f }); }
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length) addFilesAsSources(files);
       });
     }
     updateAiModeHint();

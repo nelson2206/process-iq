@@ -2399,6 +2399,8 @@ code {
   font-size: 14px; line-height: 1; padding: 2px 5px; border-radius: 4px; flex-shrink: 0; }
 .src-del:hover { background: rgba(255,90,90,.18); color: #ff6b6b; }
 .src-hint { font-size: 10.5px; line-height: 1.4; color: var(--nexus-text-soft, #a99fce); margin: 7px 0 0; }
+.src-warn { font-size: 11px; line-height: 1.4; color: #ffc46b; background: rgba(255,176,32,.10);
+  border: 1px solid rgba(255,176,32,.35); border-radius: 7px; padding: 6px 9px; margin: 8px 0 0; }
 
 
 /* ── Selector de nivel de detalle ─────────────────────────── */

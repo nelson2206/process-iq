@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.8.4 — todas las entradas de texto pasan por la IA (antes Audio y el Copiloto generaban sin IA, al instante)
+> **Última actualización:** v3.8.5 — varios documentos a la vez para el levantamiento: se listan y se combinan al pulsar el botón; tope de entrada a la IA de 60K a 180K caracteres con reparto justo
 
 ---
 
@@ -419,6 +419,30 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.8.5 VARIOS DOCUMENTOS. Pedido: "permitir anadir multiples documentos
+  para el relevamiento". La base de fuentes multiples ya existia (v3.x:
+  sourcesList/addSource/combinedSourceText/MERGE_RULES), pero en la practica
+  solo entraba uno: el input no tenia `multiple`, el drop tomaba files[0] y
+  elegir el primer archivo GENERABA al instante (el resto llegaba tarde).
+  Ahora: `multiple` en #docFileInput; elegir, soltar o "+ Anadir otra fuente"
+  llaman a addFilesAsSources(files), que lee cada archivo con progreso
+  "Leyendo i de n", los deja en la lista y NO genera; se genera con el boton
+  ("Combinar N fuentes y generar"). Excepcion: un unico .bpmn sin otras
+  fuentes se sigue importando directo. Salta duplicados (mismo nombre y
+  largo), junta los errores por archivo en una sola alerta y, si se cancela,
+  conserva lo ya leido. Tras endIngestJob se llama a renderSources porque
+  ingestBusy restaura una etiqueta vieja del boton.
+  Tope de entrada MAX_AI_CHARS 60K -> 180K (~45-50K tokens): antes tres
+  documentos quedaban en 20K cada uno aunque sobrara espacio. combinedSourceText
+  solo recorta si el total excede, y por reparto justo (ordena por largo: las
+  cortas entran enteras, el presupuesto restante se divide entre las largas).
+  renderSources muestra el total y #sourcesWarn (ambar) si se excede.
+  Retirado window.__addOnly (ya no hace falta).
+  Verificado en navegador (archivos creados con DataTransfer, IA simulada):
+  .bpmn solo importa directo; 3 documentos se listan sin generar ni llamar a
+  la IA; duplicado saltado y vacio avisado; quitar fuente ok; 279K car. muestra
+  aviso; generar envia 181K car. con 4 cabeceras de fuente, reglas de fusion y
+  las fuentes cortas enteras. Consola sin errores.
 - v3.8.4 ENTRADAS SIN IA, corregido. Sintoma del usuario: "pego el texto,
   le doy procesar y genera al instante; no parece usar la API key". Habia TRES
   caminos que nunca llamaban a Claude aunque la clave estuviera lista:

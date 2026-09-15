@@ -12,7 +12,7 @@
   <meta property="og:title" content="ProcessIQ — Diagramador de procesos BPMN" />
   <meta property="og:description" content="Diagramación, diagnóstico y reingeniería de procesos con nomenclatura BPMN 2.0. Analítica 2026 y export a PPTX/BPMN/SVG/Word. MBC Business Consulting Perú." />
   <meta property="og:url" content="https://nelson2206.github.io/process-iq/" />
-  <meta property="og:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.8.4" />
+  <meta property="og:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.8.5" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="ProcessIQ — diagramador de procesos BPMN de MBC" />
@@ -20,11 +20,11 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="ProcessIQ — Diagramador de procesos BPMN" />
   <meta name="twitter:description" content="Diagramación, diagnóstico y reingeniería de procesos con BPMN 2.0. MBC Business Consulting Perú." />
-  <meta name="twitter:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.8.4" />
+  <meta name="twitter:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.8.5" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=3.8.4" />
+  <link rel="stylesheet" href="styles.css?v=3.8.5" />
   <script defer src="https://umami-mbc.vercel.app/script.js" data-website-id="0f3aaa08-7bb8-4aec-b09b-d9c4abf3868c"></script>
 </head>
 <body>
@@ -740,13 +740,13 @@
           describa el proceso paso a paso. Una oración = una posible actividad.
         </p>
         <!-- Zona de arrastrar y soltar: el gesto principal -->
-        <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Suelta tu documento aquí o haz clic para elegirlo">
+        <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Suelta tus documentos aquí o haz clic para elegirlos; puedes seleccionar varios">
           <svg class="drop-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <div class="drop-title">Suelta aquí tu documento</div>
-          <div class="drop-sub">o <b>haz clic para elegirlo</b> — Word · PDF · PowerPoint · texto · BPMN</div>
+          <div class="drop-title">Suelta aquí tus documentos</div>
+          <div class="drop-sub">o <b>haz clic para elegirlos</b> (puedes seleccionar varios) — Word · PDF · PowerPoint · texto · BPMN</div>
           <div id="docFileName" class="drop-file"></div>
         </div>
-        <input id="docFileInput" type="file" accept=".txt,.md,.csv,.text,.docx,.doc,.pdf,.pptx,.ppt,.bpmn,.xml" hidden />
+        <input id="docFileInput" type="file" multiple accept=".txt,.md,.csv,.text,.docx,.doc,.pdf,.pptx,.ppt,.bpmn,.xml" hidden />
 
         <div id="sourcesBox" class="sources-box" hidden>
           <div class="src-head">
@@ -754,6 +754,7 @@
             <button id="btnAddSource" class="btn btn-ghost btn-mini" type="button" title="Anadir otro documento, transcripcion o diagrama">+ Anadir otra fuente</button>
           </div>
           <ul id="sourcesList" class="src-list"></ul>
+          <p id="sourcesWarn" class="src-warn" hidden></p>
           <p class="src-hint">Se combinaran en un solo AS-IS. Ante contradicciones prevalece la fuente mas reciente (p. ej. la transcripcion del levantamiento sobre un diagrama antiguo).</p>
         </div>
 
@@ -816,6 +817,6 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="kpi-library.js?v=1.6.1"></script>
-  <script src="app.js?v=3.8.4"></script>
+  <script src="app.js?v=3.8.5"></script>
 </body>
 </html>

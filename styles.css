@@ -542,6 +542,11 @@ textarea:focus-visible {
   height: 100%;
   overflow: auto;
 }
+/* v3.8.8: arrastrar el fondo o un carril desplaza el lienzo */
+#canvas:not(.connect-mode) #gridBg,
+#canvas:not(.connect-mode) #swimlanesLayer,
+#canvas:not(.connect-mode) #laneHeadersLayer { cursor: grab; }
+.canvas-scroll.panning, .canvas-scroll.panning * { cursor: grabbing !important; user-select: none; }
 
 /* Controles de deshacer / rehacer (arriba-izquierda del lienzo) */
 .canvas-history {

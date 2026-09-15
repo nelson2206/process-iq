@@ -252,12 +252,37 @@
       addNode(shape, pt.x, pt.y);
     });
 
+    // v3.8.8: arrastrar sobre un espacio vacio (fondo, carril o su cabecera)
+    // desplaza el lienzo, como en draw.io o Miro. Antes solo quitaba la
+    // seleccion y un flujo de izquierda a derecha no se podia recorrer con el
+    // raton. Un clic SIN arrastrar sigue quitando la seleccion.
     canvas.addEventListener('mousedown', e => {
-      if (e.target === canvas || e.target.id === 'gridBg') {
-        state.selectedNodeId = null;
-        state.selectedEdgeId = null;
-        render();
-      }
+      if (e.target.closest && (e.target.closest('#nodesLayer') || e.target.closest('#edgesLayer'))) return;
+      if (e.button !== 0 && e.button !== 1) return;
+      const wrap = $('#canvasWrapper');
+      if (!wrap) return;
+      e.preventDefault();   // que no se seleccione texto mientras se arrastra
+      const ini = { x: e.clientX, y: e.clientY, left: wrap.scrollLeft, top: wrap.scrollTop };
+      let movio = false;
+      const mover = (ev) => {
+        const dx = ev.clientX - ini.x, dy = ev.clientY - ini.y;
+        if (!movio && Math.abs(dx) + Math.abs(dy) < 4) return;
+        if (!movio) { movio = true; wrap.classList.add('panning'); }
+        wrap.scrollLeft = ini.left - dx;
+        wrap.scrollTop = ini.top - dy;
+      };
+      const soltar = () => {
+        window.removeEventListener('mousemove', mover);
+        window.removeEventListener('mouseup', soltar);
+        wrap.classList.remove('panning');
+        if (!movio && (state.selectedNodeId || state.selectedEdgeId)) {
+          state.selectedNodeId = null;
+          state.selectedEdgeId = null;
+          render();
+        }
+      };
+      window.addEventListener('mousemove', mover);
+      window.addEventListener('mouseup', soltar);
     });
 
     canvas.addEventListener('mousemove', e => {
@@ -2629,10 +2654,24 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     if (!wrap) return;
     // Ctrl/⌘ + rueda → zoom hacia el cursor (igual que Figma/draw.io; el pinch del trackpad envía ctrlKey)
     wrap.addEventListener('wheel', (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return;   // rueda sola = scroll normal
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+        setZoom((state.zoom || 1) * factor, { anchor: { clientX: e.clientX, clientY: e.clientY } });
+        return;
+      }
+      // v3.8.8: el flujo crece a lo ANCHO (80 cajas = 17 m) y la rueda solo movia
+      // en vertical, con unos pocos cientos de px de recorrido. Ahora la rueda
+      // baja/sube mientras pueda y, al llegar al tope, sigue avanzando/retrocediendo
+      // a lo largo del flujo. Shift+rueda y el trackpad (deltaX) quedan nativos.
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : (e.deltaMode === 2 ? e.deltaY * wrap.clientHeight : e.deltaY);
+      const maxTop = wrap.scrollHeight - wrap.clientHeight;
+      const puedeVertical = dy > 0 ? wrap.scrollTop < maxTop - 1 : wrap.scrollTop > 0;
+      const maxLeft = wrap.scrollWidth - wrap.clientWidth;
+      if (puedeVertical || maxLeft <= 0) return;   // scroll vertical normal del navegador
       e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-      setZoom((state.zoom || 1) * factor, { anchor: { clientX: e.clientX, clientY: e.clientY } });
+      wrap.scrollLeft = Math.max(0, Math.min(maxLeft, wrap.scrollLeft + dy));
     }, { passive: false });
     // Atajos de teclado: Ctrl/⌘ +/-/0 ; tecla "f" = ajustar
     document.addEventListener('keydown', (e) => {

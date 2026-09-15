@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.8.7 — el usuario elige Opus 5 o Sonnet 5 al generar, viendo el coste estimado de cada uno
+> **Última actualización:** v3.8.8 — navegación del lienzo: la rueda recorre el flujo a lo ancho al llegar al tope y arrastrar el fondo desplaza el lienzo
 
 ---
 
@@ -419,6 +419,31 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.8.8 NAVEGACION DEL LIENZO. Sintoma: "scroll con el mouse o click para
+  navegar sobre el flujo no me hace caso". Medido con raton real sobre un flujo
+  de 80 cajas: #canvasWrapper SI tenia scroll (826 visibles de 1.143 px), pero
+  el flujo mide 17.470 px de ANCHO y la rueda solo movia en vertical, topando a
+  los 317 px; 16.136 px quedaban inalcanzables. Arrastrar en vacio no hacia
+  nada: el mousedown del lienzo solo quitaba la seleccion (no habia pan).
+  Arreglo:
+  - wheel (attachZoomInteractions): Ctrl/Cmd = zoom como antes; Shift o deltaX
+    dominante = nativo; si el vertical aun puede moverse en esa direccion, nativo;
+    al llegar al tope, preventDefault y el deltaY mueve scrollLeft (deltaMode
+    linea x16, pagina x clientHeight).
+  - mousedown del lienzo (attachCanvasListeners): fuera de #nodesLayer y
+    #edgesLayer, boton izquierdo o central, arrastrar >4 px mueve scroll con
+    listeners en window (clase .panning); sin arrastre, al soltar quita la
+    seleccion (antes era al pulsar y solo sobre gridBg). Las cajas cortan la
+    propagacion en su propio mousedown, asi que su arrastre no cambia.
+  - CSS: cursor grab en gridBg/swimlanesLayer/laneHeadersLayer (no en modo
+    conexion) y grabbing durante el arrastre.
+  Verificado: el diagnostico con raton real; la solucion con eventos simulados
+  porque el panel no redibujaba (sin captura no hay scroll con coordenadas):
+  media altura sin intervenir, tope abajo avanza 300 px con 3 pasos, arriba
+  retrocede, Shift nativo, Ctrl zoom 100->112 %, arrastrar carril 300/40 px
+  exactos, clic en caja y clic sin arrastre no desplazan. Sin errores.
+  Pendiente de producto (no tocado): al generar con IA se abre solo el panel
+  de la Ficha y tapa media pantalla del lienzo.
 - v3.8.7 ELEGIR MODELO AL GENERAR. Pedido: "que el usuario pueda elegir el
   modelo de Opus o Sonnet". El selector ya existia en Ajustes de IA (con Haiku
   4.5 incluido), pero escondido. Ahora askProfundidad (titulo "Nivel de detalle

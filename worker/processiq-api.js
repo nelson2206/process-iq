@@ -25,12 +25,57 @@
  * para respuestas largas). fallbacks solo admite "default" y el Worker anade su
  * cabecera beta. El techo de GASTO se fija en la consola de Anthropic (Limits):
  * es la red de seguridad real.
+ *
+ * Gasto en IA: cada respuesta exitosa se "teea" (r.body.tee()) — una copia
+ * va al usuario sin tocar, la otra se lee en segundo plano (ctx.waitUntil,
+ * no bloquea ni puede romper la respuesta) para sacar los tokens reales
+ * (de message_start/message_delta si es streaming, o de "usage" si no) y
+ * reportarlos a Pulse (registro central del ecosistema). Si el reporte
+ * falla, se ignora en silencio: nunca debe afectar al usuario.
  * ============================================================ */
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const PULSE_INGEST = 'https://pulse.mbc-latam.com/api/ai-usage';
 const MODELOS = new Set(['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']);
 const MAX_TOKENS = 64000;
 const MAX_BODY = 2 * 1024 * 1024;
+
+// Lee el stream (ya teeado, no es el que ve el usuario) y saca los tokens
+// reales de la respuesta de Anthropic. Nunca lanza: sin dato, null.
+async function extraerUso(stream, esStreaming) {
+  try {
+    const texto = await new Response(stream).text();
+    if (!esStreaming) {
+      const u = JSON.parse(texto).usage;
+      return u ? { inputTokens: u.input_tokens || 0, outputTokens: u.output_tokens || 0 } : null;
+    }
+    // SSE: el input llega en message_start; el output final, en el ultimo
+    // message_delta (su "usage.output_tokens" es acumulado, no incremental).
+    let inputTokens = 0, outputTokens = 0, visto = false;
+    for (const linea of texto.split('\n')) {
+      if (!linea.startsWith('data:')) continue;
+      let ev;
+      try { ev = JSON.parse(linea.slice(5).trim()); } catch { continue; }
+      if (ev.type === 'message_start' && ev.message && ev.message.usage) {
+        inputTokens = ev.message.usage.input_tokens || 0; visto = true;
+      } else if (ev.type === 'message_delta' && ev.usage) {
+        outputTokens = ev.usage.output_tokens || 0; visto = true;
+      }
+    }
+    return visto ? { inputTokens, outputTokens } : null;
+  } catch (e) { return null; }
+}
+
+async function registrarGasto(model, uso) {
+  if (!uso) return;
+  try {
+    await fetch(PULSE_INGEST, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tool: 'processiq', provider: 'anthropic', model, inputTokens: uso.inputTokens, outputTokens: uso.outputTokens })
+    });
+  } catch (e) { /* el registro de gasto nunca debe afectar la respuesta al usuario */ }
+}
 
 function origenPermitido(req, env) {
   const origen = req.headers.get('Origin') || '';
@@ -73,7 +118,7 @@ function igualSeguro(a, b) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const origen = origenPermitido(req, env);
     // Secretos recortados: un espacio o salto de linea pegado por error al
@@ -129,7 +174,15 @@ export default {
     if (r.status === 401) return error('Anthropic rechazo la clave central del intermediario', 502, cors);
 
     const salida = new Headers(cors);
-    salida.set('content-type', r.headers.get('content-type') || 'application/json');
+    const contentType = r.headers.get('content-type') || 'application/json';
+    salida.set('content-type', contentType);
+
+    if (r.ok && r.body) {
+      const [aCliente, aRegistro] = r.body.tee();
+      const esStreaming = contentType.includes('event-stream');
+      ctx.waitUntil(extraerUso(aRegistro, esStreaming).then(uso => registrarGasto(body.model, uso)));
+      return new Response(aCliente, { status: r.status, headers: salida });
+    }
     return new Response(r.body, { status: r.status, headers: salida });
   }
 };

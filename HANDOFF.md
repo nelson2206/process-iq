@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.8.8 — navegación del lienzo: la rueda recorre el flujo a lo ancho al llegar al tope y arrastrar el fondo desplaza el lienzo
+> **Última actualización:** v3.8.9 — reintento automático ante un corte de conexión al generar; el aviso ya no asume que el usuario está en la red de Indra; más margen para documentos grandes
 
 ---
 
@@ -419,6 +419,31 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.8.9 ERRORES DE RED AL GENERAR, reportados por un usuario real (no Nelson):
+  (1) "No se pudo conectar con el intermediario... Si estas en la red de
+  Indra..." con un PDF de 32.431 car. (2) "La IA dejo de responder durante
+  90s" con un PDF de 88.375 car. Dos causas distintas:
+  1) El mensaje de "Failed to fetch" daba por hecho que TODO usuario esta en
+     la red de Indra (solo cierto para Nelson); a un cliente o colega en otra
+     red esa frase no le decia nada util. El navegador oculta la causa real de
+     "Failed to fetch" por seguridad (corte de conexion, proxy corporativo,
+     bloqueador de anuncios/privacidad, DNS, el servicio caido): no se puede
+     diagnosticar del lado del cliente.
+  2) El timeout de inactividad (90s fijos, cuenta desde el ultimo byte, no
+     desde el inicio) no escalaba con el tamano del documento; con ~90K
+     caracteres el primer dato puede tardar mas por delante de la IA misma.
+  Arreglo: callClaude reintenta UNA vez el fetch() inicial si falla por red
+  (no si es cancelacion o timeout), tras 1.2s; si ambos intentos fallan, el
+  aviso ya no menciona Indra --dice "corte de conexion, proxy corporativo o
+  bloqueador de anuncios/privacidad; prueba desde otra red" y cuenta "dos
+  intentos". aiBuildProcess calcula timeoutMs = min(180000, 90000 +
+  500ms por cada 1.000 caracteres del prompt): ~91s para un texto chico,
+  ~135s para 90K caracteres, techo 3 min. El aviso de inactividad tambien
+  sugiere Sonnet, como el de conexion.
+  Verificado en navegador con fetch simulado: (A) 1er intento falla, 2do
+  responde -> genera bien, 2 llamadas, ~1.6s de espera visible; (B) ambos
+  fallan -> alerta sin "Indra", con "dos intentos"; (C) el calculo del
+  timeout da 91.000ms para texto chico y 135.000ms para 90K caracteres.
 - v3.8.8 NAVEGACION DEL LIENZO. Sintoma: "scroll con el mouse o click para
   navegar sobre el flujo no me hace caso". Medido con raton real sobre un flujo
   de 80 cajas: #canvasWrapper SI tenia scroll (826 visibles de 1.143 px), pero

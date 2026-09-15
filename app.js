@@ -8805,23 +8805,39 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       clearTimeout(timer);
       if (ingestAbort) { try { ingestAbort.controller.signal.removeEventListener('abort', onCancel); } catch (_) {} }
     };
+    // v3.8.9: un fallo de RED al conectar (DNS, un corte de un segundo, un
+    // proxy que descarta la primera conexion) suele ser pasajero. Antes se
+    // mostraba el error a la primera; ahora se reintenta UNA vez tras una
+    // breve espera. No aplica a un aborto por cancelacion o inactividad.
+    const conectar = async (intento) => {
+      try {
+        return await fetch(destino, { method: 'POST', headers: cabeceras, body: JSON.stringify(body), signal: ctrl.signal });
+      } catch (e) {
+        if (e.name !== 'AbortError' && intento === 1) {
+          await new Promise(r => setTimeout(r, 1200));
+          throwIfCancelled();
+          return conectar(2);
+        }
+        throw e;
+      }
+    };
     let res;
     try {
-      res = await fetch(destino, {
-        method: 'POST',
-        headers: cabeceras,
-        body: JSON.stringify(body),
-        signal: ctrl.signal
-      });
+      res = await conectar(1);
     } catch (e) {
       limpiar();
+      if (String(e.message) === 'CANCELLED') throw e;
       if (e.name === 'AbortError') {
         if (ingestAbort && ingestAbort.cancelled) throw new Error('CANCELLED');
         throw new Error('La IA tardó más de ' + Math.round(timeoutMs / 1000) + 's y se canceló. Prueba con un documento más corto o con el modelo Sonnet (más rápido) en Ajustes de IA.');
       }
+      // "Failed to fetch" no distingue la causa (asi lo oculta el navegador por
+      // seguridad): puede ser un corte de conexion, un proxy corporativo, un
+      // bloqueador de anuncios/privacidad, o el servicio caido. Ya se reintento
+      // una vez antes de llegar aqui.
       throw new Error(equipo
-        ? 'No se pudo conectar con el intermediario (' + destino.replace('/v1/messages', '') + '). Si estás en la red de Indra, puede que el proxy corporativo lo bloquee. (' + e.message + ')'
-        : 'No se pudo conectar con Anthropic. Revisa tu conexión a internet. (' + e.message + ')');
+        ? 'No se pudo conectar con el servicio de IA (' + destino.replace('/v1/messages', '') + ') tras dos intentos. Puede ser un corte de conexión, un proxy corporativo o un bloqueador de anuncios/privacidad del navegador. Vuelve a intentarlo; si persiste, prueba desde otra red. (' + e.message + ')'
+        : 'No se pudo conectar con Anthropic tras dos intentos. Revisa tu conexión a internet. (' + e.message + ')');
     }
     if (!res.ok) {
       let msg = 'Error ' + res.status;
@@ -8881,7 +8897,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     } catch (e) {
       if (e.name === 'AbortError') {
         if (ingestAbort && ingestAbort.cancelled) throw new Error('CANCELLED');
-        throw new Error('La IA dejó de responder durante ' + Math.round(timeoutMs / 1000) + ' s y se canceló. Vuelve a intentarlo; si se repite, prueba con un documento más corto.');
+        throw new Error('La IA dejó de responder durante ' + Math.round(timeoutMs / 1000) + ' s y se canceló. Vuelve a intentarlo; si se repite, prueba con un documento más corto o con el modelo Sonnet (más rápido) en Ajustes de IA.');
       }
       throw new Error('Se cortó la conexión mientras la IA respondía (' + e.message + ').');
     } finally {
@@ -9470,7 +9486,12 @@ Reglas:
       3: 'Levantamiento exhaustivo: recoge cada paso operativo que el texto mencione, incluidos sistemas y validaciones intermedias.'
     })[opts.vista]) : '';
     const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.${merge}${roles}${prof}\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, MAX_AI_CHARS)}`;
-    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: GEN_MAX_TOKENS,
+    // v3.8.9: con un documento grande la IA puede tardar mas en soltar el
+    // primer dato (no en total: el reloj de inactividad se reinicia con cada
+    // byte). 90s fijos hacian cortar de mas un levantamiento de ~90K
+    // caracteres; se amplia segun el largo, con techo de 3 min.
+    const timeoutMs = Math.min(180000, 90000 + Math.floor(prompt.length / 1000) * 500);
+    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: GEN_MAX_TOKENS, timeoutMs,
       onProgress: (n) => setStatus('Recibiendo el proceso de la IA… ' + n.toLocaleString('es-PE') + ' caracteres'),
       onUsage: (u) => {
         const coste = { fecha: new Date().toISOString(), modelo: u.modelo, nivel: (opts && opts.vista) || 2,

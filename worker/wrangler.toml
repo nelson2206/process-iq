@@ -9,7 +9,8 @@ compatibility_date = "2026-08-01"
 workers_dev = false   # solo el dominio propio; la cuenta no tiene subdominio workers.dev
 
 [vars]
-ALLOWED_ORIGINS = "https://procesos.mbc-latam.com"
+# procesos = ProcessIQ; nelson2206.github.io = Radar de Prospectos (usa este mismo intermediario)
+ALLOWED_ORIGINS = "https://procesos.mbc-latam.com,https://nelson2206.github.io"
 
 [[routes]]
 pattern = "api.mbc-latam.com"

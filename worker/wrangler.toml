@@ -6,7 +6,8 @@
 name = "processiq-api"
 main = "processiq-api.js"
 compatibility_date = "2026-08-01"
-workers_dev = false   # solo el dominio propio; la cuenta no tiene subdominio workers.dev
+workers_dev = true    # segunda direccion en workers.dev: el dominio propio esta bloqueado por Netskope desde la red Indra
+preview_urls = false  # sin URLs publicas por version: este Worker guarda la clave
 
 [vars]
 # procesos = ProcessIQ; nelson2206.github.io = Radar de Prospectos (usa este mismo intermediario)

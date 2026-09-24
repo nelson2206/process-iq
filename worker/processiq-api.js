@@ -36,7 +36,8 @@
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const PULSE_INGEST = 'https://pulse.mbc-latam.com/api/ai-usage';
-const MODELOS = new Set(['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']);
+// claude-opus-5 se conserva: otras herramientas del ecosistema siguen pidiendolo
+const MODELOS = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']);
 const MAX_TOKENS = 64000;
 const MAX_BODY = 2 * 1024 * 1024;
 

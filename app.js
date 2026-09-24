@@ -8384,7 +8384,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         if (codigo) {
           const c = aiConfig();
           saveAiConfig(Object.assign({}, c, { modo: 'equipo', codigo: codigo,
-            proxyUrl: c.proxyUrl || PROXY_POR_DEFECTO, model: c.model || 'claude-opus-5' }));
+            proxyUrl: c.proxyUrl || PROXY_POR_DEFECTO, model: c.model || 'claude-opus-5-5' }));
           updateAiUi();
         }
       }
@@ -8688,7 +8688,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   // Intermediario con la clave central (worker/processiq-api.js, Cloudflare).
   const PROXY_POR_DEFECTO = 'https://api.mbc-latam.com';
   const AI_MODELS = [
-    { id: 'claude-opus-5', label: 'Claude Opus — máxima calidad de interpretación' },
+    { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 — máxima calidad de interpretación' },
     { id: 'claude-sonnet-5', label: 'Claude Sonnet — rápido y económico' },
     { id: 'claude-haiku-4-5', label: 'Claude Haiku — ultrarrápido, tareas simples' }
   ];
@@ -8700,6 +8700,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   // de Claude, tabla del 24-jun-2026). El respaldo automatico de Opus 5 usa
   // modelos de la misma tarifa. Si Anthropic cambia precios, se actualiza aqui.
   const PRECIOS_IA = {
+    'claude-opus-5-5':  { entrada: 4, salida: 20, nombre: 'Claude Opus 5.5' },
+    // Opus 5 queda para valorar el historial de ejecuciones anteriores al cambio
     'claude-opus-5':    { entrada: 5, salida: 25, nombre: 'Claude Opus 5' },
     'claude-sonnet-5':  { entrada: 2, salida: 10, nombre: 'Claude Sonnet 5' },
     'claude-haiku-4-5': { entrada: 1, salida: 5,  nombre: 'Claude Haiku 4.5' }
@@ -8712,7 +8714,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   const CAR_POR_TOKEN_INICIAL = 3;
   const SALIDA_INICIAL = { 1: [5000, 15000], 2: [10000, 30000], 3: [20000, 50000] };
 
-  function precioModelo(m) { return PRECIOS_IA[m] || PRECIOS_IA['claude-opus-5']; }
+  function precioModelo(m) { return PRECIOS_IA[m] || PRECIOS_IA['claude-opus-5-5']; }
   function usd(tokensEntrada, tokensSalida, modelo) {
     const p = precioModelo(modelo);
     return (tokensEntrada * p.entrada + tokensSalida * p.salida) / 1e6;
@@ -8728,7 +8730,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   // exacto (entrada + el tope completo de respuesta); el rango es estimado y
   // se calibra con las ejecuciones reales guardadas en este navegador.
   function estimarCosteGeneracion(charsTexto, nivel, modeloElegido) {
-    const modelo = modeloElegido || aiConfig().model || 'claude-opus-5';
+    const modelo = modeloElegido || aiConfig().model || 'claude-opus-5-5';
     const charsEntrada = Math.min(charsTexto, MAX_AI_CHARS) + AI_SYSTEM.length + 800;   // +800: reglas de fusion y profundidad
     const h = historialCostes().filter(x => x.modelo === modelo && x.entrada > 0 && x.chars > 0);
     const carPorToken = h.length ? mediana(h.map(x => x.chars / x.entrada)) : CAR_POR_TOKEN_INICIAL;
@@ -8778,7 +8780,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       : { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true' };
     const body = {
-      model: cfg.model || 'claude-opus-5',
+      model: cfg.model || 'claude-opus-5-5',
       max_tokens: opts.maxTokens || 16000,
       messages: [{ role: 'user', content: userText }]
     };
@@ -9421,13 +9423,13 @@ Reglas:
         // v3.8.7: el modelo se elige AQUI, viendo lo que cuesta cada uno (antes
         // solo estaba en Ajustes de IA). Se guarda como preferencia del navegador.
         (chars ? (() => {
-          const actual = aiConfig().model === 'claude-sonnet-5' ? 'claude-sonnet-5' : 'claude-opus-5';
+          const actual = aiConfig().model === 'claude-sonnet-5' ? 'claude-sonnet-5' : 'claude-opus-5-5';
           const opcion = (id, titulo, texto) =>
             '<label class="prof-opt"><input type="radio" name="modelo" value="' + id + '"' + (actual === id ? ' checked' : '') + ' />' +
             '<span><b>' + titulo + '</b><small>' + texto + '</small><em class="pm-coste" data-modelo="' + id + '"></em></span></label>';
           return '<div class="prof-modelo"><div class="pm-titulo">Modelo de IA</div><div class="prof-opts">' +
-            opcion('claude-opus-5', 'Claude Opus 5', 'Máxima calidad de interpretación. Para procedimientos largos, ambiguos o con muchas decisiones.') +
-            opcion('claude-sonnet-5', 'Claude Sonnet 5', 'Más rápido y 2,5 veces más barato por token. Suele bastar con textos claros y bien estructurados.') +
+            opcion('claude-opus-5-5', 'Claude Opus 5.5', 'Máxima calidad de interpretación. Para procedimientos largos, ambiguos o con muchas decisiones.') +
+            opcion('claude-sonnet-5', 'Claude Sonnet 5', 'Más rápido y a mitad de precio por token. Suele bastar con textos claros y bien estructurados.') +
             '</div></div><div id="profCoste" class="prof-coste"></div>';
         })() : '');
       openModal(chars ? 'Nivel de detalle y modelo' : 'Nivel de detalle del levantamiento', html, () => {
@@ -9555,7 +9557,7 @@ Reglas:
     const cfg = aiConfig();
     const modo = cfg.modo || (cfg.key ? 'propia' : 'equipo');
     const esc = s => String(s == null ? '' : s).replace(/"/g, '&quot;');
-    const opts = AI_MODELS.map(m => `<option value="${m.id}"${(cfg.model || 'claude-opus-5') === m.id ? ' selected' : ''}>${m.label}</option>`).join('');
+    const opts = AI_MODELS.map(m => `<option value="${m.id}"${(cfg.model || 'claude-opus-5-5') === m.id ? ' selected' : ''}>${m.label}</option>`).join('');
     const html = `
       <div class="ai-settings">
         <p class="panel-hint">ProcessIQ usa el <b>API de Anthropic (Claude)</b>. En <b>modo equipo</b> la clave vive en el intermediario de MBC y en este navegador solo se guarda tu código de acceso. Con <b>tu propia API key</b>, la key se guarda solo en este navegador y va directo a Anthropic.</p>
@@ -9670,7 +9672,8 @@ Reglas:
     const el = $('#ingestAiMode');
     if (!el) return;
     if (aiReady()) {
-      const m = (aiConfig().model || 'claude-opus-5').replace('claude-', '').replace('-5', ' 5');
+      // El nombre sale de la tabla de precios: un apaño de texto daba "opus 5-5"
+      const m = precioModelo(aiConfig().model || 'claude-opus-5-5').nombre;
       el.innerHTML = `Se interpretará con <b>IA (${escapeHtml(m)})</b>: reconstruye actividades, roles y decisiones.`;
       el.className = 'ingest-mode on';
     } else {

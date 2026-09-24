@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.8.9 — reintento automático ante un corte de conexión al generar; el aviso ya no asume que el usuario está en la red de Indra; más margen para documentos grandes
+> **Última actualización:** v3.9.0 — la herramienta pasa a Claude Opus 5.5 (`claude-opus-5-5`), 20 % más barato que Opus 5
 
 ---
 
@@ -419,6 +419,34 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.9.0 MODELO: OPUS 5 -> OPUS 5.5. Pedido del usuario. Verificado en la
+  documentacion oficial antes de tocar nada (el ID no se inventa): ID exacto
+  `claude-opus-5-5`, 1M de contexto, 128K de salida, razonamiento siempre
+  activo, esfuerzo por defecto `medium` (en Opus 5 era `high`), y precio
+  4 / 20 US$ por millon (Opus 5: 5 / 25) -> ~20 % mas barato. Opus 5 pasa a
+  modelo heredado.
+  De la guia de migracion: no usamos nada de lo que 5.5 rechaza (no mandamos
+  `thinking`, no hay prefill); `fallbacks:'default'` sigue vigente y la
+  condicion `indexOf('claude-opus-5') === 0` cubre tambien a 5.5; `effort`
+  seguimos mandandolo explicito ('medium', que ahora es ademas el defecto).
+  Cambios: AI_MODELS, PRECIOS_IA (se CONSERVA la tarifa de Opus 5 para valorar
+  el historial anterior), precioModelo, estimarCosteGeneracion, el modelo por
+  defecto en callClaude/ingesta/Ajustes, las tarjetas de askProfundidad, y el
+  texto de Sonnet (ya no es "2,5 veces mas barato" sino "a mitad de precio":
+  2/10 frente a 4/20). updateAiModeHint ya no deforma el ID a mano ("opus 5-5")
+  sino que usa el nombre de PRECIOS_IA.
+  WORKER: MODELOS pasa a ['claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5',
+  'claude-haiku-4-5']. Opus 5 se CONSERVA a proposito: el Worker ya no es solo
+  de ProcessIQ (la otra sesion le anadio el origen del Radar de Prospectos y
+  una segunda direccion en workers.dev), y quitarlo romperia esas herramientas.
+  ORDEN OBLIGATORIO al desplegar: primero el Worker, luego la web; al reves,
+  la app pediria un modelo que la lista blanca aun rechaza (400).
+  Verificado en navegador con SSE simulado: usuario sin configuracion -> se
+  propone Opus 5.5; la peticion sale con model claude-opus-5-5, fallbacks
+  'default', effort medium, sin campo thinking; estimacion 30K car. nivel
+  Actividad US$ 0.25-0.65 (tope 1.33) y Sonnet US$ 0.12-0.32; coste real con
+  12.000/15.000 tokens = US$ 0.35 (0,048 + 0,30); Ajustes lista los tres
+  modelos con 5.5 marcado; el aviso de la ingesta dice "Claude Opus 5.5".
 - v3.8.9 ERRORES DE RED AL GENERAR, reportados por un usuario real (no Nelson):
   (1) "No se pudo conectar con el intermediario... Si estas en la red de
   Indra..." con un PDF de 32.431 car. (2) "La IA dejo de responder durante

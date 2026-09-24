@@ -8692,7 +8692,12 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     { id: 'claude-sonnet-5', label: 'Claude Sonnet — rápido y económico' },
     { id: 'claude-haiku-4-5', label: 'Claude Haiku — ultrarrápido, tareas simples' }
   ];
-  function aiConfig() { try { return JSON.parse(localStorage.getItem(AI_KEY)) || {}; } catch (e) { return {}; } }
+  function aiConfig() {
+    let c;
+    try { c = JSON.parse(localStorage.getItem(AI_KEY)) || {}; } catch (e) { return {}; }
+    if (c.model === 'claude-opus-5') c.model = 'claude-opus-5-5'; // preferencia guardada antes de Opus 5.5
+    return c;
+  }
   function saveAiConfig(c) { try { localStorage.setItem(AI_KEY, JSON.stringify(c)); } catch (e) {} }
 
   // ---- Coste por ejecucion (v3.8.6) ----

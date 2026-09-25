@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.9.0 — la herramienta pasa a Claude Opus 5.5 (`claude-opus-5-5`), 20 % más barato que Opus 5
+> **Última actualización:** v3.9.1 — documentos grandes: 400 páginas de PDF, 400K caracteres a la IA y 128K tokens de respuesta
 
 ---
 
@@ -419,6 +419,30 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.9.1 DOCUMENTOS GRANDES (parcial). Sintoma: PDF de 10 MB, "demoro mucho
+  y no se pudo generar". Un archivo asi choca con CUATRO topes distintos, y el
+  de 40 MB de archivo no es el que salta:
+    MAX_PDF_PAGES  120  -> 400   (extraer es local y gratis, solo lento)
+    MAX_AI_CHARS   180K -> 400K  (~110K tokens de 1M; la ENTRADA es barata:
+                                  US$0.44 en Opus 5.5. Lo caro es la salida)
+    GEN_MAX_TOKENS 64K  -> 128K  (maximo real de Opus 5.5 y Sonnet 5)
+    Worker MAX_TOKENS 64K -> 128K (clamp del intermediario; era el techo duro:
+                                  aunque la app pidiera mas, el Worker recortaba)
+  topeSalida(modelo) deja Haiku en 64K (su maximo real); es defensivo, porque
+  askProfundidad solo ofrece Opus 5.5 y Sonnet 5. El tope de la estimacion de
+  coste ahora sale de topeSalida, no de la constante.
+  DESPLIEGUE: primero el Worker, luego la web (si no, la app pide 128K y el
+  intermediario responde recortando).
+  Verificado en navegador con SSE simulado: un texto de 353.400 caracteres
+  viaja entero (antes se cortaba a 180K), max_tokens sale en 128.000 y la
+  estimacion dice "maximo posible US$ 3.04 ... 128,000 tokens".
+  LIMITE QUE SIGUE: un solo documento mayor a ~400K caracteres (manual de
+  varios cientos de paginas) se sigue recortando, con aviso ambar. La solucion
+  de fondo, NO implementada y pendiente de decision del usuario, es procesar
+  por partes: trocear el texto, pedir a la IA un guion estructurado de cada
+  parte y generar el BPMN con los guiones concatenados (map-reduce). Reusa el
+  generador actual y evita fusionar grafos, pero multiplica coste y tiempo
+  por el numero de partes.
 - v3.9.0 MODELO: OPUS 5 -> OPUS 5.5. Pedido del usuario. Verificado en la
   documentacion oficial antes de tocar nada (el ID no se inventa): ID exacto
   `claude-opus-5-5`, 1M de contexto, 128K de salida, razonamiento siempre

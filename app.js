@@ -8242,11 +8242,14 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   // ---- Progreso visible + cancelación (evita que la app "parezca muerta") ----
   let ingestAbort = null;             // { cancelled: bool, controller: AbortController }
   const MAX_FILE_MB = 40;             // por encima de esto avisamos antes de intentar
-  const MAX_PDF_PAGES = 120;          // tope de páginas a extraer
+  const MAX_PDF_PAGES = 400;          // tope de páginas a extraer (v3.9.1: 120 cortaba manuales gruesos; extraer es local y gratis, solo lento)
   // Lo que enviamos al modelo (~45-50K tokens). v3.8.5: de 60K a 180K para que
   // quepa un levantamiento con varios documentos; el otro limite es la
   // RESPUESTA (64K tokens), no la entrada.
-  const MAX_AI_CHARS = 180000;
+  // v3.9.1: 400K caracteres (~110K tokens) de un contexto de 1M. La entrada es
+  // barata (US$4 por millon en Opus 5.5: ~US$0.44) y evita descartar medio
+  // manual. Lo que de verdad limita es la RESPUESTA, no la entrada.
+  const MAX_AI_CHARS = 400000;
   function ingestBusy(on) {
     const box = $('#ingestProgress');
     if (box) {
@@ -8712,7 +8715,11 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     'claude-haiku-4-5': { entrada: 1, salida: 5,  nombre: 'Claude Haiku 4.5' }
   };
   const COSTES_KEY = 'processiq.ia.costes';
-  const GEN_MAX_TOKENS = 64000;            // tope de respuesta de la generacion (aiBuildProcess)
+  // Tope de respuesta de la generacion. v3.9.1: 128K, lo maximo que admiten
+  // Opus 5.5 y Sonnet 5 (Haiku sigue en 64K: ver topeSalida). Con 64K un
+  // procedimiento largo se quedaba sin espacio a medio JSON.
+  const GEN_MAX_TOKENS = 128000;
+  function topeSalida(modelo) { return /haiku/i.test(modelo || '') ? 64000 : GEN_MAX_TOKENS; }
   // Supuestos SOLO hasta tener ejecuciones reales en este navegador: ~3
   // caracteres por token en espanol y un rango de tokens de SALIDA por nivel
   // (la salida incluye el razonamiento de la IA, que se cobra como salida).
@@ -8753,7 +8760,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     return {
       modelo, precio: precioModelo(modelo), entrada, salida, muestras: delNivel.length,
       min: usd(entrada, salida[0], modelo), max: usd(entrada, salida[1], modelo),
-      tope: usd(entrada, GEN_MAX_TOKENS, modelo)
+      tope: usd(entrada, topeSalida(modelo), modelo), topeTokens: topeSalida(modelo)
     };
   }
   function lineaCosteIa() {
@@ -9461,7 +9468,7 @@ Reglas:
         });
         box.innerHTML =
           '<div class="pc-cifra">Coste estimado de esta ejecución: <b>' + fmtUsd(e.min) + ' – ' + fmtUsd(e.max) + '</b></div>' +
-          '<small>Máximo posible ' + fmtUsd(e.tope) + ', si la IA usa toda la respuesta (' + GEN_MAX_TOKENS.toLocaleString('es-PE') + ' tokens). ' +
+          '<small>Máximo posible ' + fmtUsd(e.tope) + ', si la IA usa toda la respuesta (' + e.topeTokens.toLocaleString('es-PE') + ' tokens). ' +
           e.precio.nombre + ' a precio de lista: US$ ' + e.precio.entrada + ' por millón de tokens de entrada y US$ ' + e.precio.salida +
           ' de salida; ~' + e.entrada.toLocaleString('es-PE') + ' tokens de entrada. ' +
           (e.muestras ? 'Rango ajustado con ' + e.muestras + (e.muestras === 1 ? ' ejecución real' : ' ejecuciones reales') + ' de este nivel en este navegador.'
@@ -9498,7 +9505,7 @@ Reglas:
     // byte). 90s fijos hacian cortar de mas un levantamiento de ~90K
     // caracteres; se amplia segun el largo, con techo de 3 min.
     const timeoutMs = Math.min(180000, 90000 + Math.floor(prompt.length / 1000) * 500);
-    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: GEN_MAX_TOKENS, timeoutMs,
+    const raw = await callClaude(prompt, { system: AI_SYSTEM, effort: 'medium', maxTokens: topeSalida(aiConfig().model), timeoutMs,
       onProgress: (n) => setStatus('Recibiendo el proceso de la IA… ' + n.toLocaleString('es-PE') + ' caracteres'),
       onUsage: (u) => {
         const coste = { fecha: new Date().toISOString(), modelo: u.modelo, nivel: (opts && opts.vista) || 2,

@@ -38,7 +38,7 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const PULSE_INGEST = 'https://pulse.mbc-latam.com/api/ai-usage';
 // claude-opus-5 se conserva: otras herramientas del ecosistema siguen pidiendolo
 const MODELOS = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']);
-const MAX_TOKENS = 64000;
+const MAX_TOKENS = 128000;   // v3.9.1: lo que admiten Opus 5.5 y Sonnet 5; cada app pide lo que necesite por debajo
 const MAX_BODY = 2 * 1024 * 1024;
 
 // Lee el stream (ya teeado, no es el que ve el usuario) y saca los tokens

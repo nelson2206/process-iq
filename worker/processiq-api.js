@@ -139,12 +139,21 @@ export default {
     }
     if (req.method === 'OPTIONS') return new Response(null, { status: origen ? 204 : 403, headers: cors });
     if (url.pathname !== '/v1/messages' || req.method !== 'POST') return error('Ruta no encontrada', 404, cors);
-    if (!origen) return error('Origen no permitido', 403, cors);
-    if (!CLAVE || !CODIGO) {
-      return error('El intermediario no tiene configurados sus secretos', 500, cors);
-    }
-    if (!igualSeguro(req.headers.get('x-processiq-code') || '', CODIGO)) {
-      return error('Codigo de acceso incorrecto', 401, cors);
+    // Llamada interna de otro Worker de la cuenta (service binding, p. ej. voz-relevamiento-api):
+    // no viene de un navegador, asi que no trae Origin; se autentica con INTERNAL_CODE.
+    // Ese Worker registra su propio gasto en Pulse, por eso aqui no se registra de nuevo.
+    const INTERNO = (env.INTERNAL_CODE || '').trim();
+    const interno = !!INTERNO && igualSeguro(req.headers.get('x-internal-code') || '', INTERNO);
+    if (!interno) {
+      if (!origen) return error('Origen no permitido', 403, cors);
+      if (!CLAVE || !CODIGO) {
+        return error('El intermediario no tiene configurados sus secretos', 500, cors);
+      }
+      if (!igualSeguro(req.headers.get('x-processiq-code') || '', CODIGO)) {
+        return error('Codigo de acceso incorrecto', 401, cors);
+      }
+    } else if (!CLAVE) {
+      return error('El intermediario no tiene configurada la clave', 500, cors);
     }
     if (+(req.headers.get('content-length') || 0) > MAX_BODY) {
       return error('El documento es demasiado grande para una sola llamada', 413, cors);
@@ -181,7 +190,8 @@ export default {
     if (r.ok && r.body) {
       const [aCliente, aRegistro] = r.body.tee();
       const esStreaming = contentType.includes('event-stream');
-      ctx.waitUntil(extraerUso(aRegistro, esStreaming).then(uso => registrarGasto(body.model, uso)));
+      if (!interno) ctx.waitUntil(extraerUso(aRegistro, esStreaming).then(uso => registrarGasto(body.model, uso)));
+      else aRegistro.cancel();
       return new Response(aCliente, { status: r.status, headers: salida });
     }
     return new Response(r.body, { status: r.status, headers: salida });

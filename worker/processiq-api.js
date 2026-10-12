@@ -41,6 +41,8 @@ const PULSE_INGEST = 'https://pulse.mbc-latam.com/api/ai-usage';
 const MODELOS = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5', 'claude-sonnet-5', 'claude-haiku-4-5']);
 const MAX_TOKENS = 128000;   // v3.9.1: lo que admiten Opus 5.5 y Sonnet 5; cada app pide lo que necesite por debajo
 const MAX_BODY = 2 * 1024 * 1024;
+// Las llamadas internas (otros Workers de la cuenta) pueden llevar un PDF en base64 (voz-relevamiento-api: hasta 10 MB de PDF).
+const MAX_BODY_INTERNO = 16 * 1024 * 1024;
 
 // Lee el stream (ya teeado, no es el que ve el usuario) y saca los tokens
 // reales de la respuesta de Anthropic. Nunca lanza: sin dato, null.
@@ -156,7 +158,7 @@ export default {
     } else if (!CLAVE) {
       return error('El intermediario no tiene configurada la clave', 500, cors);
     }
-    if (+(req.headers.get('content-length') || 0) > MAX_BODY) {
+    if (+(req.headers.get('content-length') || 0) > (interno ? MAX_BODY_INTERNO : MAX_BODY)) {
       return error('El documento es demasiado grande para una sola llamada', 413, cors);
     }
 

@@ -12,7 +12,7 @@
   <meta property="og:title" content="ProcessIQ — Diagramador de procesos BPMN" />
   <meta property="og:description" content="Diagramación, diagnóstico y reingeniería de procesos con nomenclatura BPMN 2.0. Analítica 2026 y export a PPTX/BPMN/SVG/Word. MBC Business Consulting Perú." />
   <meta property="og:url" content="https://nelson2206.github.io/process-iq/" />
-  <meta property="og:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.9.1" />
+  <meta property="og:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.10.0" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="ProcessIQ — diagramador de procesos BPMN de MBC" />
@@ -20,11 +20,11 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="ProcessIQ — Diagramador de procesos BPMN" />
   <meta name="twitter:description" content="Diagramación, diagnóstico y reingeniería de procesos con BPMN 2.0. MBC Business Consulting Perú." />
-  <meta name="twitter:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.9.1" />
+  <meta name="twitter:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.10.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=3.9.1" />
+  <link rel="stylesheet" href="styles.css?v=3.10.0" />
   <script defer src="https://umami-mbc.vercel.app/script.js" data-website-id="0f3aaa08-7bb8-4aec-b09b-d9c4abf3868c"></script>
 </head>
 <body>
@@ -160,31 +160,31 @@
       </button>
       <div id="shapesFlyout" class="shapes-flyout" hidden>
         <div class="flyout-title">Arrastra al lienzo</div>
-        <button class="shape-btn" draggable="true" data-shape="start" title="Inicio">
+        <button class="shape-btn" draggable="true" data-shape="start" title="Evento de inicio: el hecho que dispara el proceso (p. ej. «Solicitud recibida»).">
           <span class="shape-preview shape-start"></span>
           <span class="shape-label">Inicio</span>
         </button>
-        <button class="shape-btn" draggable="true" data-shape="task" title="Actividad">
+        <button class="shape-btn" draggable="true" data-shape="task" title="Actividad: trabajo que realiza un rol. Nómbrala con verbo + objeto (p. ej. «Validar identidad»).">
           <span class="shape-preview shape-task"></span>
           <span class="shape-label">Actividad</span>
         </button>
-        <button class="shape-btn" draggable="true" data-shape="decision" title="Decisión / gateway">
+        <button class="shape-btn" draggable="true" data-shape="decision" title="Compuerta: punto donde el flujo se divide o se une (exclusiva, paralela o inclusiva). Formúlala como pregunta.">
           <span class="shape-preview shape-decision"></span>
           <span class="shape-label">Decisión</span>
         </button>
-        <button class="shape-btn" draggable="true" data-shape="document" title="Documento">
+        <button class="shape-btn" draggable="true" data-shape="document" title="Documento: información que entra o sale de una actividad (formulario, contrato, informe). No ejecuta trabajo; se une con línea punteada.">
           <span class="shape-preview shape-document"></span>
           <span class="shape-label">Documento</span>
         </button>
-        <button class="shape-btn" draggable="true" data-shape="data" title="Data">
+        <button class="shape-btn" draggable="true" data-shape="data" title="Almacén de datos: registro o base de datos donde la información se guarda y se consulta. Se une con línea punteada.">
           <span class="shape-preview shape-data"></span>
           <span class="shape-label">Data</span>
         </button>
-        <button class="shape-btn" draggable="true" data-shape="system" title="Sistema">
+        <button class="shape-btn" draggable="true" data-shape="system" title="Tarea de sistema: actividad que ejecuta una aplicación o automatización sin intervención humana.">
           <span class="shape-preview shape-system"></span>
           <span class="shape-label">Sistema</span>
         </button>
-        <button class="shape-btn" draggable="true" data-shape="end" title="Fin">
+        <button class="shape-btn" draggable="true" data-shape="end" title="Evento de fin: el resultado con que termina el proceso (p. ej. «Crédito desembolsado»). Usa uno por cada resultado distinto.">
           <span class="shape-preview shape-end"></span>
           <span class="shape-label">Fin</span>
         </button>
@@ -260,7 +260,7 @@
         </button>
         <button id="btnAutoFit" class="hist-btn" title="Autoajustar: reordena y verifica que no se crucen las flechas" aria-label="Autoajustar diagrama"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3"/><rect x="8" y="8" width="8" height="8" rx="1.5"/></svg></button>
         <button id="btnShortcuts" title="Atajos de teclado (tecla ?)" aria-label="Ver atajos de teclado">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M10 13h4M8 16.5h8"/></svg>
         </button>
       </div>
       <div id="shortcutsPanel" class="shortcuts-panel" hidden>
@@ -427,7 +427,7 @@
             <input type="checkbox" id="propTerminate" />
             <span>Evento de terminación ⬤ <span style="text-transform:none;color:var(--gray-500);font-weight:400">— corta toda la instancia</span></span>
           </label>
-          <label>Etiqueta · <span style="text-transform:none;color:var(--gray-500);font-weight:400">verbo + objeto</span>
+          <label>Etiqueta · <span id="propLabelRule" style="text-transform:none;color:var(--gray-500);font-weight:400">verbo + objeto</span>
             <input type="text" id="propLabel" placeholder="Ej. Validar identidad del cliente" />
             <div id="propLabelHint" class="field-hint" hidden></div>
           </label>
@@ -817,6 +817,6 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="kpi-library.js?v=1.6.1"></script>
-  <script src="app.js?v=3.9.1"></script>
+  <script src="app.js?v=3.10.0"></script>
 </body>
 </html>

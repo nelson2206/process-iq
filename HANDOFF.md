@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.9.1 — documentos grandes: 400 páginas de PDF, 400K caracteres a la IA y 128K tokens de respuesta
+> **Última actualización:** v3.10.0 — 14 de las 17 observaciones de ProcessIQ_UX.docx (UX-001..008, BPMN-001/002/005..009); pendientes UX-003, BPMN-003, BPMN-004
 
 ---
 
@@ -419,6 +419,66 @@
   32.000 tokens no bastaban. Tope subido a 64.000 en app y Worker (valor
   recomendado con streaming; se paga lo usado, no el tope) y el aviso ahora
   dice que el texto esta bien y sugiere nivel Actividad/Ejecutivo.
+- v3.10.0 REVISION UX/BPMN (Downloads\ProcessIQ_UX.docx, 17 observaciones).
+  Corregidas 14:
+  UX-001 "Nuevo" dejaba carriles y "6 de 9 pasos": resetState no limpiaba
+    _lanes/_modeloCompleto/_selloModelo/_firmaGeom (y se guardaban en
+    localStorage). Ahora los limpia y llama a actualizarSelectorNivel; render
+    no dibuja carriles sin nodos.
+  UX-002 cambiar Responsable no movia el carril: listener 'change' en
+    #propOwner (no 'input': crearia un carril por tecla) -> cambiarResponsable.
+  UX-004 doble clic no editaba: el mousedown redibuja el nodo y el dblclick no
+    llegaba a su elemento. Se detecta con ev.detail>=2 en el mousedown y abre
+    editarEtiquetaEnLinea (textarea sobre la caja; Enter guarda, Esc cancela).
+  UX-005 Ajustar dejaba cajas fuera: 3 causas. (1) zoomToFit medía solo nodos
+    -> extensionDibujo() mide carriles+flechas+nodos con getBBox. (2) subia a
+    126 %: ahora tope 100 %. (3) BUG de la cabecera fija: translate(scrollLeft)
+    en unidades del viewBox con scrollLeft en px de pantalla; a zoom != 100 %
+    se desplazaba mal y tapaba actividades -> scrollLeft/zoom. Con carriles
+    se encuadra desde x=0 (desde padX la cabecera caia sobre la 1a columna).
+    Residual aceptado: a zoom muy bajo (30-45 %) el TEXTO bajo el primer evento
+    roza la cabecera unos 6 px; la figura queda libre.
+  UX-006 icono de teclado en #btnShortcuts (antes "?" igual que la Leyenda).
+  UX-007 ayudas del menu Añadir describen funcion y uso.
+  UX-008 Esc sale del modo Conectar.
+  BPMN-001 EVENTOS_VALIDOS por tipo: inicio sin Error (solo subproceso de
+    evento), fin sin Temporizador, intermedio sin Error (es de borde). Las
+    opciones del select se arman por tipo; al cambiar de tipo se limpia un
+    eventType invalido; regla de lint R3c (alta) para importados/IA.
+  BPMN-002/008 el aviso "no esta en el catalogo MBB" venia de showLabelHint
+    (no del linter, que ya filtraba task/system). Ahora REGLA_ETIQUETA por
+    tipo: actividad verbo+objeto, evento hecho/resultado (avisa si es
+    generico o un infinitivo del catalogo), compuerta pregunta, documento y
+    dato sustantivo. La leyenda "verbo + objeto" y el placeholder cambian.
+  BPMN-005 la etiqueta "Si" se tapaba: edgeLabelPoint ignoraba la ruta real y
+    caia bajo otra caja (capa de flechas debajo de nodos). Ahora el punto sale
+    de path.getPointAtLength (40 px de la salida) y las etiquetas van en
+    #edgeLabelsLayer, encima de los nodos y bajo la cabecera fija.
+  BPMN-006 entre carriles se pintaba flujo de MENSAJE (discontinuo). En BPMN
+    los carriles son del mismo pool: es secuencia. edgeKind(e) decide; message
+    solo si e.kind === 'message' (no hay pools hoy). Igual en PPTX.
+  BPMN-007 soltar en otro carril cambia el responsable (finalizarArrastre ->
+    cambiarResponsable: actualiza tambien _modeloCompleto, autoLayout, aviso).
+  BPMN-009 documento/dato <-> actividad = asociacion: punteada fina, flecha
+    abierta (.edge-assoc); en XML <bpmn:association> fuera de incoming/
+    outgoing; en PPTX sysDot + flecha abierta. El layout NO las excluye de los
+    rangos (cambiaria la posicion de documentos en demos existentes).
+  Verificado en navegador (eventos simulados): Nuevo deja 0 carriles y sin
+  indicador ni carriles guardados; demo showcase 0 lineas de mensaje, 4
+  asociaciones (y 4 <bpmn:association> en XML), 10 etiquetas en la capa
+  superior; Ajustar 0 cajas fuera en 5 demos; Esc apaga Conectar; reglas y
+  tipos de evento correctos para los 7 tipos; doble clic edita; cambiar
+  responsable y arrastrar de carril actualizan; PPTX se genera sin errores.
+  PENDIENTES (funciones nuevas, decision del usuario):
+  UX-003 panel de conexion (tipo secuencia/mensaje/asociacion, lado de salida
+    y entrada; puntos de quiebre arrastrables seria fase 2). Esfuerzo M-L.
+  BPMN-003 abrir subproceso colapsado: hoy "subproceso" es solo un marcador
+    (n.marker); padre/nivel son de la vista por niveles, no un submodelo.
+    Requiere n.sub {nodes,edges}, pila de navegacion con miga de pan, y que
+    persist/historial/niveles/as-is-to-be serialicen el modelo raiz. M-L.
+  BPMN-004 conectar desde el temporizador de borde: el borde es propiedad de
+    la tarea, no nodo. Requiere edge.fromBoundary, ruta saliendo del reloj,
+    sourceRef "<id>_be" en XML y ajuste en PPTX. M.
 - v3.9.1 DOCUMENTOS GRANDES (parcial). Sintoma: PDF de 10 MB, "demoro mucho
   y no se pudo generar". Un archivo asi choca con CUATRO topes distintos, y el
   de 40 MB de archivo no es el que salta:

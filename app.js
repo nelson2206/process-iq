@@ -233,7 +233,9 @@
     if (!laneHeadersLayer || !state._lanes) return;
     const wrapper = $('#canvasWrapper');
     if (!wrapper) return;
-    laneHeadersLayer.setAttribute('transform', `translate(${wrapper.scrollLeft}, 0)`);
+    // UX-005: el translate va en unidades del viewBox; scrollLeft esta en px de
+    // pantalla. Sin dividir por el zoom, a 126 % la cabecera tapaba actividades.
+    laneHeadersLayer.setAttribute('transform', `translate(${wrapper.scrollLeft / (state.zoom || 1)}, 0)`);
   }
 
   function attachCanvasListeners() {
@@ -295,12 +297,105 @@
       render();
     });
 
-    canvas.addEventListener('mouseup', () => {
-      if (state.drag) { state.drag = null; persist(); }
+    canvas.addEventListener('mouseup', () => { if (state.drag) finalizarArrastre(); });
+    canvas.addEventListener('mouseleave', () => { if (state.drag) finalizarArrastre(); });
+  }
+
+  // BPMN-007: soltar una actividad en OTRO carril cambia su responsable a ese
+  // carril. Antes solo cambiaba x/y y "Ordenar" la devolvia a su carril viejo.
+  function finalizarArrastre() {
+    const d = state.drag; state.drag = null;
+    const n = d && getNode(d.id);
+    const L = state._lanes;
+    const movio = n && d.x0 != null && (Math.abs(n.x - d.x0) > 3 || Math.abs(n.y - d.y0) > 3);
+    if (n && movio && L && L.list && L.list.length && (state.meta.nivelVista || 3) === 3) {
+      const cy = n.y + n.h / 2;
+      const banda = L.bandH ? Math.max(0, Math.floor((cy - L.padY) / L.bandH)) : 0;
+      const rel = cy - L.padY - banda * (L.bandH || 0);
+      const tops = L.laneTops || L.list.map((_, i) => i * L.laneH);
+      const altos = L.laneHs || L.list.map(() => L.laneH);
+      const idx = tops.findIndex((t, i) => rel >= t && rel < t + altos[i]);
+      if (idx >= 0 && L.list[idx] !== (L.laneOf || {})[n.id]) {
+        cambiarResponsable(n, L.list[idx]);
+        return;
+      }
+    }
+    persist();
+  }
+
+  // Cambia el responsable de una actividad y reorganiza los carriles (UX-002 y
+  // BPMN-007). Tambien actualiza la copia del modelo completo: sin eso, al
+  // cambiar de nivel de detalle volvia el responsable anterior.
+  function cambiarResponsable(n, rol) {
+    rol = (rol || '').trim();
+    n.owner = rol;
+    n._inferredOwner = false;
+    const full = state._modeloCompleto && state._modeloCompleto.nodes;
+    if (full) { const c = full.find(x => x.id === n.id); if (c && c !== n) { c.owner = rol; c._inferredOwner = false; } }
+    autoLayout();   // ya persiste y redibuja
+    renderProperties();
+    avisoBreve(rol ? 'Responsable cambiado a «' + rol + '»' : 'Responsable quitado');
+  }
+
+  // Aviso flotante breve (no bloquea, se va solo)
+  function avisoBreve(texto) {
+    let el = document.getElementById('avisoBreve');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'avisoBreve';
+      el.setAttribute('role', 'status');
+      el.className = 'aviso-breve';
+      document.body.appendChild(el);
+    }
+    el.textContent = texto;
+    el.classList.add('visible');
+    clearTimeout(avisoBreve._t);
+    avisoBreve._t = setTimeout(() => el.classList.remove('visible'), 2600);
+  }
+
+  // UX-004: doble clic edita el nombre SOBRE la caja (antes no hacia nada: el
+  // mousedown redibujaba el nodo y el dblclick nunca llegaba a su elemento).
+  function editarEtiquetaEnLinea(n) {
+    const area = $('#canvasArea');
+    if (!area || !canvas.getScreenCTM) return;
+    const viejo = document.getElementById('editorEtiqueta');
+    if (viejo) viejo.remove();
+    const ctm = canvas.getScreenCTM();
+    const p1 = canvas.createSVGPoint(), p2 = canvas.createSVGPoint();
+    p1.x = n.x; p1.y = n.y; p2.x = n.x + n.w; p2.y = n.y + n.h;
+    const a = p1.matrixTransform(ctm), b = p2.matrixTransform(ctm);
+    const ra = area.getBoundingClientRect();
+    const ancho = Math.max(150, b.x - a.x), alto = Math.max(44, b.y - a.y);
+    const ta = document.createElement('textarea');
+    ta.id = 'editorEtiqueta';
+    ta.className = 'editor-etiqueta';
+    ta.value = n.label || '';
+    ta.style.left = (a.x - ra.left + (b.x - a.x - ancho) / 2) + 'px';
+    ta.style.top = (a.y - ra.top + (b.y - a.y - alto) / 2) + 'px';
+    ta.style.width = ancho + 'px';
+    ta.style.height = alto + 'px';
+    area.appendChild(ta);
+    ta.focus(); ta.select();
+    let cerrado = false;
+    const cerrar = (guardar) => {
+      if (cerrado) return; cerrado = true;
+      const v = ta.value.trim();
+      ta.remove();
+      if (guardar && v !== (n.label || '')) {
+        n.label = v;
+        const full = state._modeloCompleto && state._modeloCompleto.nodes;
+        if (full) { const c = full.find(x => x.id === n.id); if (c && c !== n) c.label = v; }
+        persist(); render(); renderProperties(); runLinter();
+      }
+    };
+    ta.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); cerrar(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); cerrar(false); }
     });
-    canvas.addEventListener('mouseleave', () => {
-      if (state.drag) { state.drag = null; persist(); }
-    });
+    ta.addEventListener('blur', () => cerrar(true));
+    const wrap = $('#canvasWrapper');
+    if (wrap) wrap.addEventListener('scroll', () => cerrar(true), { once: true });
   }
 
   function svgPoint(clientX, clientY) {
@@ -384,7 +479,7 @@
     laneHeadersLayer.innerHTML = '';
 
     // Render de swimlanes (carreteras) si están definidas
-    if (state._lanes && state._lanes.list.length > 0) {
+    if (state._lanes && state._lanes.list.length > 0 && state.nodes.length > 0) {   // sin nodos no hay carriles que mostrar
       const L = state._lanes;
       const ns = 'http://www.w3.org/2000/svg';
       // En modo envolvente el bloque de carriles se repite en cada banda
@@ -482,20 +577,31 @@
     // cambio de geometría —arrastre, undo, resize, edición— invalida las rutas.
     const firmaGeom = state.nodes.map(n => n.id + ':' + (n.x | 0) + ',' + (n.y | 0) + ',' + (n.w | 0) + ',' + (n.h | 0)).join('|');
     if (firmaGeom !== state._firmaGeom) { state._firmaGeom = firmaGeom; invalidarRutas(); }
+    // BPMN-005: las etiquetas van en su propia capa ENCIMA de las cajas. En la
+    // capa de flechas (debajo de los nodos) una caja intermedia las tapaba.
+    let labelsLayer = document.getElementById('edgeLabelsLayer');
+    if (!labelsLayer) {
+      labelsLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      labelsLayer.id = 'edgeLabelsLayer';
+      labelsLayer.setAttribute('pointer-events', 'none');
+      nodesLayer.parentNode.insertBefore(labelsLayer, nodesLayer.nextSibling);
+    }
+    labelsLayer.innerHTML = '';
     state.edges.forEach(e => {
       const a = getNode(e.from), b = getNode(e.to);
       if (!a || !b) return;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', smartEdgePath(a, b, e));
-      // Message flow (punteado) si cruza lanes/responsables distintos; sequence flow (sólido) si no
-      const laneOfA = state._lanes?.laneOf?.[a.id];
-      const laneOfB = state._lanes?.laneOf?.[b.id];
-      const isMessageFlow = laneOfA && laneOfB && laneOfA !== laneOfB &&
-                            a.type !== 'start' && b.type !== 'end';
+      // BPMN-006: entre carriles del MISMO proceso el flujo es de secuencia
+      // (continuo). Antes cualquier cruce de carril se pintaba como flujo de
+      // mensaje, que en BPMN solo existe entre pools (organizaciones).
+      // BPMN-009: con un documento o dato en un extremo es una asociacion de
+      // datos (punteada, flecha abierta), no un paso del flujo.
+      const kind = edgeKind(e, a, b);
       path.setAttribute('class', 'edge-path' +
-        (isMessageFlow ? ' edge-message' : '') +
+        (kind === 'message' ? ' edge-message' : kind === 'association' ? ' edge-assoc' : '') +
         (e.id === state.selectedEdgeId ? ' selected' : ''));
-      path.setAttribute('marker-end', isMessageFlow ? 'url(#arrow-open)' : 'url(#arrow)');
+      path.setAttribute('marker-end', kind === 'sequence' ? 'url(#arrow)' : 'url(#arrow-open)');
       path.addEventListener('click', ev => {
         ev.stopPropagation();
         state.selectedEdgeId = e.id;
@@ -529,16 +635,26 @@
       edgesLayer.appendChild(path);
 
       if (e.label) {
-        const lp = edgeLabelPoint(a, b, e);
+        // BPMN-005: la posicion sale del trazado REAL. edgeLabelPoint recalculaba
+        // una geometria simple que, con rutas por el pasillo o por A*, caia sobre
+        // otra caja; por eso "Sí" aparecia al mover la actividad.
+        let lp;
+        try {
+          const largo = path.getTotalLength();
+          // Cerca de la salida (40 px), donde se lee de que rama es; en flechas
+          // cortas, a mitad de camino
+          const p = path.getPointAtLength(Math.min(largo * 0.5, 40));
+          lp = { x: p.x, y: p.y };
+        } catch (_) { lp = edgeLabelPoint(a, b, e); }
         const mx = lp.x, my = lp.y;
         const nsv = 'http://www.w3.org/2000/svg';
         const txt = document.createElementNS(nsv, 'text');
         txt.setAttribute('x', mx);
-        txt.setAttribute('y', my - 4);
+        txt.setAttribute('y', my + 4);
         txt.setAttribute('class', 'edge-label');
         txt.setAttribute('text-anchor', 'middle');
         txt.textContent = e.label;
-        edgesLayer.appendChild(txt);
+        labelsLayer.appendChild(txt);
         // Fondo "pill" para legibilidad (insertado DETRÁS del texto, medido con getBBox)
         try {
           const bb = txt.getBBox();
@@ -550,7 +666,7 @@
           pill.setAttribute('height', bb.height + padY * 2);
           pill.setAttribute('rx', '4');
           pill.setAttribute('class', 'edge-label-bg');
-          edgesLayer.insertBefore(pill, txt);
+          labelsLayer.insertBefore(pill, txt);
         } catch (_) { /* getBBox puede fallar si no está en layout */ }
       }
     });
@@ -859,19 +975,18 @@
           }
           return;
         }
+        // UX-004: el segundo clic de un doble clic abre el editor sobre la caja.
+        // ev.detail es el conteo de clics del navegador; no depende del
+        // elemento, que render() reemplaza en cada mousedown.
+        if (ev.detail >= 2) { ev.preventDefault(); state.drag = null; editarEtiquetaEnLinea(n); return; }
         state.selectedNodeId = n.id;
         state.selectedEdgeId = null;
         const pt = svgPoint(ev.clientX, ev.clientY);
-        state.drag = { id: n.id, offsetX: pt.x - n.x, offsetY: pt.y - n.y };
+        state.drag = { id: n.id, offsetX: pt.x - n.x, offsetY: pt.y - n.y, x0: n.x, y0: n.y };
         render();
       });
 
-      g.addEventListener('dblclick', ev => {
-        ev.stopPropagation();
-        // Edición rápida de etiqueta del nodo
-        const v = prompt('Etiqueta del nodo:', n.label || '');
-        if (v !== null) { n.label = v.trim(); persist(); render(); }
-      });
+      g.addEventListener('dblclick', ev => { ev.stopPropagation(); });   // lo resuelve el mousedown (ev.detail)
 
       nodesLayer.appendChild(g);
     });
@@ -1445,6 +1560,18 @@
   }
 
   // Punto medio real del recorrido (para colocar la etiqueta sin pisar cajas)
+  // Tipo BPMN de una conexion. Se calcula (no se guarda) para que los
+  // diagramas ya existentes queden bien sin migrarlos:
+  //   'association' si un extremo es documento o dato (BPMN-009)
+  //   'message' solo si se marca a mano (pools distintos; hoy no hay pools)
+  //   'sequence' en todo lo demas, aunque cruce carriles (BPMN-006)
+  function edgeKind(e, a, b) {
+    a = a || getNode(e.from); b = b || getNode(e.to);
+    const esDato = (n) => n && (n.type === 'document' || n.type === 'data');
+    if (esDato(a) || esDato(b)) return 'association';
+    return e.kind === 'message' ? 'message' : 'sequence';
+  }
+
   function edgeLabelPoint(a, b, edge) {
     const ac = nodeCenter(a), bc = nodeCenter(b);
     const forward = b.x >= a.x + a.w - 4;
@@ -1582,6 +1709,16 @@
         runLinter();
       });
     });
+    // UX-002: al confirmar el responsable (Enter o salir del campo) la
+    // actividad pasa a su carril sin pulsar "Ordenar". No va en 'input' porque
+    // crearia un carril por cada tecla ("A", "An", "Ana"...).
+    const ownerEl = $('#propOwner');
+    if (ownerEl) ownerEl.addEventListener('change', () => {
+      const n = getNode(state.selectedNodeId);
+      if (!n || !state._lanes) return;
+      if (((state._lanes.laneOf || {})[n.id] || '') === ownerEl.value.trim()) return;
+      cambiarResponsable(n, ownerEl.value);
+    });
 
     // Edición manual del código de actividad
     const codeEl = $('#propActivityCode');
@@ -1616,11 +1753,12 @@
         } else if (!n.executionType) {
           n.executionType = newType === 'system' ? 'system' : 'manual';
         }
-        // Limpia eventType si deja de ser evento
+        // Limpia eventType si deja de ser evento o si no es valido para el nuevo
+        // tipo (un fin de Error convertido en inicio quedaba como inicio de Error)
         if (newType !== 'start' && newType !== 'end' && newType !== 'intermediate') {
           n.eventType = '';
-        } else if (!n.eventType) {
-          n.eventType = 'none';
+        } else if (!n.eventType || !EVENTOS_VALIDOS[newType].includes(n.eventType)) {
+          n.eventType = '';
         }
         persist();
         renderProperties();
@@ -1695,14 +1833,54 @@
     }
   }
 
-  function showLabelHint(value) {
+  // BPMN 2.0, con los glifos que dibuja la herramienta (mensaje, temporizador,
+  // error, senal). Inicio: sin Error (solo en subprocesos de evento). Fin: sin
+  // Temporizador (un fin no espera). Intermedio: sin Error (es solo de borde).
+  const EVENTOS_VALIDOS = {
+    start:        ['none', 'message', 'timer', 'signal'],
+    intermediate: ['none', 'message', 'timer', 'signal'],
+    end:          ['none', 'message', 'error', 'signal']
+  };
+  const EVENTO_ETIQUETA = { none: '— Simple (ninguno)', message: '✉ Mensaje', timer: '⏱ Temporizador (espera)', error: '⚡ Error', signal: '▲ Señal' };
+
+  // BPMN-002 / BPMN-008: la regla "verbo + objeto" es solo para actividades.
+  // Un evento describe un hecho, una compuerta es una pregunta y un documento
+  // o dato es un sustantivo; antes los cuatro recibian el aviso de verbos.
+  const REGLA_ETIQUETA = {
+    task:         { regla: 'verbo + objeto',   ejemplo: 'Ej. Validar identidad del cliente' },
+    system:       { regla: 'verbo + objeto',   ejemplo: 'Ej. Calcular score crediticio' },
+    start:        { regla: 'hecho o estado',   ejemplo: 'Ej. Solicitud recibida' },
+    intermediate: { regla: 'hecho o estado',   ejemplo: 'Ej. Plazo de 48 h vencido' },
+    end:          { regla: 'resultado',        ejemplo: 'Ej. Crédito desembolsado' },
+    decision:     { regla: 'pregunta (¿…?)',   ejemplo: 'Ej. ¿Solicitud completa?' },
+    document:     { regla: 'sustantivo',       ejemplo: 'Ej. Solicitud de crédito' },
+    data:         { regla: 'sustantivo',       ejemplo: 'Ej. Información del cliente' }
+  };
+  function showLabelHint(value, type) {
     const hint = $('#propLabelHint');
     if (!hint) return;
     const v = (value || '').trim();
     if (!v) { hint.hidden = true; return; }
+    const t = type || ((getNode(state.selectedNodeId) || {}).type) || 'task';
+    const aviso = (clase, texto) => { hint.hidden = false; hint.className = 'field-hint ' + clase; hint.textContent = texto; };
 
     const lower = v.toLowerCase();
     const firstWord = lower.split(/\s+/)[0].replace(/[^a-záéíóúñ]/g, '');
+
+    if (t === 'start' || t === 'end' || t === 'intermediate') {
+      if (/^(inicio|fin|final|start|end|evento)$/i.test(v)) return aviso('warn', `"${v}" es genérico. Describe el hecho, p. ej. «Solicitud recibida» o «Crédito desembolsado».`);
+      if (/^[a-záéíóúñ]+(ar|er|ir)$/.test(firstWord) && (window.VERBS_ALLOWED || []).some(a => firstWord.startsWith(a)))
+        return aviso('warn', 'Un evento no es una acción: usa un participio (p. ej. «Solicitud registrada»).');
+      return aviso('ok', 'OK · el evento describe un hecho');
+    }
+    if (t === 'decision') {
+      return /^¿|\?$/.test(v) ? aviso('ok', 'OK · formulada como pregunta')
+                             : aviso('warn', 'Formula la compuerta como pregunta, p. ej. «¿Solicitud completa?».');
+    }
+    if (t === 'document' || t === 'data') {
+      return v.length > 50 ? aviso('warn', `Demasiado larga (${v.length} car). Usa un nombre breve.`)
+                           : aviso('ok', 'OK · nombre descriptivo');
+    }
 
     // Verbo prohibido?
     const forbidden = window.VERBS_FORBIDDEN || {};
@@ -1764,11 +1942,18 @@
       $('#propGatewayWrap').hidden = n.type !== 'decision';
       if (n.type === 'decision' && $('#propGatewayType')) $('#propGatewayType').value = n.gatewayType || 'exclusive';
     }
-    // Muestra el selector de evento solo para start/end/intermediate
+    // Muestra el selector de evento solo para start/end/intermediate, con los
+    // tipos VALIDOS para cada uno (BPMN-001: un inicio de proceso no puede ser
+    // Error; eso es solo de subprocesos de evento).
     if ($('#propEventWrap')) {
       const isEvent = n.type === 'start' || n.type === 'end' || n.type === 'intermediate';
       $('#propEventWrap').hidden = !isEvent;
-      if (isEvent && $('#propEventType')) $('#propEventType').value = n.eventType || 'none';
+      const sel = $('#propEventType');
+      if (isEvent && sel) {
+        const validos = EVENTOS_VALIDOS[n.type];
+        sel.innerHTML = validos.map(v => `<option value="${v}">${EVENTO_ETIQUETA[v]}</option>`).join('');
+        sel.value = validos.includes(n.eventType || 'none') ? (n.eventType || 'none') : 'none';
+      }
     }
     // Checkbox de terminación solo para eventos de fin
     if ($('#propTerminateWrap')) {
@@ -1803,7 +1988,10 @@
     $('#propDocsOut').value = n.docsOut || '';
     $('#propRules').value = n.rules || '';
     $('#propNotes').value = n.notes || '';
-    showLabelHint(n.label || '');
+    const rl = REGLA_ETIQUETA[n.type] || REGLA_ETIQUETA.task;
+    if ($('#propLabelRule')) $('#propLabelRule').textContent = rl.regla;
+    $('#propLabel').placeholder = rl.ejemplo;
+    showLabelHint(n.label || '', n.type);
     showExecHint(n.executionType || '');
   }
 
@@ -2545,6 +2733,8 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       if (e.key === 'c' || e.key === 'C') toggleConnectMode();
       if (e.key === 'Escape') {
         if (document.body.classList.contains('present-mode')) { togglePresentMode(false); return; }
+        // UX-008: Esc sale del modo Conectar (antes solo limpiaba la seleccion)
+        if (state.mode === 'connect') { state.connectSourceId = null; toggleConnectMode(); return; }
         if (window.cerrarDesplegables) window.cerrarDesplegables();
         const habiaSeleccion = !!(state.selectedNodeId || state.selectedEdgeId);
         state.selectedNodeId = null; state.selectedEdgeId = null; state.connectSourceId = null; render();
@@ -2683,23 +2873,40 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       else if (e.key === 'f' || e.key === 'F') { zoomToFit(); }
     });
   }
+  // Caja real de lo dibujado (carriles + flechas + cajas con su texto debajo),
+  // en unidades de contenido. Antes solo contaban las cajas: los corredores de
+  // retorno, las etiquetas y los carriles quedaban fuera del encuadre.
+  function extensionDibujo() {
+    const bb = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity };
+    const add = (b) => {
+      if (!b || !(b.width || b.height) || !isFinite(b.x)) return;
+      bb.x1 = Math.min(bb.x1, b.x); bb.y1 = Math.min(bb.y1, b.y);
+      bb.x2 = Math.max(bb.x2, b.x + b.width); bb.y2 = Math.max(bb.y2, b.y + b.height);
+    };
+    ['#swimlanesLayer', '#edgesLayer', '#nodesLayer'].forEach(s => { try { add($(s).getBBox()); } catch (e) {} });
+    state.nodes.forEach(n => add({ x: n.x, y: n.y, width: n.w, height: n.h + 30 }));
+    return bb;
+  }
   function zoomToFit() {
     const wrap = $('#canvasWrapper');
     if (!wrap || state.nodes.length === 0) { setZoom(1); return; }
-    // Extensión real del contenido (sin el padding del scroll)
-    let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
-    state.nodes.forEach(n => {
-      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
-      maxX = Math.max(maxX, n.x + n.w); maxY = Math.max(maxY, n.y + n.h);
-    });
-    const margin = 80;
-    const contentW = (maxX - minX) + margin * 2;
-    const contentH = (maxY - minY) + margin * 2 + 40; // +40 por labels bajo nodos
-    const z = Math.min(wrap.clientWidth / contentW, wrap.clientHeight / contentH);
+    const bb = extensionDibujo();
+    const L = state._lanes && state._lanes.list && state._lanes.list.length ? state._lanes : null;
+    const M = 30;
+    // UX-005: con carriles se encuadra desde el borde del carril (la cabecera
+    // fija va incluida); 16 px de holgura para las barras de desplazamiento.
+    // Con carriles se encuadra desde x=0: la cabecera fija se dibuja a padX
+    // del borde visible, y empezar en padX la corria sobre la primera columna.
+    const x1 = L ? 0 : bb.x1 - M;
+    const contentW = (bb.x2 + M) - x1, contentH = (bb.y2 - bb.y1) + 2 * M;
+    let z = Math.min((wrap.clientWidth - 16) / contentW, (wrap.clientHeight - 16) / contentH);
+    // Ajustar nunca agranda por encima del 100 %: antes un proceso chico subia
+    // a 126 % y se salia por los bordes.
+    z = Math.max(ZOOM_MIN, Math.min(1, z));
     setZoom(z, { keepScroll: true });
-    // Lleva el scroll al inicio del contenido (arriba-izquierda)
-    const wrap2 = $('#canvasWrapper');
-    if (wrap2) { wrap2.scrollLeft = Math.max(0, (minX - margin) * (state.zoom || 1)); wrap2.scrollTop = Math.max(0, (minY - margin) * (state.zoom || 1)); }
+    wrap.scrollLeft = Math.max(0, x1 * z);
+    wrap.scrollTop = Math.max(0, (bb.y1 - M) * z);
+    updateStickyHeaders();
   }
 
   // Selector de ejemplos pre-cargados
@@ -2737,9 +2944,8 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   function maybeFitOnLoad() {
     const wrap = $('#canvasWrapper');
     if (!wrap || state.nodes.length === 0) return;
-    let minX = Infinity, maxX = 0, minY = Infinity, maxY = 0;
-    state.nodes.forEach(n => { minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x + n.w); minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y + n.h); });
-    const contentW = (maxX - minX) + 160, contentH = (maxY - minY) + 160;
+    const bb = extensionDibujo();
+    const contentW = (bb.x2 - Math.min(bb.x1, 0)) + 60, contentH = (bb.y2 - bb.y1) + 60;
     // Solo encuadra si desborda; procesos pequeños se quedan a 100%
     if (contentW > wrap.clientWidth || contentH > wrap.clientHeight) {
       zoomToFit();
@@ -3512,12 +3718,23 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     state._variants = null;
     state._valueMode = false;
     state._backlog = null;
+    // UX-001: carriles, modelo completo de niveles y rutas son posteriores a
+    // esta funcion y no se limpiaban; "Nuevo" mostraba los carriles y el
+    // "6 de 9 pasos" del proceso anterior (y sobrevivian a recargar).
+    state._lanes = null;
+    state._loopSlots = null;
+    state._modeloCompleto = null;
+    state._selloModelo = null;
+    state._firmaGeom = null;
+    if (state.meta) state.meta.nivelVista = 3;
+    if (typeof invalidarRutas === 'function') invalidarRutas();
     updateViewUi();
     $('#processName').value = '';
     $('#processIndustry').value = '';
     $('#processMacro').value = '';
     persist();
     render();
+    if (typeof actualizarSelectorNivel === 'function') actualizarSelectorNivel();
   }
 
   // Proceso demo completo pre-poblado (para presentaciones a cliente)
@@ -4820,6 +5037,16 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     if (starts.length === 0) issues.push({ sev: 'critical', title: 'Falta evento Start', detail: 'Todo proceso debe iniciar en un evento "Inicio".' });
     // R2: al menos 1 end
     if (ends.length === 0) issues.push({ sev: 'critical', title: 'Falta evento End', detail: 'Todo proceso debe cerrar en al menos un "Fin".' });
+    // R3c (BPMN-001): tipo de evento invalido para su posicion (p. ej. inicio de
+    // Error importado o generado por IA). El editor ya no deja elegirlo.
+    nodes.forEach(n => {
+      const v = EVENTOS_VALIDOS[n.type];
+      if (v && n.eventType && !v.includes(n.eventType)) {
+        issues.push({ sev: 'high', title: 'Tipo de evento no válido en BPMN',
+          detail: `Un evento de ${n.type === 'start' ? 'inicio' : n.type === 'end' ? 'fin' : 'intermedio'} no puede ser "${EVENTO_ETIQUETA[n.eventType] || n.eventType}". ` +
+                  (n.type === 'start' && n.eventType === 'error' ? 'El inicio de Error solo existe dentro de subprocesos de evento.' : 'Cámbialo en Propiedades.'), target: n.id });
+      }
+    });
     // R3: end genérico
     ends.forEach(n => {
       const lower = (n.label || '').toLowerCase().trim();
@@ -6350,6 +6577,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     // Construye relaciones in/out por nodo para incoming/outgoing (mejora compliance BPMN)
     const incoming = {}, outgoing = {};
     state.edges.forEach(e => {
+      if (edgeKind(e) === 'association') return;   // las asociaciones de datos no son entradas/salidas del flujo
       (outgoing[e.from] = outgoing[e.from] || []).push(e.id);
       (incoming[e.to]   = incoming[e.to]   || []).push(e.id);
     });
@@ -6393,6 +6621,11 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     });
 
     state.edges.forEach(e => {
+      // BPMN-009: documento/dato <-> actividad es una asociacion, no un flujo
+      if (edgeKind(e) === 'association') {
+        processBody += `    <bpmn:association id="${e.id}" sourceRef="${e.from}" targetRef="${e.to}" associationDirection="One" />\n`;
+        return;
+      }
       processBody += `    <bpmn:sequenceFlow id="${e.id}" sourceRef="${e.from}" targetRef="${e.to}"${e.label ? ` name="${esc(e.label)}"` : ''} />\n`;
     });
 
@@ -7422,8 +7655,11 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
           x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y),
           w: Math.max(Math.abs(p2.x - p1.x), 0.01), h: Math.max(Math.abs(p2.y - p1.y), 0.01),
           flipH: p2.x < p1.x, flipV: p2.y < p1.y,
-          line: { color: esMensaje ? 'B8879E' : MAGENTA, width: 0.5,
-                  dashType: esMensaje ? 'dash' : 'solid', endArrowType: 'triangle' },
+          // esMensaje recibe el tipo BPMN: 'association' punteada con flecha
+          // abierta, 'message' discontinua; la secuencia siempre continua.
+          line: { color: esMensaje === 'sequence' ? MAGENTA : 'B8879E', width: 0.5,
+                  dashType: esMensaje === 'association' ? 'sysDot' : esMensaje === 'message' ? 'dash' : 'solid',
+                  endArrowType: esMensaje === 'sequence' ? 'triangle' : 'arrow' },
           objectName: 'Flujo|' + a.id + '|' + b.id + '|' + ladoA + '|' + ladoB + '|' + adjRama(a.id)
         });
         if (e.label) {
@@ -7518,10 +7754,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         const cruzaBanda = rA != null && rB != null && saltaBanda(rA, rB);
         if (aIn && bIn && !cruzaBanda) {
           const ba = nodeBoxes.get(a.id), bb = nodeBoxes.get(b.id);
-          const lA = state._lanes && state._lanes.laneOf ? state._lanes.laneOf[a.id] : null;
-          const lB = state._lanes && state._lanes.laneOf ? state._lanes.laneOf[b.id] : null;
-          const isMsg = lA && lB && lA !== lB && a.type !== 'start' && b.type !== 'end';
-          emitirConector(slide, a, b, ba, bb, e, isMsg);
+          // BPMN-006/009: mismo criterio que el lienzo (cruzar carril no es mensaje)
+          emitirConector(slide, a, b, ba, bb, e, edgeKind(e, a, b));
           return;
         }
         if (aIn && esAristaAFinAdelantado(e)) {

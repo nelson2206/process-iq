@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.10.0 — 14 de las 17 observaciones de ProcessIQ_UX.docx (UX-001..008, BPMN-001/002/005..009); pendientes UX-003, BPMN-003, BPMN-004
+> **Última actualización:** v3.11.0 — fase 2 de ProcessIQ_UX.docx: lectura por tramos de documentos largos, panel de conexión (UX-003), temporizador de borde conectable (BPMN-004) y subprocesos navegables (BPMN-003)
 
 ---
 
@@ -479,6 +479,64 @@
   BPMN-004 conectar desde el temporizador de borde: el borde es propiedad de
     la tarea, no nodo. Requiere edge.fromBoundary, ruta saliendo del reloj,
     sourceRef "<id>_be" en XML y ajuste en PPTX. M.
+  -> Los tres quedaron hechos en v3.11.0 (abajo).
+- v3.11.0 FASE 2 (usuario: "ejecuta todo"). Cuatro frentes:
+  1) LECTURA POR TRAMOS (documentos > MAX_AI_CHARS = 400K car.). Antes se
+    recortaba al 400K y se avisaba. Ahora aiBuildProcess -> extraerPorTramos:
+    partirEnTramos corta en tramos parejos de ~TRAMO_CHARS (300K) en limites
+    de parrafo; cada tramo va a la IA con AI_TRAMO_SYSTEM (EXTRAER pasos,
+    roles, decisiones, eventos; "SIN PROCESO" si es indice/anexo), effort low,
+    32K de salida, de a TRAMOS_EN_PARALELO=3. La generacion final recibe los
+    extractos + una nota de como unirlos. Techo total MAX_DOC_CHARS = 3M
+    (combinedSourceText y el aviso de fuentes usan ese techo). MAX_PDF_PAGES
+    400 -> 1500. Coste: estimarCosteGeneracion suma tramos + final (calibra
+    con historial nivel 'tramo'); state._ultimoCosteIa = TOTAL; si falla la
+    final, el aviso de error ya incluye lo gastado en tramos.
+    Verificado con fetch simulado: doc de 1,05M car. -> 4 tramos (3 en
+    paralelo), el tramo "SIN PROCESO" no entra al prompt final, nota y
+    mensaje del copiloto correctos, estimado US$2,06-3,10 en Opus 5.5.
+  2) BPMN-004: edge.fromBoundary. salidaDesdeBorde(e) exige que el origen
+    tenga n.boundary. Ruta: _pathPorLados nace bajo el circulo (BORDE_CX/DY/R
+    = mismo dibujo del canvas). XML: sourceRef "<id>_be" + <outgoing> en el
+    boundaryEvent; DI desde el circulo. PPTX: p1 en el circulo de la lamina.
+    Importar XML: boundaryEvent YA NO se crea como nodo intermedio suelto: se
+    pega a su actividad (attachedToRef) y sus flujos llegan con fromBoundary.
+    Conectar: clic en el reloj como origen (state._connectDesdeBorde).
+    addEdge permite tarea->X y borde->X a la vez (son flujos distintos).
+    Demo 12 (SLA) ya trae sus dos escalamientos desde el reloj.
+  3) UX-003: panel #edgeForm (mismo cajon Propiedades; titulo cambia a
+    "Propiedades de la conexion"): etiqueta, tipo (secuencia / mensaje /
+    asociacion; bloqueado si hay documento o dato), Sale por / Entra por
+    (e.salida / e.entrada; vacio = automatico), casilla de evento de borde,
+    Invertir sentido, Eliminar. Lados manuales -> _pathPorLados: stubs de
+    18 px + A* (rutaAStar) o, si falla, 4 codos candidatos sin pisar cajas.
+    Cambios se replican en _modeloCompleto (sincronizaArista). PPTX respeta
+    e.salida/e.entrada. NO incluye puntos de quiebre arrastrables.
+  4) BPMN-003: subprocesos con contenido. n.sub = {nodes, edges, lanes}.
+    entrarSubproceso / salirSubproceso con pila state._pila; migas sobre el
+    lienzo (#migasSub, clic en cualquier nivel), Esc sin seleccion = volver.
+    Entrar: clic en el (+) de la caja o boton #btnAbrirSub del panel. Vacio
+    -> semilla inicio/tarea/fin en el carril del padre. REGLA CLAVE: persist
+    y buildHistorySnapshot usan modeloRaiz() (sincronizaPila cuelga cada
+    nivel abierto de su padre); el historial guarda "ruta" y deshacer
+    reabre el subproceso donde estaba. resetState/importJson limpian la
+    pila; setView (As-Is/To-Be) y Exportar BPMN/Word/Ficha vuelven a la raiz;
+    PPTX/SVG/PNG exportan lo que se ve. Niveles: dentro se ve todo y el
+    selector avisa; al salir, el contenido se copia al nodo del modelo
+    completo. En Ejecutivo/Actividad un (+) puede ser un GRUPO sintetico
+    (n._hijos): abrirlo baja a Detalle y selecciona el primer paso (antes
+    creaba un sub en un nodo que no existe en el modelo -> se perdia).
+    XML: <bpmn:subProcess> con los pasos dentro + un BPMNDiagram por
+    subproceso (plano -> id del subProcess), como bpmn.io; importar mete los
+    hijos de cada subProcess en su n.sub (de adentro hacia afuera).
+    importJson calcula nextId recorriendo subprocesos (maxIdProfundo).
+  Verificado en navegador: abrir/borrar/deshacer/salir dentro del sub;
+  anidado de 2 niveles y miga a la raiz; Actividad -> sub real -> Detalle
+  conserva el contenido; XML valido, 0 ids duplicados, ida y vuelta
+  identica (18 nodos raiz, sub con 3 y 2 flujos); demo 12 con 0 cruces y 0
+  flechas sobre cajas; PPTX sin errores; consola sin errores.
+  Lectura por tramos probada SOLO con IA simulada (sin gasto): falta una
+  corrida real con un documento grande del usuario.
 - v3.9.1 DOCUMENTOS GRANDES (parcial). Sintoma: PDF de 10 MB, "demoro mucho
   y no se pudo generar". Un archivo asi choca con CUATRO topes distintos, y el
   de 40 MB de archivo no es el que salta:

@@ -337,6 +337,168 @@
     avisoBreve(rol ? 'Responsable cambiado a «' + rol + '»' : 'Responsable quitado');
   }
 
+  // ============================================================
+  // SUBPROCESOS CON CONTENIDO (BPMN-003, v3.11.0)
+  // Una actividad con marcador ⊞ guarda su propio flujo en n.sub
+  // ({ nodes, edges, lanes }). Al abrirla, el lienzo pasa a mostrar ese flujo y
+  // el nivel anterior queda en una pila (state._pila). Guardar, deshacer y
+  // exportar siempre trabajan sobre el proceso RAIZ: sincronizaPila() vuelve a
+  // colgar cada nivel abierto de su actividad padre antes de serializar.
+  // ============================================================
+  function enSubproceso() { return !!(state._pila && state._pila.length); }
+  function maxIdProfundo(nodes, edges) {
+    let m = 0;
+    const num = (id) => parseInt(String(id || '').replace(/^\D+/, ''), 10) || 0;
+    (nodes || []).forEach(n => { m = Math.max(m, num(n.id)); if (n.sub) m = Math.max(m, maxIdProfundo(n.sub.nodes, n.sub.edges)); });
+    (edges || []).forEach(e => { m = Math.max(m, num(e.id)); });
+    return m;
+  }
+  function sincronizaPila() {
+    const P = state._pila;
+    if (!P || !P.length) return;
+    for (let k = P.length - 1; k >= 0; k--) {
+      const ultimo = k === P.length - 1;
+      const hijo = ultimo ? { nodes: state.nodes, edges: state.edges, lanes: state._lanes || null }
+                          : { nodes: P[k + 1].nodes, edges: P[k + 1].edges, lanes: P[k + 1].lanes || null };
+      const padre = P[k].nodes.find(n => n.id === P[k].padreId);
+      if (padre) padre.sub = hijo;
+    }
+  }
+  // Proceso principal (lo que se guarda y se exporta), este donde este el usuario
+  function modeloRaiz() {
+    if (!enSubproceso()) return { nodes: state.nodes, edges: state.edges, lanes: state._lanes || null };
+    sincronizaPila();
+    const f = state._pila[0];
+    return { nodes: f.nodes, edges: f.edges, lanes: f.lanes || null };
+  }
+  function rutaSubproceso() { return enSubproceso() ? state._pila.map(f => f.padreId) : []; }
+  function contarPasosSub(n) {
+    return n && n.sub && Array.isArray(n.sub.nodes) ? n.sub.nodes.filter(x => x.type === 'task' || x.type === 'system').length : 0;
+  }
+  // Flujo inicial de un subproceso vacio: inicio -> primera actividad -> fin,
+  // en el carril del responsable de la actividad padre
+  function semillaSubproceso(n) {
+    const mk = (type, label) => {
+      const d = SHAPE_DEFAULTS[type];
+      return { id: 'n' + (state.nextId++), type, x: 0, y: 0, w: d.w, h: d.h, label,
+        executionType: type === 'task' ? (n.executionType || 'manual') : '', activityCode: '',
+        owner: n.owner || '', system: type === 'task' ? (n.system || '') : '', time: '', volume: '', va: '',
+        sla: '', docsIn: '', docsOut: '', rules: '', notes: '', pains: [] };
+    };
+    const s = mk('start', 'Subproceso iniciado'), t = mk('task', 'Ejecutar primer paso'), e = mk('end', 'Subproceso completado');
+    return { nodes: [s, t, e], lanes: null, edges: [
+      { id: 'e' + (state.nextId++), from: s.id, to: t.id, label: '' },
+      { id: 'e' + (state.nextId++), from: t.id, to: e.id, label: '' }] };
+  }
+  function entrarSubproceso(n, opts) {
+    opts = opts || {};
+    if (!n || (n.type !== 'task' && n.type !== 'system')) return false;
+    // En las vistas Ejecutivo/Actividad un ⊞ puede ser un GRUPO de pasos (no un
+    // subproceso real): abrirlo es bajar a Detalle y mostrar esos pasos.
+    if (Array.isArray(n._hijos) && n._hijos.length) {
+      const hijos = n._hijos.slice();
+      aplicarNivel(3);
+      state.selectedNodeId = hijos[0]; state.selectedEdgeId = null;
+      render();
+      const primero = getNode(hijos[0]), wrap = document.getElementById('canvasWrapper');
+      if (primero && wrap) {
+        const z = state.zoom || 1;
+        wrap.scrollLeft = Math.max(0, primero.x * z - 120);
+        wrap.scrollTop = Math.max(0, primero.y * z - 120);
+        if (typeof updateStickyHeaders === 'function') updateStickyHeaders();
+      }
+      avisoBreve('Vista Detalle: «' + n.label + '» agrupa ' + hijos.length + ' pasos; el primero está seleccionado.');
+      return true;
+    }
+    const nuevo = !(n.sub && Array.isArray(n.sub.nodes) && n.sub.nodes.length);
+    n.marker = 'subprocess';
+    if (nuevo) n.sub = semillaSubproceso(n);
+    const wrap = document.getElementById('canvasWrapper');
+    state._pila = state._pila || [];
+    state._pila.push({ padreId: n.id, padreLabel: n.label, nodes: state.nodes, edges: state.edges, lanes: state._lanes || null,
+      loopSlots: state._loopSlots, modeloCompleto: state._modeloCompleto, selloModelo: state._selloModelo,
+      zoom: state.zoom, scroll: wrap ? { x: wrap.scrollLeft, y: wrap.scrollTop } : null });
+    state.nodes = n.sub.nodes; state.edges = n.sub.edges || [];
+    state._lanes = n.sub.lanes || null; state._loopSlots = null;
+    // Las vistas por nivel son del proceso principal: dentro se ve todo
+    state._modeloCompleto = null;
+    state.selectedNodeId = null; state.selectedEdgeId = null; state.connectSourceId = null;
+    invalidarRutas();
+    if (!state._lanes) autoLayout();   // primera vez (o sin carriles guardados): ordena y guarda
+    render();
+    actualizarMigas();
+    actualizarSelectorNivel();
+    if (!opts.silencioso) {
+      zoomToFit();
+      avisoBreve(nuevo ? 'Subproceso «' + n.label + '» creado: edita sus pasos. «Volver» o Esc para salir.'
+                       : 'Dentro del subproceso «' + n.label + '». «Volver» o Esc para salir.');
+    }
+    return true;
+  }
+  function salirSubproceso(opts) {
+    opts = opts || {};
+    if (!enSubproceso()) return false;
+    sincronizaPila();
+    const f = state._pila.pop();
+    state.nodes = f.nodes; state.edges = f.edges; state._lanes = f.lanes; state._loopSlots = f.loopSlots;
+    state._modeloCompleto = f.modeloCompleto; state._selloModelo = f.selloModelo;
+    const padre = state.nodes.find(x => x.id === f.padreId);
+    // En una vista por nivel el nodo visible es una copia: el modelo completo
+    // tambien debe quedarse con el contenido del subproceso
+    if (padre && state._modeloCompleto) {
+      const c = state._modeloCompleto.nodes.find(x => x.id === padre.id);
+      if (c && c !== padre) { c.sub = padre.sub; c.marker = 'subprocess'; }
+    }
+    state.selectedNodeId = opts.silencioso ? null : f.padreId; state.selectedEdgeId = null; state.connectSourceId = null;
+    invalidarRutas();
+    if (!opts.silencioso && f.zoom) state.zoom = f.zoom;
+    render();
+    actualizarMigas();
+    actualizarSelectorNivel();
+    const wrap = document.getElementById('canvasWrapper');
+    if (!opts.silencioso && wrap && f.scroll) { wrap.scrollLeft = f.scroll.x; wrap.scrollTop = f.scroll.y; if (typeof updateStickyHeaders === 'function') updateStickyHeaders(); }
+    return true;
+  }
+  function salirATodoRaiz(motivo) {
+    if (!enSubproceso()) return false;
+    while (enSubproceso()) salirSubproceso({ silencioso: true });
+    if (motivo) avisoBreve(motivo);
+    return true;
+  }
+  // Barra de migas sobre el lienzo: Proceso › Subproceso › …  [← Volver]
+  function actualizarMigas() {
+    const area = document.getElementById('canvasArea');
+    let bar = document.getElementById('migasSub');
+    if (!enSubproceso()) { if (bar) bar.hidden = true; document.body.classList.remove('en-subproceso'); return; }
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'migasSub';
+      bar.className = 'migas-sub';
+      bar.setAttribute('role', 'navigation');
+      bar.setAttribute('aria-label', 'Ubicación en subprocesos');
+      (area || document.body).appendChild(bar);
+      bar.addEventListener('click', ev => {
+        const b = ev.target.closest('[data-nivel-pila]');
+        if (!b) return;
+        const destino = +b.dataset.nivelPila;   // cuantos niveles dejar abiertos
+        while (state._pila.length > destino) salirSubproceso({ silencioso: state._pila.length - 1 > destino });
+      });
+    }
+    document.body.classList.add('en-subproceso');
+    const P = state._pila;
+    const nombreRaiz = (state.meta && state.meta.name) || 'Proceso principal';
+    let html = '<button type="button" class="migas-volver" data-nivel-pila="' + (P.length - 1) + '" title="Volver al nivel anterior (Esc)">← Volver</button>' +
+      '<button type="button" class="migas-item" data-nivel-pila="0">' + escapeHtml(nombreRaiz) + '</button>';
+    P.forEach((f, i) => {
+      const ultimo = i === P.length - 1;
+      html += '<span class="migas-sep">›</span>' + (ultimo
+        ? '<span class="migas-actual">⊞ ' + escapeHtml(f.padreLabel) + '</span>'
+        : '<button type="button" class="migas-item" data-nivel-pila="' + (i + 1) + '">⊞ ' + escapeHtml(f.padreLabel) + '</button>');
+    });
+    bar.innerHTML = html;
+    bar.hidden = false;
+  }
+
   // Aviso flotante breve (no bloquea, se va solo)
   function avisoBreve(texto) {
     let el = document.getElementById('avisoBreve');
@@ -438,11 +600,16 @@
     render();
   }
 
-  function addEdge(fromId, toId) {
+  function addEdge(fromId, toId, extra) {
     if (fromId === toId) return;
-    const exists = state.edges.some(e => e.from === fromId && e.to === toId);
+    // Salir de la tarea y salir de su evento de borde hacia el mismo destino son
+    // dos flujos distintos (camino normal vs. escalamiento)
+    const borde = !!(extra && extra.fromBoundary);
+    const exists = state.edges.some(e => e.from === fromId && e.to === toId && !!e.fromBoundary === borde);
     if (exists) return;
-    state.edges.push({ id: 'e' + (state.nextId++), from: fromId, to: toId, label: '' });
+    const e = { id: 'e' + (state.nextId++), from: fromId, to: toId, label: '' };
+    if (extra && extra.fromBoundary) e.fromBoundary = true;
+    state.edges.push(e);
     persist();
     render();
   }
@@ -841,6 +1008,26 @@
           }
           mp.setAttribute('d', d);
           am.appendChild(mp);
+          // BPMN-003: el ⊞ abre el subproceso (fuera del modo Conectar)
+          if (n.marker === 'subprocess') {
+            const pasos = contarPasosSub(n);
+            mt = Array.isArray(n._hijos) ? 'Agrupa ' + n._hijos.length + ' pasos: clic para verlos en la vista Detalle'
+               : pasos ? 'Subproceso con ' + pasos + (pasos === 1 ? ' actividad' : ' actividades') + ': clic para abrirlo'
+                       : 'Subproceso (colapsado): clic para abrirlo y definir sus pasos';
+            am.classList.add('abre-sub');
+            if (pasos) am.classList.add('con-contenido');
+            // area de clic generosa (el glifo mide 14 px)
+            const hitSub = document.createElementNS(ns, 'rect');
+            hitSub.setAttribute('x', '-5'); hitSub.setAttribute('y', '-5'); hitSub.setAttribute('width', '24'); hitSub.setAttribute('height', '24');
+            hitSub.setAttribute('fill', 'transparent');
+            am.insertBefore(hitSub, am.firstChild);
+            am.addEventListener('mousedown', ev => {
+              if (state.mode === 'connect' || ev.button !== 0) return;
+              ev.stopPropagation(); ev.preventDefault();
+              state.drag = null;
+              entrarSubproceso(n);
+            });
+          }
           const mtt = document.createElementNS(ns, 'title');
           mtt.textContent = mt;
           am.appendChild(mtt);
@@ -967,10 +1154,15 @@
         if (state.mode === 'connect') {
           if (!state.connectSourceId) {
             state.connectSourceId = n.id;
+            // BPMN-004: si el clic cae sobre el circulo del evento de borde, la
+            // conexion nacera en el evento (p. ej. escalamiento por SLA vencido)
+            state._connectDesdeBorde = !!(n.boundary && ev.target.closest && ev.target.closest('.bpmn-boundary'));
+            if (state._connectDesdeBorde) avisoBreve('Conexión desde el evento de borde: ahora haz clic en el destino');
             render();
           } else {
-            addEdge(state.connectSourceId, n.id);
+            addEdge(state.connectSourceId, n.id, { fromBoundary: !!state._connectDesdeBorde });
             state.connectSourceId = null;
+            state._connectDesdeBorde = false;
             render();
           }
           return;
@@ -1390,7 +1582,70 @@
     return d;
   }
 
+  // ---- Conexiones con lados elegidos y salida desde el evento de borde (v3.11.0) ----
+  // UX-003: e.salida / e.entrada = 'right'|'left'|'top'|'bottom' (vacio = automatico)
+  // BPMN-004: e.fromBoundary = la flecha nace en el evento de borde de la tarea
+  // (circulo en la esquina inferior izquierda: centro en x+BORDE_CX, y+h+BORDE_DY).
+  const BORDE_CX = 10, BORDE_DY = -3, BORDE_R = 11, STUB_LADO = 18;
+  function salidaDesdeBorde(e) {
+    if (!e || !e.fromBoundary) return false;
+    const a = getNode(e.from);
+    return !!(a && a.boundary);
+  }
+  function _puertoLado(n, lado) {
+    const c = nodeCenter(n);
+    if (lado === 'left')   return { x: n.x, y: c.y, dir: 'left' };
+    if (lado === 'top')    return { x: c.x, y: n.y, dir: 'top' };
+    if (lado === 'bottom') return { x: c.x, y: n.y + n.h, dir: 'bottom' };
+    return { x: n.x + n.w, y: c.y, dir: 'right' };
+  }
+  // Lado de n que mira hacia el punto p
+  function _ladoHacia(n, p) {
+    const c = nodeCenter(n), dx = p.x - c.x, dy = p.y - c.y;
+    if (Math.abs(dx) * (n.h / n.w) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+    return dy >= 0 ? 'bottom' : 'top';
+  }
+  function _avanza(p, dir, d) {
+    return { x: p.x + (dir === 'right' ? d : dir === 'left' ? -d : 0), y: p.y + (dir === 'bottom' ? d : dir === 'top' ? -d : 0) };
+  }
+  function _limpiaPuntos(pts) {
+    const out = [];
+    pts.forEach(p => {
+      const u = out[out.length - 1];
+      if (u && Math.abs(u.x - p.x) < 0.5 && Math.abs(u.y - p.y) < 0.5) return;
+      const v = out[out.length - 2];
+      // punto intermedio colineal: sobra
+      if (u && v && ((Math.abs(v.x - u.x) < 0.5 && Math.abs(u.x - p.x) < 0.5) || (Math.abs(v.y - u.y) < 0.5 && Math.abs(u.y - p.y) < 0.5))) out.pop();
+      out.push(p);
+    });
+    return out;
+  }
+  function _pathPorLados(a, b, edge) {
+    const borde = salidaDesdeBorde(edge);
+    const p0 = borde ? { x: a.x + BORDE_CX, y: a.y + a.h + BORDE_DY + BORDE_R, dir: 'bottom' }
+                     : _puertoLado(a, edge.salida || _ladoHacia(a, nodeCenter(b)));
+    const q0 = _puertoLado(b, edge.entrada || _ladoHacia(b, p0));
+    const p1 = _avanza(p0, p0.dir, borde ? STUB_LADO + 6 : STUB_LADO), q1 = _avanza(q0, q0.dir, STUB_LADO);
+    const armar = (medio) => roundedPath(_limpiaPuntos([p0, p1].concat(medio, [q1, q0])), EDGE_RADIUS);
+    const ast = rutaAStar(a, b, p1, q1);
+    if (ast && ast.length >= 2) {
+      const d = armar(ast.slice(1, -1));
+      if (!_pathPisaCaja(d, a, b)) return d;
+    }
+    const mx = (p1.x + q1.x) / 2, my = (p1.y + q1.y) / 2;
+    const candidatos = [
+      [{ x: q1.x, y: p1.y }], [{ x: p1.x, y: q1.y }],
+      [{ x: mx, y: p1.y }, { x: mx, y: q1.y }], [{ x: p1.x, y: my }, { x: q1.x, y: my }]
+    ].map(armar);
+    return candidatos.find(d => !_pathPisaCaja(d, a, b)) || candidatos[0];
+  }
+
   function _calculaEdgePath(a, b, edge) {
+    if (edge && (edge.salida || edge.entrada || salidaDesdeBorde(edge))) {
+      const d = _pathPorLados(a, b, edge);
+      _astRegistraPath(d);
+      return d;
+    }
     const heur = _pathHeuristico(a, b, edge);
     if (!_astCanales) return heur;
     if (!_pathPisaCaja(heur, a, b)) { _astRegistraPath(heur); return heur; }
@@ -1569,7 +1824,8 @@
     a = a || getNode(e.from); b = b || getNode(e.to);
     const esDato = (n) => n && (n.type === 'document' || n.type === 'data');
     if (esDato(a) || esDato(b)) return 'association';
-    return e.kind === 'message' ? 'message' : 'sequence';
+    // UX-003: el tipo elegido a mano en el panel de la conexion
+    return e.kind === 'message' || e.kind === 'association' ? e.kind : 'sequence';
   }
 
   function edgeLabelPoint(a, b, edge) {
@@ -1802,6 +2058,12 @@
         render();
       });
     }
+    // BPMN-003: abrir el subproceso desde el panel
+    const abrirSubEl = $('#btnAbrirSub');
+    if (abrirSubEl) abrirSubEl.addEventListener('click', () => {
+      const n = getNode(state.selectedNodeId);
+      if (n) entrarSubproceso(n);
+    });
 
     // Evento de borde BPMN (boundary) para tareas: "tipo|interrumpe"
     const bdEl = $('#propBoundary');
@@ -1927,7 +2189,95 @@
     hint.textContent = t.desc;
   }
 
+  // ---- Panel de la CONEXION seleccionada (UX-003 / BPMN-004, v3.11.0) ----
+  const LADO_TXT = { right: 'derecha', left: 'izquierda', top: 'arriba', bottom: 'abajo' };
+  const BORDE_TXT = { timer: 'temporizador ⏱', error: 'error ⚡', message: 'mensaje ✉' };
+  // Un cambio en una conexion se replica en el modelo completo (vistas por nivel)
+  function sincronizaArista(e, campos) {
+    const full = state._modeloCompleto && state._modeloCompleto.edges;
+    if (!full) return;
+    const c = full.find(x => x.id === e.id);
+    if (c && c !== e) campos.forEach(k => { if (e[k] === undefined) delete c[k]; else c[k] = e[k]; });
+  }
+  function cambiaArista(campos, fn) {
+    const e = getEdge(state.selectedEdgeId);
+    if (!e) return;
+    fn(e);
+    campos.forEach(k => { if (e[k] === '' || e[k] === false || e[k] === null) delete e[k]; });
+    sincronizaArista(e, campos);
+    invalidarRutas();
+    persist();
+    render();
+  }
+  let _edgePropsListo = false;
+  function conectaPanelArista() {
+    if (_edgePropsListo || !$('#edgeForm')) return;
+    _edgePropsListo = true;
+    $('#edgeLabel').addEventListener('input', () => cambiaArista(['label'], e => { e.label = $('#edgeLabel').value.trim(); }));
+    $('#edgeKindSel').addEventListener('change', () => cambiaArista(['kind'], e => {
+      const v = $('#edgeKindSel').value;
+      e.kind = v === 'sequence' ? '' : v;
+    }));
+    $('#edgeSalida').addEventListener('change', () => cambiaArista(['salida'], e => { e.salida = $('#edgeSalida').value; }));
+    $('#edgeEntrada').addEventListener('change', () => cambiaArista(['entrada'], e => { e.entrada = $('#edgeEntrada').value; }));
+    $('#edgeFromBoundary').addEventListener('change', () => cambiaArista(['fromBoundary'], e => { e.fromBoundary = $('#edgeFromBoundary').checked; }));
+    $('#edgeInvertir').addEventListener('click', () => cambiaArista(['from', 'to', 'salida', 'entrada', 'fromBoundary'], e => {
+      const f = e.from; e.from = e.to; e.to = f;
+      const s = e.salida; e.salida = e.entrada; e.entrada = s;
+      e.fromBoundary = false;   // el nuevo origen no tiene por que tener evento de borde
+    }));
+    $('#edgeEliminar').addEventListener('click', () => {
+      if (!state.selectedEdgeId) return;
+      const id = state.selectedEdgeId;
+      state.edges = state.edges.filter(e => e.id !== id);
+      if (state._modeloCompleto && state._modeloCompleto.edges) state._modeloCompleto.edges = state._modeloCompleto.edges.filter(e => e.id !== id);
+      state.selectedEdgeId = null;
+      invalidarRutas(); persist(); render();
+    });
+  }
+  function renderEdgeProps(e) {
+    conectaPanelArista();
+    const a = getNode(e.from), b = getNode(e.to);
+    $('#edgeRuta').innerHTML = '<b>' + escapeHtml((a && a.label) || '?') + '</b> → <b>' + escapeHtml((b && b.label) || '?') + '</b>';
+    if (document.activeElement !== $('#edgeLabel')) $('#edgeLabel').value = e.label || '';
+    const esDato = (n) => n && (n.type === 'document' || n.type === 'data');
+    const forzada = esDato(a) || esDato(b);
+    const kind = edgeKind(e, a, b);
+    $('#edgeKindSel').value = kind;
+    $('#edgeKindSel').disabled = forzada;
+    $('#edgeKindHint').textContent = forzada
+      ? 'Con un documento o dato en un extremo siempre es asociación (BPMN).'
+      : kind === 'message'
+      ? 'Solo entre organizaciones distintas (cliente, proveedor, entidad). Entre áreas de tu empresa usa secuencia.'
+      : kind === 'association' ? 'No es un paso del flujo: relaciona un elemento con información.' : '';
+    $('#edgeSalida').value = e.salida || '';
+    $('#edgeEntrada').value = e.entrada || '';
+    const tieneBorde = !!(a && a.boundary);
+    $('#edgeBordeWrap').hidden = !tieneBorde;
+    if (tieneBorde) {
+      const bt = typeof a.boundary === 'string' ? a.boundary : (a.boundary.type || 'timer');
+      $('#edgeBordeTxt').textContent = 'Sale del evento de borde (' + (BORDE_TXT[bt] || bt) + ') de «' + a.label + '»';
+      $('#edgeFromBoundary').checked = !!e.fromBoundary;
+    }
+    $('#edgeSalida').disabled = salidaDesdeBorde(e);
+    $('#edgeSalida').title = salidaDesdeBorde(e) ? 'Sale del evento de borde' : '';
+  }
+
   function renderProperties() {
+    const ed = !state.selectedNodeId && state.selectedEdgeId ? getEdge(state.selectedEdgeId) : null;
+    if ($('#edgeForm')) $('#edgeForm').hidden = !ed;
+    // Titulo del cajon segun lo seleccionado (nodo o conexion)
+    const tabProps = $('.tab[data-tab="properties"]');
+    if (tabProps) {
+      tabProps.dataset.title = ed ? 'Propiedades de la conexión' : 'Propiedades del nodo seleccionado';
+      if (tabProps.classList.contains('active') && $('#drawerTitle')) $('#drawerTitle').textContent = tabProps.dataset.title;
+    }
+    if (ed && $('#edgeForm')) {
+      $('#propsEmpty').hidden = true;
+      $('#propsForm').hidden = true;
+      renderEdgeProps(ed);
+      return;
+    }
     const n = getNode(state.selectedNodeId);
     if (!n) {
       $('#propsEmpty').hidden = false;
@@ -1965,6 +2315,13 @@
       const isTaskType = n.type === 'task' || n.type === 'system';
       $('#propMarkerWrap').hidden = !isTaskType;
       if (isTaskType && $('#propMarker')) $('#propMarker').value = n.marker || 'none';
+      const bs = $('#btnAbrirSub');
+      if (bs) {
+        bs.hidden = !(isTaskType && n.marker === 'subprocess');
+        const pasos = contarPasosSub(n);
+        bs.textContent = Array.isArray(n._hijos) ? '⊞ Ver sus ' + n._hijos.length + ' pasos en Detalle'
+          : pasos ? '⊞ Abrir subproceso (' + pasos + (pasos === 1 ? ' actividad)' : ' actividades)') : '⊞ Abrir y definir sus pasos';
+      }
     }
     // Selector de evento de borde (boundary) solo para tareas
     if ($('#propBoundaryWrap')) {
@@ -2739,6 +3096,8 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         const habiaSeleccion = !!(state.selectedNodeId || state.selectedEdgeId);
         state.selectedNodeId = null; state.selectedEdgeId = null; state.connectSourceId = null; render();
         // Esc sin selección cierra el cajón (con selección, primero deselecciona)
+        // BPMN-003: sin seleccion, Esc vuelve del subproceso al nivel anterior
+        if (!habiaSeleccion && enSubproceso()) { salirSubproceso(); return; }
         if (!habiaSeleccion && document.body.classList.contains('panel-open')) cerrarPanel();
       }
     });
@@ -3271,6 +3630,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       if (!b) return;
       const n = +b.dataset.nivel;
       if (!state.nodes.length) return;
+      if (enSubproceso()) { avisoBreve('Las vistas por nivel son del proceso principal: pulsa «Volver» primero.'); return; }
       const r = aplicarNivel(n);
       if (r) {
         const nv = NIVELES.find(x => x.id === n);
@@ -3541,16 +3901,19 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 
   function persist() {
     try {
+      // v3.11.0: dentro de un subproceso se guarda igual el proceso PRINCIPAL
+      // (con el subproceso abierto ya colgado de su actividad)
+      const R = modeloRaiz();
       // Commit del view activo a _views antes de serializar
       state._views[state.activeView] = {
-        nodes: state.nodes,
-        edges: state.edges
+        nodes: R.nodes,
+        edges: R.edges
       };
       const snapshot = {
         meta: state.meta,
         ficha: state.ficha,
-        nodes: state.nodes,
-        edges: state.edges,
+        nodes: R.nodes,
+        edges: R.edges,
         activeView: state.activeView,
         views: state._views,
         nextId: state.nextId,
@@ -3558,7 +3921,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         sipoc: state._sipoc || null,
         simResults: state._simResults || null,
         kpiValues: state._kpiValues || null,
-        lanes: state._lanes || null,
+        lanes: R.lanes,
         savedAt: new Date().toISOString()
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
@@ -3573,11 +3936,13 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   let historyPaused = false;
   const HISTORY_CAP = 60;
   function buildHistorySnapshot() {
+    // v3.11.0: siempre el proceso principal + en que subproceso estaba el usuario
+    const R = modeloRaiz();
     return JSON.stringify({
-      meta: state.meta, ficha: state.ficha, nodes: state.nodes, edges: state.edges,
+      meta: state.meta, ficha: state.ficha, nodes: R.nodes, edges: R.edges,
       activeView: state.activeView, views: state._views, nextId: state.nextId,
       raci: state._raci || null, sipoc: state._sipoc || null,
-      kpiValues: state._kpiValues || null, lanes: state._lanes || null
+      kpiValues: state._kpiValues || null, lanes: R.lanes, ruta: rutaSubproceso()
     });
   }
   function recordHistory() {
@@ -3610,6 +3975,12 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     state._lanes = data.lanes || null;
     state.selectedNodeId = null; state.selectedEdgeId = null;
     state._restoringHistory = true;
+    // Vuelve a abrir el subproceso donde estaba el usuario en ese momento (si sigue existiendo)
+    const mcRaiz = enSubproceso() ? state._pila[0].modeloCompleto : state._modeloCompleto;
+    const selloRaiz = enSubproceso() ? state._pila[0].selloModelo : state._selloModelo;
+    state._pila = []; state._modeloCompleto = mcRaiz; state._selloModelo = selloRaiz;
+    (data.ruta || []).forEach(id => { const p = getNode(id); if (p && p.sub) entrarSubproceso(p, { silencioso: true }); });
+    actualizarMigas();
     $('#processName').value = state.meta.name || '';
     $('#processIndustry').value = state.meta.industry || '';
     $('#processMacro').value = state.meta.macroprocess || '';
@@ -3723,6 +4094,8 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     // "6 de 9 pasos" del proceso anterior (y sobrevivian a recargar).
     state._lanes = null;
     state._loopSlots = null;
+    state._pila = [];   // BPMN-003: un proceso nuevo empieza en el nivel principal
+    if (typeof actualizarMigas === 'function') actualizarMigas();
     state._modeloCompleto = null;
     state._selloModelo = null;
     state._firmaGeom = null;
@@ -4692,6 +5065,9 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     });
     E.forEach(([a, b, lbl]) => state.edges.push({ id: 'e' + (state.nextId++), from: idMap[a], to: idMap[b], label: lbl || '' }));
 
+    // BPMN-004: los escalamientos salen del temporizador de borde, no de la tarea
+    state.edges.forEach(e => { if (e.label === 'SLA 2h vencido' || e.label === 'Demora > 24h') e.fromBoundary = true; });
+
     state._kpiValues = {
       'ret-07': { name: 'Tasa de pedidos fuera de SLA', unit: '%', benchmark: '< 5%', value: '13', gap: '+8 pp', source: 'WMS/TMS' }
     };
@@ -4890,7 +5266,8 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
 
   // =================== EXPORT / IMPORT ===================
   function exportJson() {
-    const data = { meta: state.meta, ficha: state.ficha, nodes: state.nodes, edges: state.edges, exportedAt: new Date().toISOString() };
+    const R = modeloRaiz();   // con los subprocesos dentro de sus actividades
+    const data = { meta: state.meta, ficha: state.ficha, nodes: R.nodes, edges: R.edges, nextId: state.nextId, exportedAt: new Date().toISOString() };
     download(JSON.stringify(data, null, 2), filename('json'), 'application/json');
   }
 
@@ -4903,9 +5280,11 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         const data = JSON.parse(reader.result);
         state.meta = data.meta || state.meta;
         state.ficha = normalizeFicha(data.ficha);
+        state._pila = []; actualizarMigas();
         state.nodes = data.nodes || [];
         state.edges = data.edges || [];
-        state.nextId = (Math.max(0, ...state.nodes.map(n => parseInt(n.id.slice(1), 10) || 0)) || 0) + 1;
+        // v3.11.0: los ids de los subprocesos tambien cuentan (si no, se repetirian)
+        state.nextId = Math.max(+data.nextId || 0, maxIdProfundo(state.nodes, state.edges) + 1);
         $('#processName').value = state.meta.name || '';
         $('#processIndustry').value = state.meta.industry || '';
         $('#processMacro').value = state.meta.macroprocess || '';
@@ -5223,6 +5602,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   // ============================================================
   function setView(view) {
     if (view === state.activeView) return;
+    salirATodoRaiz();   // As-Is / To-Be son vistas del proceso principal
     // Snapshot del view activo antes de cambiar
     state._views[state.activeView] = {
       nodes: JSON.parse(JSON.stringify(state.nodes)),
@@ -6115,6 +6495,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   }
 
   function exportWord() {
+    salirATodoRaiz('Se documenta el proceso principal.');
     if (state.nodes.length === 0) { alert('No hay proceso para documentar.'); return; }
     const meta = state.meta;
     const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
@@ -6494,6 +6875,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   }
 
   function exportFicha() {
+    salirATodoRaiz('La ficha es del proceso principal.');
     if (state.nodes.length === 0) { alert('No hay proceso para generar la ficha.'); return; }
     const meta = state.meta;
     const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
@@ -6524,6 +6906,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   }
 
   function exportBpmn() {
+    salirATodoRaiz('Se exporta el proceso principal; los subprocesos van dentro de él.');
     if (state.nodes.length === 0) { alert('No hay proceso para exportar.'); return; }
     const xml = generateBpmnXml();
     download(xml, filename('bpmn'), 'application/xml');
@@ -6574,18 +6957,81 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     };
     const isEventType = t => t === 'start' || t === 'end' || t === 'intermediate';
 
+    // ---- BPMN-003 (v3.11.0): subprocesos con contenido ----
+    // Una actividad ⊞ se exporta como <bpmn:subProcess> con sus pasos DENTRO y
+    // su propio diagrama (BPMNDiagram cuyo plano apunta al subProcess), que es
+    // como Camunda / bpmn.io muestran un subproceso colapsado navegable.
+    const esSub = (n) => (n.type === 'task' || n.type === 'system') && n.marker === 'subprocess';
+    const tieneHijos = (n) => esSub(n) && n.sub && Array.isArray(n.sub.nodes) && n.sub.nodes.length > 0;
+    const subDiagramas = [];
+    function cuerpoNivel(nodes, edges, ind) {
+      const getN = id => nodes.find(x => x.id === id);
+      const kindOf = e => edgeKind(e, getN(e.from), getN(e.to));
+      const desdeBordeN = e => !!(e.fromBoundary && getN(e.from) && getN(e.from).boundary);
+      const inc = {}, out = {};
+      edges.forEach(e => {
+        if (!getN(e.from) || !getN(e.to) || kindOf(e) === 'association') return;
+        const o = desdeBordeN(e) ? e.from + '_be' : e.from;
+        (out[o] = out[o] || []).push(e.id); (inc[e.to] = inc[e.to] || []).push(e.id);
+      });
+      let xml = '';
+      nodes.forEach(n => {
+        const t = esSub(n) ? 'subProcess' : bpmnType(n);
+        xml += `${ind}<bpmn:${t} id="${n.id}" name="${esc(n.label)}">\n`;
+        (inc[n.id] || []).forEach(id => { xml += `${ind}  <bpmn:incoming>${id}</bpmn:incoming>\n`; });
+        (out[n.id] || []).forEach(id => { xml += `${ind}  <bpmn:outgoing>${id}</bpmn:outgoing>\n`; });
+        xml += isEventType(n.type) ? eventDef(n) : loopChars(n);
+        if (tieneHijos(n)) { xml += cuerpoNivel(n.sub.nodes, n.sub.edges || [], ind + '  '); subDiagramas.push(n); }
+        xml += `${ind}</bpmn:${t}>\n`;
+      });
+      nodes.forEach(n => {
+        if (!n.boundary) return;
+        const bt = typeof n.boundary === 'string' ? n.boundary : (n.boundary.type || 'timer');
+        const interr = (typeof n.boundary === 'object') ? n.boundary.interrupting !== false : true;
+        const defMap = { timer: 'timerEventDefinition', error: 'errorEventDefinition', message: 'messageEventDefinition' };
+        xml += `${ind}<bpmn:boundaryEvent id="${n.id}_be" name="${esc(bt)}" attachedToRef="${n.id}" cancelActivity="${interr}">\n` +
+               (out[n.id + '_be'] || []).map(id => `${ind}  <bpmn:outgoing>${id}</bpmn:outgoing>\n`).join('') +
+               `${ind}  <bpmn:${defMap[bt] || 'timerEventDefinition'} />\n${ind}</bpmn:boundaryEvent>\n`;
+      });
+      edges.forEach(e => {
+        if (!getN(e.from) || !getN(e.to)) return;
+        if (kindOf(e) === 'association') { xml += `${ind}<bpmn:association id="${e.id}" sourceRef="${e.from}" targetRef="${e.to}" associationDirection="One" />\n`; return; }
+        xml += `${ind}<bpmn:sequenceFlow id="${e.id}" sourceRef="${desdeBordeN(e) ? e.from + '_be' : e.from}" targetRef="${e.to}"${e.label ? ` name="${esc(e.label)}"` : ''} />\n`;
+      });
+      return xml;
+    }
+    function diNivel(nodes, edges) {
+      let xml = '';
+      nodes.forEach(n => {
+        xml += `      <bpmndi:BPMNShape id="${n.id}_di" bpmnElement="${n.id}"${esSub(n) ? ' isExpanded="false"' : ''}>\n` +
+               `        <dc:Bounds x="${Math.round(n.x)}" y="${Math.round(n.y)}" width="${Math.round(n.w)}" height="${Math.round(n.h)}" />\n      </bpmndi:BPMNShape>\n`;
+        if (n.boundary) xml += `      <bpmndi:BPMNShape id="${n.id}_be_di" bpmnElement="${n.id}_be">\n` +
+               `        <dc:Bounds x="${Math.round(n.x - 2)}" y="${Math.round(n.y + n.h - 18)}" width="22" height="22" />\n      </bpmndi:BPMNShape>\n`;
+      });
+      edges.forEach(e => {
+        const a = nodes.find(x => x.id === e.from), b = nodes.find(x => x.id === e.to);
+        if (!a || !b) return;
+        const p1 = (e.fromBoundary && a.boundary) ? { x: a.x + BORDE_CX, y: a.y + a.h + BORDE_DY + BORDE_R } : nodeCenter(a), p2 = nodeCenter(b);
+        xml += `      <bpmndi:BPMNEdge id="${e.id}_di" bpmnElement="${e.id}">\n` +
+               `        <di:waypoint x="${Math.round(p1.x)}" y="${Math.round(p1.y)}" />\n        <di:waypoint x="${Math.round(p2.x)}" y="${Math.round(p2.y)}" />\n      </bpmndi:BPMNEdge>\n`;
+      });
+      return xml;
+    }
+
     // Construye relaciones in/out por nodo para incoming/outgoing (mejora compliance BPMN)
     const incoming = {}, outgoing = {};
     state.edges.forEach(e => {
       if (edgeKind(e) === 'association') return;   // las asociaciones de datos no son entradas/salidas del flujo
-      (outgoing[e.from] = outgoing[e.from] || []).push(e.id);
+      // BPMN-004: la salida desde el temporizador de borde pertenece al evento de borde, no a la tarea
+      const origen = salidaDesdeBorde(e) ? e.from + '_be' : e.from;
+      (outgoing[origen] = outgoing[origen] || []).push(e.id);
       (incoming[e.to]   = incoming[e.to]   || []).push(e.id);
     });
 
     // ============ FLOW ELEMENTS ============
     let processBody = '';
     state.nodes.forEach(n => {
-      const t = bpmnType(n);
+      const t = esSub(n) ? 'subProcess' : bpmnType(n);
       const ins = (incoming[n.id] || []).map(id => `      <bpmn:incoming>${id}</bpmn:incoming>`).join('\n');
       const outs = (outgoing[n.id] || []).map(id => `      <bpmn:outgoing>${id}</bpmn:outgoing>`).join('\n');
 
@@ -6607,6 +7053,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       if (outs) processBody += outs + '\n';
       if (isEventType(n.type)) processBody += eventDef(n);   // timer/message/error/signal/terminate
       else processBody += loopChars(n);                       // loop / multi-instancia (en tareas)
+      if (tieneHijos(n)) { processBody += cuerpoNivel(n.sub.nodes, n.sub.edges || [], '      '); subDiagramas.push(n); }
       processBody += `    </bpmn:${t}>\n`;
     });
     // Eventos de borde (boundary) como elementos BPMN adjuntos a su tarea
@@ -6615,7 +7062,9 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       const bt = typeof n.boundary === 'string' ? n.boundary : (n.boundary.type || 'timer');
       const interrupting = (typeof n.boundary === 'object') ? n.boundary.interrupting !== false : true;
       const defMap = { timer: 'timerEventDefinition', error: 'errorEventDefinition', message: 'messageEventDefinition' };
+      const outsBe = (outgoing[n.id + '_be'] || []).map(id => `      <bpmn:outgoing>${id}</bpmn:outgoing>\n`).join('');
       processBody += `    <bpmn:boundaryEvent id="${n.id}_be" name="${esc(bt)}" attachedToRef="${n.id}" cancelActivity="${interrupting}">\n` +
+                     outsBe +
                      `      <bpmn:${defMap[bt] || 'timerEventDefinition'} />\n` +
                      `    </bpmn:boundaryEvent>\n`;
     });
@@ -6626,7 +7075,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         processBody += `    <bpmn:association id="${e.id}" sourceRef="${e.from}" targetRef="${e.to}" associationDirection="One" />\n`;
         return;
       }
-      processBody += `    <bpmn:sequenceFlow id="${e.id}" sourceRef="${e.from}" targetRef="${e.to}"${e.label ? ` name="${esc(e.label)}"` : ''} />\n`;
+      processBody += `    <bpmn:sequenceFlow id="${e.id}" sourceRef="${salidaDesdeBorde(e) ? e.from + '_be' : e.from}" targetRef="${e.to}"${e.label ? ` name="${esc(e.label)}"` : ''} />\n`;
     });
 
     // ============ SWIMLANES (laneSet por responsable) ============
@@ -6666,7 +7115,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       });
     }
     state.nodes.forEach(n => {
-      diShapes += `      <bpmndi:BPMNShape id="${n.id}_di" bpmnElement="${n.id}">\n` +
+      diShapes += `      <bpmndi:BPMNShape id="${n.id}_di" bpmnElement="${n.id}"${esSub(n) ? ' isExpanded="false"' : ''}>\n` +
                   `        <dc:Bounds x="${Math.round(n.x)}" y="${Math.round(n.y)}" width="${Math.round(n.w)}" height="${Math.round(n.h)}" />\n` +
                   `      </bpmndi:BPMNShape>\n`;
       // DI del evento de borde: sobre la esquina inferior-izquierda de la tarea (coincide con el canvas)
@@ -6680,7 +7129,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     state.edges.forEach(e => {
       const a = getNode(e.from), b = getNode(e.to);
       if (!a || !b) return;
-      const p1 = nodeCenter(a), p2 = nodeCenter(b);
+      const p1 = salidaDesdeBorde(e) ? { x: a.x + BORDE_CX, y: a.y + a.h + BORDE_DY + BORDE_R } : nodeCenter(a), p2 = nodeCenter(b);
       diEdges += `      <bpmndi:BPMNEdge id="${e.id}_di" bpmnElement="${e.id}">\n` +
                  `        <di:waypoint x="${Math.round(p1.x)}" y="${Math.round(p1.y)}" />\n` +
                  `        <di:waypoint x="${Math.round(p2.x)}" y="${Math.round(p2.y)}" />\n` +
@@ -6702,7 +7151,11 @@ ${processBody}  </bpmn:process>
     <bpmndi:BPMNPlane id="${planeId}" bpmnElement="${procId}">
 ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
-</bpmn:definitions>`;
+${subDiagramas.map(n => `  <bpmndi:BPMNDiagram id="Diagram_${n.id}">
+    <bpmndi:BPMNPlane id="Plane_${n.id}" bpmnElement="${n.id}">
+${diNivel(n.sub.nodes, n.sub.edges || [])}    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+`).join('')}</bpmn:definitions>`;
   }
 
   // ============================================================
@@ -7647,8 +8100,15 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
 
       function emitirConector(slide, a, b, ba, bb, e, esMensaje) {
         const lados = ladoDeArista(a.id, b.id, ba, bb);
-        const ladoA = ladoSalidaDe[e.id] || lados.ladoA, ladoB = lados.ladoB, p2 = lados.p2;
-        const p1 = ladoA === 'right' ? { x: ba.x + ba.w, y: ba.cy }
+        // v3.11.0: los lados elegidos a mano en el panel de la conexion mandan
+        const ladoA = e.salida || ladoSalidaDe[e.id] || lados.ladoA, ladoB = e.entrada || lados.ladoB;
+        const p2 = !e.entrada ? lados.p2
+                 : ladoB === 'right' ? { x: bb.x + bb.w, y: bb.cy } : ladoB === 'left' ? { x: bb.x, y: bb.cy }
+                 : ladoB === 'top' ? { x: bb.cx, y: bb.y } : { x: bb.cx, y: bb.y + bb.h };
+        // BPMN-004: la flecha nace en el evento de borde (esquina inferior izquierda de la caja)
+        // (mismo circulo que dibuja la lamina: diametro 0,19" desplazado 45% a la izquierda y 55% hacia arriba)
+        const p1 = salidaDesdeBorde(e) ? { x: ba.x + 0.19 * 0.05, y: ba.y + ba.h + 0.19 * 0.45 }
+                 : ladoA === 'right' ? { x: ba.x + ba.w, y: ba.cy }
                  : ladoA === 'left' ? { x: ba.x, y: ba.cy }
                  : ladoA === 'top' ? { x: ba.cx, y: ba.y } : { x: ba.cx, y: ba.y + ba.h };
         slide.addShape('line', {
@@ -8476,7 +8936,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   // ---- Progreso visible + cancelación (evita que la app "parezca muerta") ----
   let ingestAbort = null;             // { cancelled: bool, controller: AbortController }
   const MAX_FILE_MB = 40;             // por encima de esto avisamos antes de intentar
-  const MAX_PDF_PAGES = 400;          // tope de páginas a extraer (v3.9.1: 120 cortaba manuales gruesos; extraer es local y gratis, solo lento)
+  const MAX_PDF_PAGES = 1500;         // tope de páginas a extraer (v3.11.0: con lectura por tramos ya no hace falta cortar en 400)
   // Lo que enviamos al modelo (~45-50K tokens). v3.8.5: de 60K a 180K para que
   // quepa un levantamiento con varios documentos; el otro limite es la
   // RESPUESTA (64K tokens), no la entrada.
@@ -8484,6 +8944,15 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   // barata (US$4 por millon en Opus 5.5: ~US$0.44) y evita descartar medio
   // manual. Lo que de verdad limita es la RESPUESTA, no la entrada.
   const MAX_AI_CHARS = 400000;
+  // v3.11.0: LECTURA POR TRAMOS. Un documento mas largo que MAX_AI_CHARS ya no
+  // se recorta: se parte en tramos de TRAMO_CHARS, la IA extrae de cada uno los
+  // pasos del proceso (en paralelo, de a TRAMOS_EN_PARALELO) y la generacion
+  // final trabaja sobre esos extractos. MAX_DOC_CHARS es el techo total (~1.800
+  // paginas de texto): por encima, el coste deja de ser razonable para una sola
+  // ejecucion y se avisa que se leyo hasta ahi.
+  const TRAMO_CHARS = 300000;
+  const TRAMOS_EN_PARALELO = 3;
+  const MAX_DOC_CHARS = 3000000;
   function ingestBusy(on) {
     const box = $('#ingestProgress');
     if (box) {
@@ -8569,6 +9038,7 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   async function runIngest(source) {
     if (ingestAbort) return;                       // ya hay un trabajo corriendo
     state._ultimoCosteIa = null;
+    state._tramosIa = null;
     startIngestJob();
     const t0 = Date.now();
     try {
@@ -8656,7 +9126,9 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
         renderFichaTab();
         const n = (spec.nodes || []).length;
         copilotPost('ai', `**Proceso interpretado con IA desde ${escapeHtml(label)}.** ${n} elementos con roles, sistemas y decisiones. Revisa el diagrama y completa la pestaña **Ficha**; luego exporta a **Ficha de Proceso**.` +
-          (text.length > MAX_AI_CHARS ? `\n\nNota: el documento excedía ${(MAX_AI_CHARS / 1000) | 0}K caracteres, interpreté la primera parte. Si falta el final del proceso, pega esa sección y vuelve a generar.` : '') + lineaCosteIa());
+          (state._tramosIa ? `\n\nEl documento era largo (${text.length.toLocaleString('es-PE')} caracteres): lo leí en **${state._tramosIa.n} tramos** y armé un solo proceso con lo extraído de cada uno` +
+            (state._tramosIa.sinProceso ? ` (${state._tramosIa.sinProceso} tramo(s) no tenían pasos del proceso: índices, anexos o similares)` : '') + '.' : '') +
+          (text.length >= MAX_DOC_CHARS ? `\n\nNota: el documento excedía ${(MAX_DOC_CHARS / 1e6).toLocaleString('es-PE')} millones de caracteres; leí hasta ese punto. Si falta el final del proceso, carga ese capítulo aparte.` : '') + lineaCosteIa());
       } else {
         buildProcessFromText(text, label);
         ingestProgress('Proceso generado', 100);
@@ -8830,7 +9302,8 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
     const local = (tag) => Array.from(doc.getElementsByTagName('*')).filter(el => el.localName === tag);
     const flowEls = ['task', 'userTask', 'serviceTask', 'manualTask', 'sendTask', 'receiveTask', 'scriptTask', 'businessRuleTask', 'callActivity', 'subProcess'];
     const gwEls = ['exclusiveGateway', 'parallelGateway', 'inclusiveGateway', 'complexGateway', 'eventBasedGateway'];
-    const evStart = ['startEvent'], evEnd = ['endEvent'], evInt = ['intermediateCatchEvent', 'intermediateThrowEvent', 'boundaryEvent'];
+    // boundaryEvent va aparte: es un evento de borde PEGADO a su actividad (BPMN-004)
+    const evStart = ['startEvent'], evEnd = ['endEvent'], evInt = ['intermediateCatchEvent', 'intermediateThrowEvent'];
 
     const idMap = {};        // bpmn id → nuevo node id
     const nameById = {};
@@ -8881,16 +9354,48 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       const isThrow = tag === 'intermediateThrowEvent';
       addNode(el, 'intermediate', { throw: isThrow || undefined }); events++;
     }));
+    // Eventos de borde: se pegan a su actividad; sus flujos salen "desde el borde"
+    const bordeDe = {};   // id del boundaryEvent -> id del nodo actividad
+    local('boundaryEvent').forEach(el => {
+      const host = getNode(idMap[el.getAttribute('attachedToRef')]);
+      if (!host) { addNode(el, 'intermediate', {}); events++; return; }
+      const def = Array.from(el.children).map(c => c.localName).find(t => /EventDefinition$/.test(t)) || 'timerEventDefinition';
+      const type = /error/i.test(def) ? 'error' : /message/i.test(def) ? 'message' : 'timer';
+      host.boundary = { type, interrupting: el.getAttribute('cancelActivity') !== 'false' };
+      bordeDe[el.getAttribute('id')] = host.id;
+    });
 
     // Flujos de secuencia
     let flows = 0;
     local('sequenceFlow').forEach(el => {
-      const from = idMap[el.getAttribute('sourceRef')];
+      const src = el.getAttribute('sourceRef');
+      const from = idMap[src] || bordeDe[src];
       const to = idMap[el.getAttribute('targetRef')];
       if (!from || !to) return;
       const label = (el.getAttribute('name') || '').trim();
-      state.edges.push({ id: 'e' + (state.nextId++), from, to, label });
+      const e = { id: 'e' + (state.nextId++), from, to, label };
+      if (bordeDe[src]) e.fromBoundary = true;
+      state.edges.push(e);
       flows++;
+    });
+
+    // BPMN-003: lo que esta DENTRO de un subProcess pasa a ser su contenido
+    // navegable. En orden inverso de documento: primero los mas internos, que
+    // luego viajan (con su contenido) dentro del subproceso que los contiene.
+    local('subProcess').reverse().forEach(sp => {
+      const host = getNode(idMap[sp.getAttribute('id')]);
+      if (!host) return;
+      const hijos = new Set();
+      Array.from(sp.children).forEach(c => { const id = idMap[c.getAttribute('id')]; if (id) hijos.add(id); });
+      if (!hijos.size) return;
+      host.sub = {
+        nodes: state.nodes.filter(n => hijos.has(n.id)),
+        edges: state.edges.filter(e => hijos.has(e.from) && hijos.has(e.to)),
+        lanes: null
+      };
+      host.marker = 'subprocess';
+      state.nodes = state.nodes.filter(n => !hijos.has(n.id));
+      state.edges = state.edges.filter(e => !hijos.has(e.from) && !hijos.has(e.to));
     });
 
     // Metadatos: nombre del proceso
@@ -8977,9 +9482,23 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
   // se calibra con las ejecuciones reales guardadas en este navegador.
   function estimarCosteGeneracion(charsTexto, nivel, modeloElegido) {
     const modelo = modeloElegido || aiConfig().model || 'claude-opus-5-5';
-    const charsEntrada = Math.min(charsTexto, MAX_AI_CHARS) + AI_SYSTEM.length + 800;   // +800: reglas de fusion y profundidad
     const h = historialCostes().filter(x => x.modelo === modelo && x.entrada > 0 && x.chars > 0);
     const carPorToken = h.length ? mediana(h.map(x => x.chars / x.entrada)) : CAR_POR_TOKEN_INICIAL;
+    // v3.11.0: documento largo = N lecturas de tramo + la generacion final sobre los extractos
+    const chars = Math.min(charsTexto, MAX_DOC_CHARS);
+    let extra = null, charsFinal = chars;
+    if (chars > MAX_AI_CHARS) {
+      const nT = Math.ceil(chars / TRAMO_CHARS);
+      const entT = Math.round((chars + nT * (AI_TRAMO_SYSTEM.length + 200)) / carPorToken);
+      const hT = h.filter(x => x.nivel === 'tramo' && x.salida > 0);
+      // salida por tramo: observada en este navegador o supuesto de 4K-12K tokens
+      const salT = hT.length ? (() => { const r = mediana(hT.map(x => x.salida / x.entrada)); return [entT * r * 0.7, entT * r * 1.3]; })()
+                             : [nT * 4000, nT * 12000];
+      extra = { n: nT, entrada: entT, salida: salT.map(Math.round), min: usd(entT, salT[0], modelo), max: usd(entT, salT[1], modelo), tope: usd(entT, nT * 32000, modelo) };
+      // los extractos (texto visible, ~3 car/token) son la entrada de la generacion final
+      charsFinal = Math.min(MAX_AI_CHARS, Math.round((salT[0] + salT[1]) / 2 * 3));
+    }
+    const charsEntrada = charsFinal + AI_SYSTEM.length + 800;   // +800: reglas de fusion y profundidad
     const entrada = Math.round(charsEntrada / carPorToken);
     const delNivel = h.filter(x => x.nivel === nivel && x.salida > 0);
     let salida;
@@ -8991,10 +9510,11 @@ ${diShapes}${diEdges}    </bpmndi:BPMNPlane>
       salida = SALIDA_INICIAL[nivel] || SALIDA_INICIAL[2];
     }
     salida = salida.map(t => Math.round(Math.min(GEN_MAX_TOKENS, Math.max(500, t))));
+    const x = extra || { n: 0, entrada: 0, min: 0, max: 0, tope: 0 };
     return {
-      modelo, precio: precioModelo(modelo), entrada, salida, muestras: delNivel.length,
-      min: usd(entrada, salida[0], modelo), max: usd(entrada, salida[1], modelo),
-      tope: usd(entrada, topeSalida(modelo), modelo), topeTokens: topeSalida(modelo)
+      modelo, precio: precioModelo(modelo), entrada: entrada + x.entrada, salida, muestras: delNivel.length, tramos: x.n,
+      min: usd(entrada, salida[0], modelo) + x.min, max: usd(entrada, salida[1], modelo) + x.max,
+      tope: usd(entrada, topeSalida(modelo), modelo) + x.tope, topeTokens: topeSalida(modelo)
     };
   }
   function lineaCosteIa() {
@@ -9305,12 +9825,15 @@ Reglas:
     if (lbl && n > 1) lbl.textContent += ' · ' + total.toLocaleString('es-PE') + ' car.';
     const warn = $('#sourcesWarn');
     if (warn) {
-      const excede = total > MAX_AI_CHARS;
-      warn.hidden = !excede;
+      const excede = total > MAX_DOC_CHARS, tramos = total > MAX_AI_CHARS;
+      warn.hidden = !(excede || tramos);
       warn.textContent = excede
         ? 'Entre todas suman ' + total.toLocaleString('es-PE') + ' caracteres y la IA lee hasta ' +
-          MAX_AI_CHARS.toLocaleString('es-PE') + ': se recortará el final de las fuentes más largas. ' +
+          MAX_DOC_CHARS.toLocaleString('es-PE') + ': se recortará el final de las fuentes más largas. ' +
           'Quita las que no aporten o deja solo los capítulos del proceso.'
+        : tramos
+        ? 'Suman ' + total.toLocaleString('es-PE') + ' caracteres: la IA los leerá en ' + Math.ceil(total / TRAMO_CHARS) +
+          ' tramos y luego armará un solo proceso. Tarda más (varios minutos) y cuesta más; verás el coste antes de confirmar.'
         : '';
     }
     const go = $('#btnIngestGo');
@@ -9339,13 +9862,13 @@ Reglas:
   function combinedSourceText() {
     const arr = sourcesList();
     const NL = String.fromCharCode(10);
-    if (arr.length === 1) return arr[0].texto;
+    if (arr.length === 1) return arr[0].texto.slice(0, MAX_DOC_CHARS);
     // v3.8.5: solo se recorta si entre todas superan el tope, y por reparto
     // justo: las fuentes cortas entran enteras y el resto del presupuesto se
     // divide entre las largas. Antes cada una quedaba en 60K/n aunque sobrara
     // espacio (tres documentos = 20K cada uno).
     const tope = {};
-    let presupuesto = MAX_AI_CHARS;
+    let presupuesto = MAX_DOC_CHARS;
     arr.slice().sort((a, b) => a.chars - b.chars).forEach((s, i, orden) => {
       tope[s.id] = Math.min(s.chars, Math.floor(presupuesto / (orden.length - i)));
       presupuesto -= tope[s.id];
@@ -9702,7 +10225,8 @@ Reglas:
         });
         box.innerHTML =
           '<div class="pc-cifra">Coste estimado de esta ejecución: <b>' + fmtUsd(e.min) + ' – ' + fmtUsd(e.max) + '</b></div>' +
-          '<small>Máximo posible ' + fmtUsd(e.tope) + ', si la IA usa toda la respuesta (' + e.topeTokens.toLocaleString('es-PE') + ' tokens). ' +
+          '<small>' + (e.tramos ? '<b>Documento largo: se leerá en ' + e.tramos + ' tramos</b> y luego se armará un solo proceso (varios minutos; el coste incluye todas las lecturas). ' : '') +
+          'Máximo posible ' + fmtUsd(e.tope) + ', si la IA usa toda la respuesta (' + e.topeTokens.toLocaleString('es-PE') + ' tokens' + (e.tramos ? ' en la generación final' : '') + '). ' +
           e.precio.nombre + ' a precio de lista: US$ ' + e.precio.entrada + ' por millón de tokens de entrada y US$ ' + e.precio.salida +
           ' de salida; ~' + e.entrada.toLocaleString('es-PE') + ' tokens de entrada. ' +
           (e.muestras ? 'Rango ajustado con ' + e.muestras + (e.muestras === 1 ? ' ejecución real' : ' ejecuciones reales') + ' de este nivel en este navegador.'
@@ -9714,6 +10238,83 @@ Reglas:
       const cancel = $('#modalCancel');
       if (cancel) { const prev = cancel.onclick; cancel.onclick = (e) => { resolve(2); if (prev) prev(e); }; }
     });
+  }
+
+  // ---- Lectura por tramos (v3.11.0) ----
+  // Corta en limites naturales (salto de parrafo, luego de linea, luego espacio)
+  // cerca del tamano objetivo, para no partir una frase por la mitad.
+  function partirEnTramos(texto, tam) {
+    const n = Math.ceil(texto.length / tam);
+    if (n <= 1) return [texto];
+    const objetivo = Math.ceil(texto.length / n);   // tramos parejos, no uno enorme y otro minimo
+    const out = [];
+    let i = 0;
+    while (i < texto.length) {
+      if (texto.length - i <= objetivo * 1.15) { out.push(texto.slice(i)); break; }
+      let fin = i + objetivo;
+      const ventana = texto.slice(fin - 8000, fin + 8000);
+      let k = ventana.lastIndexOf('\n\n');
+      if (k < 0) k = ventana.lastIndexOf('\n');
+      if (k < 0) k = ventana.lastIndexOf(' ');
+      if (k >= 0) fin = fin - 8000 + k + 1;
+      out.push(texto.slice(i, fin));
+      i = fin;
+    }
+    return out;
+  }
+
+  const AI_TRAMO_SYSTEM = 'Eres un analista senior de procesos de negocio. Recibes UN TRAMO de un documento largo (procedimiento, manual, transcripcion de levantamiento). ' +
+    'Tu trabajo es EXTRAER, no resumir: otro analista construira despues el diagrama BPMN del proceso completo solo con tus extractos de todos los tramos, sin ver el documento. ' +
+    'Escribe en espanol, en texto plano con vinetas, en el MISMO ORDEN en que ocurre el proceso en el tramo:\n' +
+    '- ROLES/AREAS que participan.\n' +
+    '- PASOS: "ROL: verbo + objeto [sistema si lo hay] (documento de entrada/salida si lo hay)". Conserva CADA paso operativo y cada validacion; no fusiones pasos distintos.\n' +
+    '- DECISIONES: la pregunta y que pasa en cada salida (a que paso va).\n' +
+    '- EVENTOS: como empieza y como termina; plazos, temporizadores, escalamientos, mensajes que llegan de fuera o salen hacia fuera.\n' +
+    '- EXCEPCIONES y REGLAS de negocio que cambian el flujo.\n' +
+    'Si el tramo empieza a mitad de un paso o termina a mitad de uno, indicalo con "(continua del tramo anterior)" o "(sigue en el tramo siguiente)". ' +
+    'Si el tramo no contiene pasos de proceso (indice, glosario, anexos legales, formatos en blanco), responde solo: SIN PROCESO. ' +
+    'No inventes nada que el tramo no diga.';
+
+  async function extraerPorTramos(texto, sourceLabel, setStatus, opts) {
+    const tramos = partirEnTramos(texto, TRAMO_CHARS);
+    const n = tramos.length;
+    const salidas = new Array(n);
+    const uso = { entrada: 0, salida: 0, usd: 0, modelo: aiConfig().model };
+    const recibido = new Array(n).fill(0);
+    let listos = 0;
+    const informar = () => setStatus('Documento largo: leyendo ' + n + ' tramos (' + listos + ' de ' + n + ' listos)… ' +
+      recibido.reduce((a, b) => a + b, 0).toLocaleString('es-PE') + ' caracteres extraídos');
+    informar();
+    const timeoutMs = Math.min(180000, 90000 + Math.floor(TRAMO_CHARS / 1000) * 500);
+    const leer = async (i) => {
+      const prompt = 'Documento: ' + (sourceLabel || 'documento') + '. Este es el TRAMO ' + (i + 1) + ' de ' + n + '.\n\n=== TRAMO ===\n' + tramos[i];
+      const raw = await callClaude(prompt, { system: AI_TRAMO_SYSTEM, effort: 'low', maxTokens: 32000, timeoutMs,
+        onProgress: (c) => { recibido[i] = c; informar(); },
+        onUsage: (u) => {
+          const c = usd(u.entrada, u.salida, u.modelo);
+          uso.entrada += u.entrada; uso.salida += u.salida; uso.usd += c; uso.modelo = u.modelo;
+          // nivel 'tramo': calibra el estimador de tramos sin contaminar el de cada nivel
+          registrarCoste({ fecha: new Date().toISOString(), modelo: u.modelo, nivel: 'tramo', chars: prompt.length + AI_TRAMO_SYSTEM.length,
+            entrada: u.entrada, salida: u.salida, usd: c });
+          // si la generacion final falla, el aviso de error ya incluye lo gastado en tramos
+          state._ultimoCosteIa = { fecha: new Date().toISOString(), modelo: uso.modelo, nivel: (opts && opts.vista) || 2, chars: texto.length,
+            entrada: uso.entrada, salida: uso.salida, usd: uso.usd };
+        } });
+      salidas[i] = raw;
+      listos++; informar();
+    };
+    // Pool de TRAMOS_EN_PARALELO: mas rapido que en serie sin saturar el limite de uso
+    let siguiente = 0;
+    const trabajador = async () => { while (siguiente < n) { const i = siguiente++; throwIfCancelled(); await leer(i); } };
+    await Promise.all(Array.from({ length: Math.min(TRAMOS_EN_PARALELO, n) }, trabajador));
+    throwIfCancelled();
+    let sinProceso = 0;
+    const partes = salidas.map((s, i) => {
+      if (/^\s*SIN PROCESO\.?\s*$/i.test(s || '')) { sinProceso++; return null; }
+      return '=== EXTRACTO DEL TRAMO ' + (i + 1) + ' de ' + n + ' ===\n' + (s || '').trim();
+    }).filter(Boolean);
+    if (!partes.length) throw new Error('Ningún tramo del documento describía pasos de un proceso (solo índices, anexos o formatos). Revisa que sea el procedimiento correcto.');
+    return { texto: partes.join('\n\n'), n, sinProceso, uso };
   }
 
   async function aiBuildProcess(sourceText, sourceLabel, statusFn, opts) {
@@ -9733,7 +10334,20 @@ Reglas:
       2: 'Detalle habitual de un levantamiento: la actividad que ejecuta cada rol de principio a fin.',
       3: 'Levantamiento exhaustivo: recoge cada paso operativo que el texto mencione, incluidos sistemas y validaciones intermedias.'
     })[opts.vista]) : '';
-    const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.${merge}${roles}${prof}\n\n=== CONTENIDO ===\n${String(sourceText).slice(0, MAX_AI_CHARS)}`;
+    // v3.11.0: documento mas largo que una lectura -> primero se extrae por tramos
+    let contenido = String(sourceText), notaTramos = '', usoTramos = null;
+    if (contenido.length > MAX_AI_CHARS) {
+      const r = await extraerPorTramos(contenido, sourceLabel, setStatus, opts);
+      contenido = r.texto.slice(0, MAX_AI_CHARS);
+      usoTramos = r.uso;
+      state._tramosIa = { n: r.n, sinProceso: r.sinProceso };
+      notaTramos = NL2 + NL2 + '=== COMO LEER EL CONTENIDO ===' + NL2 +
+        'El documento original era demasiado largo para una sola lectura. Lo que sigue son EXTRACTOS ORDENADOS de sus ' + r.n +
+        ' tramos consecutivos, hechos por un analista. Un paso puede empezar al final de un tramo y continuar en el siguiente: unelos en una sola actividad. ' +
+        'Construye UN solo proceso de principio a fin con todos los tramos; no repitas actividades que aparezcan en dos tramos contiguos.';
+      setStatus('Tramos leídos. Armando el proceso completo…');
+    }
+    const prompt = `Reconstruye el proceso descrito en el siguiente ${sourceLabel || 'documento'} como JSON BPMN según el formato indicado.${merge}${roles}${prof}${notaTramos}\n\n=== CONTENIDO ===\n${contenido.slice(0, MAX_AI_CHARS)}`;
     // v3.8.9: con un documento grande la IA puede tardar mas en soltar el
     // primer dato (no en total: el reloj de inactividad se reinicia con cada
     // byte). 90s fijos hacian cortar de mas un levantamiento de ~90K
@@ -9745,7 +10359,10 @@ Reglas:
         const coste = { fecha: new Date().toISOString(), modelo: u.modelo, nivel: (opts && opts.vista) || 2,
           chars: prompt.length + AI_SYSTEM.length, entrada: u.entrada, salida: u.salida, usd: usd(u.entrada, u.salida, u.modelo) };
         registrarCoste(coste);
-        state._ultimoCosteIa = coste;
+        // Con tramos, lo que se informa al usuario es el TOTAL de la ejecucion
+        state._ultimoCosteIa = usoTramos
+          ? Object.assign({}, coste, { entrada: coste.entrada + usoTramos.entrada, salida: coste.salida + usoTramos.salida, usd: coste.usd + usoTramos.usd })
+          : coste;
       } });
     const spec = parseJsonLoose(raw);
     buildProcessFromAiSpec(spec, sourceLabel);

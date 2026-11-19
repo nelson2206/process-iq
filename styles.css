@@ -1031,6 +1031,7 @@ body:not(.panel-open) .tab.active::before { display: none; }
 }
 
 #propsForm label,
+#edgeForm label,
 #painsAdd label {
   display: block;
   margin-bottom: var(--space-3);
@@ -1044,6 +1045,8 @@ body:not(.panel-open) .tab.active::before { display: none; }
 #propsForm input,
 #propsForm select,
 #propsForm textarea,
+#edgeForm input:not([type="checkbox"]),
+#edgeForm select,
 #painsAdd input,
 #painsAdd select {
   display: block;
@@ -2562,3 +2565,35 @@ body.present-mode .drawer { display: none; }
 }
 @keyframes goSpin { to { transform: rotate(360deg); } }
 .ip-elapsed { font-size: 11.5px; color: var(--nexus-text-soft, #9aa7bd); font-variant-numeric: tabular-nums; margin-left: auto; margin-right: 10px; }
+
+/* v3.11.0 — panel de la conexion seleccionada (UX-003 / BPMN-004) */
+#edgeForm .edge-ruta { margin: 0 0 var(--space-3); font-size: var(--font-sm); color: var(--nexus-text); line-height: 1.4; }
+#edgeForm .prop-hint { display: block; margin-top: 4px; font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--nexus-text-soft); font-weight: 400; }
+#edgeForm .check-line { display: flex !important; align-items: center; gap: 8px; text-transform: none !important; letter-spacing: 0 !important; font-size: var(--font-sm) !important; color: var(--nexus-text) !important; margin-top: var(--space-3); }
+#edgeForm .check-line input { width: auto; margin: 0; }
+#edgeForm .edge-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: var(--space-3); }
+#edgeForm .edge-acciones button { flex: 1 1 auto; padding: 7px 10px; border-radius: var(--radius-md); border: 1px solid var(--glass-brd); background: rgba(255,255,255,0.05); color: var(--nexus-text); font-size: var(--font-sm); cursor: pointer; }
+#edgeForm .edge-acciones button:hover { background: rgba(255,255,255,0.12); }
+#edgeForm select:disabled { opacity: .6; cursor: not-allowed; }
+
+/* v3.11.0 — subprocesos con contenido (BPMN-003) */
+.bpmn-activity-marker.abre-sub { cursor: pointer; }
+.bpmn-activity-marker.abre-sub:hover rect:not([fill="transparent"]) { stroke: #147AFF; stroke-width: 1.8; }
+.bpmn-activity-marker.abre-sub:hover path { stroke: #147AFF; }
+.bpmn-activity-marker.con-contenido rect:not([fill="transparent"]) { fill: #E8F1FF; }
+#btnAbrirSub { display: block; width: 100%; margin: -4px 0 var(--space-3); padding: 8px 10px; border-radius: var(--radius-md);
+  border: 1px solid #147AFF; background: rgba(20,122,255,0.12); color: var(--nexus-text); font-size: var(--font-sm); font-weight: 600; cursor: pointer; text-align: left; }
+#btnAbrirSub:hover { background: rgba(20,122,255,0.22); }
+#btnAbrirSub[hidden] { display: none; }
+.migas-sub { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 6px;
+  max-width: calc(100% - 32px); padding: 6px 10px; border-radius: 999px; background: #003478; color: #fff; font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18); white-space: nowrap; overflow: hidden; }
+.migas-sub[hidden] { display: none; }
+.migas-sub button { border: 0; background: transparent; color: #cfe0ff; font: inherit; cursor: pointer; padding: 2px 6px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.migas-sub button:hover { background: rgba(255,255,255,.14); color: #fff; }
+.migas-sub .migas-volver { background: #fff; color: #003478; font-weight: 700; margin-right: 4px; }
+.migas-sub .migas-volver:hover { background: #e6efff; color: #003478; }
+.migas-sub .migas-sep { opacity: .6; }
+.migas-sub .migas-actual { font-weight: 700; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+body.en-subproceso #canvasArea { box-shadow: inset 0 0 0 3px rgba(20,122,255,.35); }
+#edgeForm .check-line[hidden] { display: none !important; }

@@ -16,3 +16,9 @@ ALLOWED_ORIGINS = "https://procesos.mbc-latam.com,https://prospectos.mbc-latam.c
 [[routes]]
 pattern = "api.mbc-latam.com"
 custom_domain = true
+
+# Repositorio central de procesos (v3.12.0). Esquema en schema.sql.
+[[d1_databases]]
+binding = "DB"
+database_name = "processiq-procesos"
+database_id = "be06ae60-2090-454f-a37d-ed9c96d93b64"

@@ -2597,3 +2597,24 @@ body.present-mode .drawer { display: none; }
 .migas-sub .migas-actual { font-weight: 700; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
 body.en-subproceso #canvasArea { box-shadow: inset 0 0 0 3px rgba(20,122,255,.35); }
 #edgeForm .check-line[hidden] { display: none !important; }
+
+/* v3.12.0 — repositorio central de procesos */
+#btnRepo { position: relative; }
+.repo-punto { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: #FF0054; box-shadow: 0 0 0 2px rgba(0,0,0,.25); }
+.repo-punto[hidden] { display: none; }
+.repo-cabeza { margin-bottom: 10px; }
+.repo-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 10px; }
+.repo-aviso { font-size: 12px; line-height: 1.45; padding: 8px 10px; border-radius: 8px; background: rgba(255,0,84,.08); border: 1px solid rgba(255,0,84,.25); margin: 0; }
+.repo-buscar { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--glass-brd, #ccd); margin: 6px 0 10px; font: inherit; background: rgba(255,255,255,.05); color: inherit; }
+.repo-lista { max-height: 52vh; overflow: auto; }
+.repo-tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
+.repo-tabla th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; opacity: .7; padding: 6px; border-bottom: 1px solid rgba(127,127,127,.3); }
+.repo-tabla td { padding: 8px 6px; border-bottom: 1px solid rgba(127,127,127,.18); vertical-align: top; }
+.repo-tabla small { opacity: .75; }
+.repo-tabla tr.repo-actual td { background: rgba(20,122,255,.10); }
+.repo-botones { white-space: nowrap; text-align: right; }
+.repo-botones .btn { padding: 4px 8px; font-size: 12px; }
+.repo-borrar { opacity: .6; }
+.repo-borrar:hover { opacity: 1; color: #FF0054; }
+.repo-error { color: #FF0054; }
+.repo-opcion { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; cursor: pointer; }

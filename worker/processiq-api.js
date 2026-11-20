@@ -81,6 +81,118 @@ async function registrarGasto(model, uso) {
   } catch (e) { /* el registro de gasto nunca debe afectar la respuesta al usuario */ }
 }
 
+// ============================================================
+// REPOSITORIO CENTRAL DE PROCESOS (v3.12.0) — Cloudflare D1 (binding DB)
+//   GET    /v1/procesos?q=texto&industria=X   lista (sin el JSON pesado)
+//   GET    /v1/procesos/:id                   proceso completo
+//   GET    /v1/procesos/:id/versiones         historial (sin datos)
+//   GET    /v1/procesos/:id/versiones/:n      una version concreta
+//   POST   /v1/procesos                       crea   { autor, datos }
+//   PUT    /v1/procesos/:id                   guarda { autor, datos, version } (version = la que se abrio)
+//   DELETE /v1/procesos/:id                   borrado logico
+// Acceso: mismo codigo de equipo que la IA, y solo desde el origen de
+// ProcessIQ (REPO_ORIGINS): las otras apps que comparten este Worker NO leen
+// procesos de clientes. Otros Workers de la cuenta pueden LEER con
+// x-internal-code (para alimentar otras herramientas), nunca escribir.
+// Concurrencia: PUT con una version vieja devuelve 409 con la vigente, para
+// que nadie pise sin saberlo el trabajo de otro consultor.
+// ============================================================
+const MAX_PROCESO = 1500000;   // caracteres de JSON por proceso (D1 admite ~2 MB por fila)
+
+function metricasProceso(d) {
+  const nodes = Array.isArray(d && d.nodes) ? d.nodes : [];
+  let subprocesos = 0;
+  const contarSubs = (ns) => ns.forEach(n => { if (n && n.sub && Array.isArray(n.sub.nodes) && n.sub.nodes.length) { subprocesos++; contarSubs(n.sub.nodes); } });
+  contarSubs(nodes);
+  const carriles = new Set(nodes.map(n => (n && n.owner) || '').filter(Boolean)).size;
+  return {
+    nodos: nodes.length,
+    actividades: nodes.filter(n => n && (n.type === 'task' || n.type === 'system')).length,
+    decisiones: nodes.filter(n => n && n.type === 'decision').length,
+    carriles, subprocesos
+  };
+}
+const txt = (v, max) => String(v == null ? '' : v).trim().slice(0, max || 300);
+
+async function rutaRepositorio(req, env, url, cors, interno) {
+  if (!env.DB) return error('El repositorio no esta configurado en el intermediario', 500, cors);
+  const partes = url.pathname.split('/').filter(Boolean);   // ['v1','procesos',id?,'versiones'?,n?]
+  const id = partes[2] || null;
+  const m = req.method;
+  if (interno && m !== 'GET') return error('Las llamadas internas solo pueden leer', 403, cors);
+  const ahora = new Date().toISOString();
+
+  if (m === 'GET' && !id) {
+    const q = txt(url.searchParams.get('q'), 100), ind = txt(url.searchParams.get('industria'), 100);
+    let sql = 'SELECT id, nombre, industria, macroproceso, cliente, autor, version, nodos, actividades, decisiones, carriles, subprocesos, creado, actualizado FROM procesos WHERE borrado = 0';
+    const args = [];
+    if (q) { sql += ' AND (nombre LIKE ?1 OR macroproceso LIKE ?1 OR cliente LIKE ?1 OR industria LIKE ?1 OR autor LIKE ?1)'; args.push('%' + q + '%'); }
+    if (ind) { sql += ' AND industria = ?' + (args.length + 1); args.push(ind); }
+    sql += ' ORDER BY actualizado DESC LIMIT 500';
+    const r = await env.DB.prepare(sql).bind(...args).all();
+    return responderJson({ procesos: r.results || [] }, 200, cors);
+  }
+  if (m === 'GET' && id && partes[3] === 'versiones') {
+    if (partes[4]) {
+      const v = await env.DB.prepare('SELECT version, autor, fecha, datos FROM versiones WHERE proceso_id = ?1 AND version = ?2').bind(id, +partes[4]).first();
+      if (!v) return error('Version no encontrada', 404, cors);
+      return responderJson({ version: v.version, autor: v.autor, fecha: v.fecha, datos: JSON.parse(v.datos) }, 200, cors);
+    }
+    const r = await env.DB.prepare('SELECT version, autor, fecha, length(datos) AS tamano FROM versiones WHERE proceso_id = ?1 ORDER BY version DESC').bind(id).all();
+    return responderJson({ versiones: r.results || [] }, 200, cors);
+  }
+  if (m === 'GET' && id) {
+    const p = await env.DB.prepare('SELECT * FROM procesos WHERE id = ?1 AND borrado = 0').bind(id).first();
+    if (!p) return error('Proceso no encontrado', 404, cors);
+    p.datos = JSON.parse(p.datos);
+    return responderJson(p, 200, cors);
+  }
+  if (m === 'DELETE' && id) {
+    const r = await env.DB.prepare('UPDATE procesos SET borrado = 1, actualizado = ?2 WHERE id = ?1 AND borrado = 0').bind(id, ahora).run();
+    if (!r.meta || !r.meta.changes) return error('Proceso no encontrado', 404, cors);
+    return responderJson({ ok: true }, 200, cors);
+  }
+  if (m === 'POST' || m === 'PUT') {
+    if (+(req.headers.get('content-length') || 0) > MAX_PROCESO + 20000) return error('El proceso es demasiado grande para el repositorio', 413, cors);
+    let b;
+    try { b = await req.json(); } catch (e) { return error('Cuerpo JSON invalido', 400, cors); }
+    const d = b && b.datos;
+    if (!d || !Array.isArray(d.nodes)) return error('Falta el proceso (datos.nodes)', 400, cors);
+    const datos = JSON.stringify(d);
+    if (datos.length > MAX_PROCESO) return error('El proceso es demasiado grande para el repositorio', 413, cors);
+    const meta = d.meta || {};
+    const mt = metricasProceso(d);
+    const autor = txt(b.autor, 80);
+    const campos = [txt(meta.name, 200) || 'Proceso sin nombre', txt(meta.industry, 100), txt(meta.macroprocess, 150), txt(meta.client, 150), autor,
+      mt.nodos, mt.actividades, mt.decisiones, mt.carriles, mt.subprocesos, datos, ahora];
+    if (m === 'POST' && !id) {
+      const nuevo = crypto.randomUUID();
+      await env.DB.batch([
+        env.DB.prepare('INSERT INTO procesos (nombre, industria, macroproceso, cliente, autor, nodos, actividades, decisiones, carriles, subprocesos, datos, actualizado, id, version, creado) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,1,?12)').bind(...campos, nuevo),
+        env.DB.prepare('INSERT INTO versiones (proceso_id, version, autor, fecha, datos) VALUES (?1, 1, ?2, ?3, ?4)').bind(nuevo, autor, ahora, datos)
+      ]);
+      return responderJson({ id: nuevo, version: 1, actualizado: ahora }, 201, cors);
+    }
+    if (m === 'PUT' && id) {
+      const actual = await env.DB.prepare('SELECT version, autor, actualizado FROM procesos WHERE id = ?1 AND borrado = 0').bind(id).first();
+      if (!actual) return error('Proceso no encontrado (quiza lo borraron): guardalo como nuevo', 404, cors);
+      const esperada = +b.version || 0;
+      if (!b.forzar && esperada !== actual.version) {
+        return responderJson({ type: 'error', conflicto: true, error: { type: 'processiq_conflicto',
+          message: 'Otra persona guardo una version mas reciente' }, vigente: actual }, 409, cors);
+      }
+      const nueva = actual.version + 1;
+      // La condicion "version = ?" evita que dos guardados simultaneos se pisen
+      const r = await env.DB.prepare('UPDATE procesos SET nombre=?1, industria=?2, macroproceso=?3, cliente=?4, autor=?5, nodos=?6, actividades=?7, decisiones=?8, carriles=?9, subprocesos=?10, datos=?11, actualizado=?12, version=?14 WHERE id=?13 AND version=?15')
+        .bind(...campos, id, nueva, actual.version).run();
+      if (!r.meta || !r.meta.changes) return error('Otra persona guardo al mismo tiempo: vuelve a intentarlo', 409, cors);
+      await env.DB.prepare('INSERT INTO versiones (proceso_id, version, autor, fecha, datos) VALUES (?1, ?2, ?3, ?4, ?5)').bind(id, nueva, autor, ahora, datos).run();
+      return responderJson({ id, version: nueva, actualizado: ahora }, 200, cors);
+    }
+  }
+  return error('Ruta no encontrada', 404, cors);
+}
+
 function origenPermitido(req, env) {
   const origen = req.headers.get('Origin') || '';
   const lista = (env.ALLOWED_ORIGINS || 'https://procesos.mbc-latam.com')
@@ -92,7 +204,7 @@ function cabecerasCors(origen) {
   const h = { 'Vary': 'Origin' };
   if (origen) {
     h['Access-Control-Allow-Origin'] = origen;
-    h['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS';
+    h['Access-Control-Allow-Methods'] = 'POST, GET, PUT, DELETE, OPTIONS';
     h['Access-Control-Allow-Headers'] = 'content-type, x-processiq-code';
     h['Access-Control-Max-Age'] = '86400';
   }
@@ -141,6 +253,19 @@ export default {
       }, 200, cors);
     }
     if (req.method === 'OPTIONS') return new Response(null, { status: origen ? 204 : 403, headers: cors });
+    // Repositorio de procesos (v3.12.0): mismo codigo de equipo; solo el origen de ProcessIQ
+    if (url.pathname === '/v1/procesos' || url.pathname.startsWith('/v1/procesos/')) {
+      const INT = (env.INTERNAL_CODE || '').trim();
+      const esInterno = !!INT && igualSeguro(req.headers.get('x-internal-code') || '', INT);
+      if (!esInterno) {
+        const repoOrigenes = (env.REPO_ORIGINS || 'https://procesos.mbc-latam.com').split(',').map(s => s.trim()).filter(Boolean);
+        if (!origen || !repoOrigenes.includes(origen)) return error('Origen no permitido para el repositorio', 403, cors);
+        if (!CODIGO) return error('El intermediario no tiene configurados sus secretos', 500, cors);
+        if (!igualSeguro(req.headers.get('x-processiq-code') || '', CODIGO)) return error('Codigo de acceso incorrecto', 401, cors);
+      }
+      try { return await rutaRepositorio(req, env, url, cors, esInterno); }
+      catch (e) { return error('Error del repositorio: ' + (e && e.message || e), 500, cors); }
+    }
     if (url.pathname !== '/v1/messages' || req.method !== 'POST') return error('Ruta no encontrada', 404, cors);
     // Llamada interna de otro Worker de la cuenta (service binding, p. ej. voz-relevamiento-api):
     // no viene de un navegador, asi que no trae Origin; se autentica con INTERNAL_CODE.

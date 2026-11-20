@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.11.0 — fase 2 de ProcessIQ_UX.docx: lectura por tramos de documentos largos, panel de conexión (UX-003), temporizador de borde conectable (BPMN-004) y subprocesos navegables (BPMN-003)
+> **Última actualización:** v3.12.0 — repositorio central de procesos en Cloudflare D1 (guardar, buscar, abrir, historial, conflictos)
 
 ---
 
@@ -480,6 +480,31 @@
     la tarea, no nodo. Requiere edge.fromBoundary, ruta saliendo del reloj,
     sourceRef "<id>_be" en XML y ajuste en PPTX. M.
   -> Los tres quedaron hechos en v3.11.0 (abajo).
+- v3.12.0 REPOSITORIO CENTRAL (usuario: "haz la 3, se podria utilizar algo de
+  cloudflare"). Cloudflare D1 "processiq-procesos" (id be06ae60-2090-454f-
+  a37d-ed9c96d93b64), binding DB en worker/wrangler.toml, esquema en
+  worker/schema.sql (procesos = ultima version + columnas para filtrar/
+  analizar; versiones = cada guardado completo). Rutas en el MISMO Worker
+  (/v1/procesos: GET lista ?q=, GET :id, GET :id/versiones[/n], POST, PUT
+  con version esperada -> 409 si otro guardo, DELETE logico). Acceso: codigo
+  de equipo + origen en REPO_ORIGINS (por defecto solo procesos.mbc-latam.com:
+  Radar de Prospectos comparte el Worker y NO ve procesos). Otros Workers
+  pueden LEER con x-internal-code (para alimentar otras herramientas).
+  App: boton Repositorio en la cabecera (punto fucsia = cambios sin subir),
+  Ctrl+S guarda version si esta vinculado. state.meta.repo = {id, version,
+  firma}; firma = hash del JSON subido. datosParaRepo sube el modelo RAIZ y,
+  si se esta en Ejecutivo/Actividad, el modelo COMPLETO (nunca la
+  proyeccion), sin caches _d/_dSerie/_sello. Conflicto: copia nueva o
+  sobrescribir (la otra version queda en historial). Autor: nombre libre en
+  localStorage processiq.autor. Aviso visible: no datos personales ni lo que
+  el NDA impida compartir dentro de MBC.
+  Prueba local: launch "processiq-api-dev" (wrangler dev --local, D1 local)
+  con worker/.dev.vars (valores de PRUEBA, ignorado por git). Verificado:
+  401 sin codigo, 403 desde prospectos, guardar v1/v2 con Ctrl+S, conflicto
+  -> copia, historial y abrir v1, borrar, guardar desde Ejecutivo sube los
+  18 nodos (no los 8 visibles). En produccion: /health ok, 401 y 403.
+  PENDIENTE: no hay usuarios individuales (todos con el mismo codigo ven
+  todo); si se necesitan permisos por persona/cliente -> Cloudflare Access.
 - v3.11.0 FASE 2 (usuario: "ejecuta todo"). Cuatro frentes:
   1) LECTURA POR TRAMOS (documentos > MAX_AI_CHARS = 400K car.). Antes se
     recortaba al 400K y se avisaba. Ahora aiBuildProcess -> extraerPorTramos:

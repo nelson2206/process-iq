@@ -20,3 +20,6 @@ bench/fixtures/
 # Estado local de Wrangler (Cloudflare)
 .wrangler/
 worker/.wrangler/
+
+# Valores de PRUEBA de wrangler dev (nunca secretos reales)
+worker/.dev.vars

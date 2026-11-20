@@ -165,6 +165,14 @@
 
     $('#btnIngest').addEventListener('click', openIngestModal);
     $('#btnImport').addEventListener('click', () => $('#fileImport').click());
+    // v3.12.0: repositorio central (Ctrl+S guarda una version si el proceso ya esta vinculado)
+    if ($('#btnRepo')) $('#btnRepo').addEventListener('click', abrirRepositorio);
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (state.meta.repo && state.meta.repo.id) guardarEnRepo(); else abrirRepositorio();
+      }
+    });
     $('#fileImport').addEventListener('change', importJson);
 
     // Export dropdown
@@ -3926,6 +3934,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
       showSaving();
+      programarPuntoRepo();
     } catch (e) {
       $('#statusSaved').innerHTML = '<span class="dot" style="background:var(--danger)"></span>Error al guardar';
     }
@@ -5265,6 +5274,276 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   }
 
   // =================== EXPORT / IMPORT ===================
+  // ============================================================
+  // REPOSITORIO CENTRAL DE PROCESOS (v3.12.0)
+  // Base Cloudflare D1 detras del mismo intermediario de la IA
+  // (worker/processiq-api.js, rutas /v1/procesos). Se entra con el mismo
+  // codigo de equipo. Cada proceso abierto desde (o guardado en) el
+  // repositorio queda vinculado en state.meta.repo = { id, version, firma }:
+  // guardar crea una version nueva; si otro consultor guardo antes, el
+  // servidor responde 409 y se ofrece copia o sobrescribir (su version queda
+  // en el historial, nada se pierde).
+  // ============================================================
+  const AUTOR_KEY = 'processiq.autor';
+  // Punto en el boton Repositorio: proceso vinculado con cambios sin subir
+  let _tPuntoRepo = null;
+  function programarPuntoRepo() {
+    clearTimeout(_tPuntoRepo);
+    _tPuntoRepo = setTimeout(() => {
+      const p = document.getElementById('repoPunto');
+      if (p) p.hidden = !(state.meta.repo && state.meta.repo.id && repoSinGuardar());
+    }, 800);
+  }
+  function repoAutor() { try { return localStorage.getItem(AUTOR_KEY) || ''; } catch (e) { return ''; } }
+  function repoBase() {
+    const c = aiConfig();
+    return (c.proxyUrl || PROXY_POR_DEFECTO).replace(/\/+$/, '') + '/v1/procesos';
+  }
+  async function repoCodigo() {
+    let c = aiConfig();
+    if (c.modo === 'equipo' && (c.codigo || '').trim()) return c.codigo.trim();
+    const codigo = await pedirCodigoEquipo();
+    if (!codigo) return null;
+    saveAiConfig(Object.assign({}, c, { modo: 'equipo', codigo, proxyUrl: c.proxyUrl || PROXY_POR_DEFECTO, model: c.model || 'claude-opus-5-5' }));
+    if (typeof updateAiUi === 'function') updateAiUi();
+    return codigo;
+  }
+  async function repoFetch(ruta, opts) {
+    const codigo = await repoCodigo();
+    if (!codigo) throw new Error('Hace falta el código de acceso del equipo para usar el repositorio.');
+    let res;
+    try {
+      res = await fetch(repoBase() + (ruta || ''), Object.assign({}, opts, {
+        headers: Object.assign({ 'content-type': 'application/json', 'x-processiq-code': codigo }, (opts && opts.headers) || {})
+      }));
+    } catch (e) {
+      throw new Error('No se pudo conectar con el repositorio (' + repoBase().replace('/v1/procesos', '') + '). Revisa tu conexión; desde la red de Indra este dominio puede estar bloqueado por Netskope.');
+    }
+    let j = null;
+    try { j = await res.json(); } catch (_) {}
+    if (res.status === 409 && j && j.conflicto) { const e = new Error('conflicto'); e.conflicto = j.vigente; throw e; }
+    if (!res.ok) {
+      const msg = (j && j.error && j.error.message) || ('Error ' + res.status);
+      throw new Error(res.status === 401 ? 'Código de acceso del equipo incorrecto. Revísalo en Ajustes de IA.' : msg);
+    }
+    return j;
+  }
+  // Lo que se sube: el proceso PRINCIPAL completo (con subprocesos, To-Be,
+  // ficha, KPIs...) sin las cachés de dibujo, que se recalculan solas.
+  const CACHES_DIBUJO = { _d: 1, _dSerie: 1, _sello: 1 };
+  function datosParaRepo() {
+    const R = modeloRaiz();
+    const meta = Object.assign({}, state.meta); delete meta.repo;
+    let nodes = R.nodes, edges = R.edges, lanes = R.lanes;
+    // En Ejecutivo/Actividad lo que se ve es una PROYECCION: se guarda el modelo
+    // completo (con los subprocesos que se hayan creado desde la vista reducida)
+    const mc = enSubproceso() ? state._pila[0].modeloCompleto : state._modeloCompleto;
+    if (mc && (state.meta.nivelVista || 3) < 3) {
+      R.nodes.forEach(n => { if (n.sub) { const c = mc.nodes.find(x => x.id === n.id); if (c) { c.sub = n.sub; c.marker = 'subprocess'; } } });
+      nodes = mc.nodes; edges = mc.edges; lanes = null;
+    }
+    meta.nivelVista = 3;
+    const datos = { meta, ficha: state.ficha, nodes, edges, activeView: state.activeView,
+      views: state._views, nextId: state.nextId, raci: state._raci || null, sipoc: state._sipoc || null,
+      simResults: state._simResults || null, kpiValues: state._kpiValues || null, lanes };
+    return JSON.parse(JSON.stringify(datos, (k, v) => (CACHES_DIBUJO[k] ? undefined : v)));
+  }
+  function firmaTexto(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + s.length; }
+  function firmaActual() { return firmaTexto(JSON.stringify(datosParaRepo())); }
+  function repoSinGuardar() {
+    if (!state.nodes.length) return false;
+    const r = state.meta.repo;
+    return !r || r.firma !== firmaActual();
+  }
+  function cargarDatosRepo(datos, repo) {
+    resetState();
+    state.meta = Object.assign({ name: '', industry: '', macroprocess: '', client: '', owner: '' }, datos.meta || {});
+    state.ficha = normalizeFicha(datos.ficha);
+    state.nodes = datos.nodes || [];
+    state.edges = datos.edges || [];
+    state.activeView = datos.activeView || 'asis';
+    state._views = datos.views || { asis: null, tobe: null };
+    state.nextId = Math.max(+datos.nextId || 0, maxIdProfundo(state.nodes, state.edges) + 1);
+    state._raci = datos.raci || null;
+    state._sipoc = datos.sipoc || null;
+    state._simResults = datos.simResults || null;
+    state._kpiValues = datos.kpiValues || {};
+    state._lanes = datos.lanes || null;
+    $('#processName').value = state.meta.name || '';
+    $('#processIndustry').value = state.meta.industry || '';
+    $('#processMacro').value = state.meta.macroprocess || '';
+    state.meta.nivelVista = 3;
+    invalidarRutas();
+    if (!state._lanes) autoLayout();
+    fijarModeloCompleto();
+    state.meta.repo = Object.assign({}, repo, { firma: firmaActual() });
+    updateViewUi();
+    persist();
+    render();
+    actualizarSelectorNivel();
+    maybeFitOnLoad();
+  }
+
+  // Guardar: version nueva si esta vinculado; si no, proceso nuevo
+  async function guardarEnRepo(opts) {
+    opts = opts || {};
+    if (!state.nodes.length) { alert('No hay proceso para guardar.'); return null; }
+    let autor = repoAutor();
+    if (!autor) {
+      autor = (prompt('¿Con qué nombre firmas lo que guardas en el repositorio? (lo verá el equipo)', '') || '').trim();
+      if (!autor) return null;
+      try { localStorage.setItem(AUTOR_KEY, autor.slice(0, 80)); } catch (e) {}
+    }
+    const datos = datosParaRepo();
+    const r = state.meta.repo;
+    try {
+      const res = (r && r.id && !opts.comoCopia)
+        ? await repoFetch('/' + encodeURIComponent(r.id), { method: 'PUT', body: JSON.stringify({ autor, datos, version: r.version, forzar: !!opts.forzar }) })
+        : await repoFetch('', { method: 'POST', body: JSON.stringify({ autor, datos }) });
+      state.meta.repo = { id: res.id, version: res.version, actualizado: res.actualizado, firma: firmaTexto(JSON.stringify(datos)) };
+      persist();
+      avisoBreve('Guardado en el repositorio: «' + (state.meta.name || 'Proceso') + '», versión ' + res.version);
+      return res;
+    } catch (e) {
+      if (e.conflicto) {
+        const v = e.conflicto;
+        const elige = await elegirAnteConflicto(v);
+        if (elige === 'copia') return guardarEnRepo({ comoCopia: true });
+        if (elige === 'sobrescribir') return guardarEnRepo({ forzar: true });
+        return null;
+      }
+      alert('No se pudo guardar en el repositorio:\n\n' + e.message);
+      return null;
+    }
+  }
+  function elegirAnteConflicto(vigente) {
+    return new Promise(resolve => {
+      const cuando = vigente.actualizado ? new Date(vigente.actualizado).toLocaleString('es-PE') : '';
+      modalRepo('Otra persona guardó antes que tú',
+        '<p class="panel-hint"><b>' + escapeHtml(vigente.autor || 'Alguien') + '</b> guardó la versión ' + vigente.version +
+        (cuando ? ' el ' + escapeHtml(cuando) : '') + ' después de que abrieras este proceso. ¿Qué hacemos con tus cambios?</p>' +
+        '<label class="repo-opcion"><input type="radio" name="repoConf" value="copia" checked> <span><b>Guardar como copia nueva</b> (recomendado): las dos versiones quedan, cada una por su lado.</span></label>' +
+        '<label class="repo-opcion"><input type="radio" name="repoConf" value="sobrescribir"> <span><b>Sobrescribir</b>: la tuya pasa a ser la vigente; la de ' + escapeHtml(vigente.autor || 'la otra persona') + ' queda en el historial.</span></label>',
+        { ok: 'Continuar', cancel: 'No guardar', onOk: () => resolve(($('#modalBody input[name="repoConf"]:checked') || {}).value || 'copia'), onCancel: () => resolve(null) });
+    });
+  }
+
+  // Modal con textos propios en los botones (se restauran al cerrar)
+  function modalRepo(titulo, html, o) {
+    o = o || {};
+    const ok = $('#modalOk'), cancel = $('#modalCancel'), modal = $('#modal');
+    const tOk = ok.textContent, tCancel = cancel.textContent, cancelVisible = cancel.style.display;
+    let resuelto = false;
+    openModal(titulo, html, () => { resuelto = true; if (o.onOk) o.onOk(); });
+    ok.textContent = o.ok || 'Aceptar';
+    cancel.textContent = o.cancel || 'Cancelar';
+    if (o.sinCancel) cancel.style.display = 'none';
+    const obs = new MutationObserver(() => {
+      if (!modal.hidden) return;
+      obs.disconnect();
+      ok.textContent = tOk; cancel.textContent = tCancel; cancel.style.display = cancelVisible;
+      if (!resuelto && o.onCancel) o.onCancel();
+    });
+    obs.observe(modal, { attributes: true, attributeFilter: ['hidden'] });
+  }
+
+  // Ventana del repositorio: estado del proceso abierto + buscador + lista
+  async function abrirRepositorio() {
+    if (!(await repoCodigo())) return;   // el codigo se pide ANTES: usa el mismo modal
+    const r = state.meta.repo;
+    const estado = !state.nodes.length ? 'No hay un proceso en pantalla.'
+      : r ? ('Este proceso está en el repositorio (versión ' + r.version + ').' + (repoSinGuardar() ? ' <b>Tiene cambios sin guardar.</b>' : ' Sin cambios pendientes.'))
+      : '<b>Este proceso aún no está en el repositorio.</b>';
+    const html =
+      '<div class="repo-cabeza">' +
+        '<p class="panel-hint" id="repoEstado">' + estado + '</p>' +
+        (state.nodes.length ? '<div class="repo-acciones"><button type="button" class="btn btn-primary" id="repoGuardar">☁ ' + (r ? 'Guardar versión nueva' : 'Guardar en el repositorio') + '</button>' +
+          (r ? '<button type="button" class="btn btn-ghost" id="repoCopia">Guardar como copia</button>' : '') + '</div>' : '') +
+        '<p class="repo-aviso">El repositorio es del equipo MBC: lo ve cualquiera con el código de acceso. No guardes datos personales (DNI, teléfonos, nombres de personas fuera de su rol) ni información que el NDA del cliente impida compartir dentro de MBC. Se aloja en Cloudflare.</p>' +
+      '</div>' +
+      '<input type="search" id="repoBuscar" class="repo-buscar" placeholder="Buscar por nombre, cliente, industria, macroproceso o autor…" />' +
+      '<div id="repoLista" class="repo-lista"><p class="panel-hint">Cargando…</p></div>';
+    modalRepo('Repositorio de procesos del equipo', html, { ok: 'Cerrar', sinCancel: true });
+    const g = $('#repoGuardar'), c = $('#repoCopia');
+    // Se cierra la ventana antes de guardar: un conflicto abre su propio modal
+    if (g) g.addEventListener('click', () => { $('#modal').hidden = true; guardarEnRepo(); });
+    if (c) c.addEventListener('click', () => { $('#modal').hidden = true; guardarEnRepo({ comoCopia: true }); });
+    let t = null;
+    $('#repoBuscar').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => listarRepo($('#repoBuscar').value), 300); });
+    listarRepo('');
+  }
+  async function listarRepo(q) {
+    const box = $('#repoLista');
+    if (!box) return;
+    try {
+      const j = await repoFetch(q ? '?q=' + encodeURIComponent(q) : '', { method: 'GET' });
+      const arr = j.procesos || [];
+      if (!$('#repoLista')) return;
+      if (!arr.length) { box.innerHTML = '<p class="panel-hint">' + (q ? 'Ningún proceso coincide con la búsqueda.' : 'El repositorio está vacío: guarda el primer proceso con el botón de arriba.') + '</p>'; return; }
+      const actual = state.meta.repo && state.meta.repo.id;
+      box.innerHTML = '<table class="repo-tabla"><thead><tr><th>Proceso</th><th>Cliente / industria</th><th>Tamaño</th><th>Último guardado</th><th></th></tr></thead><tbody>' +
+        arr.map(p => '<tr' + (p.id === actual ? ' class="repo-actual"' : '') + '>' +
+          '<td><b>' + escapeHtml(p.nombre) + '</b>' + (p.macroproceso ? '<br><small>' + escapeHtml(p.macroproceso) + '</small>' : '') + '</td>' +
+          '<td>' + escapeHtml(p.cliente || '—') + '<br><small>' + escapeHtml(p.industria || '') + '</small></td>' +
+          '<td><small>' + (p.actividades || 0) + ' actividades · ' + (p.decisiones || 0) + ' decisiones' + (p.subprocesos ? ' · ' + p.subprocesos + ' subproc.' : '') + '</small></td>' +
+          '<td><small>' + escapeHtml(new Date(p.actualizado).toLocaleString('es-PE')) + '<br>' + escapeHtml(p.autor || '') + ' · v' + p.version + '</small></td>' +
+          '<td class="repo-botones"><button type="button" class="btn btn-ghost" data-abrir="' + p.id + '">Abrir</button>' +
+            '<button type="button" class="btn btn-ghost" data-hist="' + p.id + '" title="Ver versiones anteriores">Historial</button>' +
+            '<button type="button" class="btn btn-ghost repo-borrar" data-borrar="' + p.id + '" title="Quitar del repositorio">✕</button></td>' +
+        '</tr>').join('') + '</tbody></table>';
+      box.querySelectorAll('[data-abrir]').forEach(b => b.addEventListener('click', () => abrirDelRepo(b.dataset.abrir)));
+      box.querySelectorAll('[data-hist]').forEach(b => b.addEventListener('click', () => verHistorial(b.dataset.hist, arr.find(p => p.id === b.dataset.hist))));
+      box.querySelectorAll('[data-borrar]').forEach(b => b.addEventListener('click', () => borrarDelRepo(arr.find(p => p.id === b.dataset.borrar))));
+    } catch (e) {
+      if ($('#repoLista')) box.innerHTML = '<p class="repo-error">' + escapeHtml(e.message) + '</p>';
+    }
+  }
+  function confirmaReemplazo() {
+    return !repoSinGuardar() || confirm('El proceso que tienes en pantalla tiene cambios que no están en el repositorio. Si continúas se reemplaza en pantalla (puedes exportarlo antes). ¿Continuar?');
+  }
+  async function abrirDelRepo(id) {
+    if (!confirmaReemplazo()) return;
+    try {
+      const p = await repoFetch('/' + encodeURIComponent(id), { method: 'GET' });
+      $('#modal').hidden = true;
+      cargarDatosRepo(p.datos, { id: p.id, version: p.version, actualizado: p.actualizado });
+      avisoBreve('Abierto del repositorio: «' + p.nombre + '» (versión ' + p.version + ')');
+    } catch (e) { alert('No se pudo abrir:\n\n' + e.message); }
+  }
+  async function verHistorial(id, p) {
+    const box = $('#repoLista');
+    try {
+      const j = await repoFetch('/' + encodeURIComponent(id) + '/versiones', { method: 'GET' });
+      box.innerHTML = '<p><button type="button" class="btn btn-ghost" id="repoVolverLista">← Volver a la lista</button> <b>' + escapeHtml(p ? p.nombre : '') + '</b>: ' + (j.versiones || []).length + ' versiones</p>' +
+        '<table class="repo-tabla"><thead><tr><th>Versión</th><th>Guardada por</th><th>Fecha</th><th></th></tr></thead><tbody>' +
+        (j.versiones || []).map(v => '<tr><td>v' + v.version + (p && v.version === p.version ? ' <small>(vigente)</small>' : '') + '</td><td>' + escapeHtml(v.autor || '') + '</td><td>' +
+          escapeHtml(new Date(v.fecha).toLocaleString('es-PE')) + '</td><td><button type="button" class="btn btn-ghost" data-ver="' + v.version + '">Abrir esta versión</button></td></tr>').join('') +
+        '</tbody></table>';
+      $('#repoVolverLista').addEventListener('click', () => listarRepo(($('#repoBuscar') || {}).value || ''));
+      box.querySelectorAll('[data-ver]').forEach(b => b.addEventListener('click', async () => {
+        if (!confirmaReemplazo()) return;
+        try {
+          const v = await repoFetch('/' + encodeURIComponent(id) + '/versiones/' + b.dataset.ver, { method: 'GET' });
+          $('#modal').hidden = true;
+          // Vinculado a la version VIGENTE: si guarda, esta version antigua pasa a ser la nueva vigente
+          cargarDatosRepo(v.datos, { id, version: p ? p.version : v.version });
+          if (p && v.version !== p.version) state.meta.repo.firma = '';   // cuenta como cambio pendiente
+          persist();
+          avisoBreve('Versión ' + v.version + ' cargada. Si la guardas, pasa a ser la versión vigente.');
+        } catch (e) { alert('No se pudo abrir la versión:\n\n' + e.message); }
+      }));
+    } catch (e) { box.innerHTML = '<p class="repo-error">' + escapeHtml(e.message) + '</p>'; }
+  }
+  async function borrarDelRepo(p) {
+    if (!p) return;
+    if (!confirm('¿Quitar «' + p.nombre + '» del repositorio del equipo?\n\nDeja de aparecer para todos. El registro y su historial se conservan en la base y un administrador puede recuperarlo.')) return;
+    try {
+      await repoFetch('/' + encodeURIComponent(p.id), { method: 'DELETE' });
+      if (state.meta.repo && state.meta.repo.id === p.id) { delete state.meta.repo; persist(); }
+      listarRepo(($('#repoBuscar') || {}).value || '');
+    } catch (e) { alert('No se pudo quitar:\n\n' + e.message); }
+  }
+
   function exportJson() {
     const R = modeloRaiz();   // con los subprocesos dentro de sus actividades
     const data = { meta: state.meta, ficha: state.ficha, nodes: R.nodes, edges: R.edges, nextId: state.nextId, exportedAt: new Date().toISOString() };

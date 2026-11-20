@@ -1,0 +1,14 @@
+{
+  // Front estático de Trace (ProcessIQ). La API es otro Worker: ../worker (processiq-api).
+  // Desplegar desde esta carpeta:  npx wrangler deploy
+  "name": "processiq-web",
+  "compatibility_date": "2026-08-01",
+  "workers_dev": true,        // respaldo en workers.dev frente a Netskope
+  "preview_urls": false,
+  "assets": {
+    "directory": "..",        // raíz del repo; lo que se publica lo decide .assetsignore
+    "not_found_handling": "404-page"
+  },
+  // CORTE DE DNS (solo con OK de Nelson, después de que él borre el CNAME procesos -> nelson2206.github.io):
+  // "routes": [{ "pattern": "procesos.mbc-latam.com", "custom_domain": true }]
+}

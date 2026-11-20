@@ -1,0 +1,18 @@
+# Ignorado al publicar los assets (la carpeta publicada es la raíz del repo)
+web-worker/
+worker/
+bench/
+docs/
+.git
+.github/
+.claude/
+.wrangler/
+node_modules/
+*.md
+HANDOFF.md
+CNAME
+.gitignore
+.assetsignore
+wrangler.jsonc
+*.toml
+*.sql

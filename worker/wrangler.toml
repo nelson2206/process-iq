@@ -11,7 +11,8 @@ preview_urls = false  # sin URLs publicas por version: este Worker guarda la cla
 
 [vars]
 # procesos = ProcessIQ; prospectos y nelson2206.github.io = Radar de Prospectos (usa este mismo intermediario)
-ALLOWED_ORIGINS = "https://procesos.mbc-latam.com,https://prospectos.mbc-latam.com,https://nelson2206.github.io"
+# processiq-web.*.workers.dev = front de Trace en su Worker (respaldo y pruebas, P2 de la ola 1)
+ALLOWED_ORIGINS = "https://procesos.mbc-latam.com,https://prospectos.mbc-latam.com,https://nelson2206.github.io,https://processiq-web.minsait-business-consulting-pe.workers.dev"
 
 [[routes]]
 pattern = "api.mbc-latam.com"

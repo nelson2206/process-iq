@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.12.0 — repositorio central de procesos en Cloudflare D1 (guardar, buscar, abrir, historial, conflictos)
+> **Última actualización:** v3.13.0 — segunda revisión UX (ProcessIQ_UX (1).docx, ING-001..013) + arrastre del recorrido de flechas (UX-003)
 
 ---
 
@@ -480,6 +480,54 @@
     la tarea, no nodo. Requiere edge.fromBoundary, ruta saliendo del reloj,
     sourceRef "<id>_be" en XML y ajuste en PPTX. M.
   -> Los tres quedaron hechos en v3.11.0 (abajo).
+- v3.13.0 SEGUNDA REVISION UX (Downloads\ProcessIQ_UX (1).docx). Los 17
+  primeros puntos son los mismos del documento anterior (mismas capturas;
+  ya resueltos en v3.10/v3.11). Nuevos ING-001..013, probados sobre v3.12:
+  ING-001 proceso largo diminuto: maybeFitOnLoad, si el encuadre completo
+    queda < ZOOM_LEGIBLE (60 %), muestra el INICIO a 80 % + aviso; la vista
+    completa queda en minimapa/Ajustar. NO se activo el envolvente en bandas
+    (decision v3.6.1: el lienzo va en una banda).
+  ING-002 nombres absurdos ("Llenar creo justo"): era MODO BASICO (sin
+    codigo de equipo), no la IA. extractLabel descarta muletillas y verbos
+    como objeto (NO_OBJETO, pareceVerbo), exige objeto, entiende 3a persona
+    ("el analista valida" -> Validar). Aviso fijo en el lienzo (#avisoBasico,
+    meta.origen='basico') con boton Configurar IA. El basico ahora hace
+    resetState (antes heredaba carriles/repo/niveles del proceso anterior).
+  ING-003 linter -> centrarEnNodo(id) + destello (g.dataset.id).
+  ING-004 grupo de Ejecutivo/Actividad: clic real en el (+) ya bajaba a
+    Detalle (v3.11, verificado con raton); ahora tambien doble clic y los
+    pasos del grupo quedan resaltados.
+  ING-005 lint no aplica reglas de actividad a grupos (n._hijos); en
+    Propiedades el grupo oculta tipo de ejecucion/marcador/borde y explica.
+  ING-006 Repositorio pedia codigo con texto de IA y boton "Modo basico":
+    pedirCodigoEquipo('repositorio') con su propio texto.
+  ING-007 "critico bloquea export" no se cumplia: revisarAntesDeExportar.
+    BPMN: critica bloquea, alta/media pide confirmar. PPTX/Word/Ficha:
+    critica o alta pide confirmar. JSON/SVG/PNG sin control.
+  ING-008 estado: "Guardado solo en este navegador" / "En el repositorio · vN"
+    / "Cambios sin subir"; clic abre Repositorio. "Nuevo" ofrece guardar en
+    repositorio, descargar JSON o descartar.
+  ING-009 REGRESION de v3.12: el boton Repositorio comio el nombre del
+    proceso. Nombre con ancho minimo; bajo 1880 px los botones quedan en
+    icono (.btn-txt); nombre tambien en la pestaña del navegador.
+  ING-010 minimapa (#minimapa, canvas): carriles + cajas + rectangulo
+    visible; clic/arrastre navega; se oculta y se recuerda (processiq.minimapa).
+  ING-011 To-Be heredaba "75 de 75": setView vuelve a Detalle antes de
+    guardar la vista, limpia modelo por niveles y carriles, autoLayout.
+  ING-012 Industria/Macroproceso: ventana centrada con fondo (se mueve a body
+    porque el backdrop-filter de la cabecera atrapa los position:fixed).
+  ING-013 indicador To-Be arriba al centro de #canvasArea (no en el wrapper).
+  UX-003 (resto): arrastrar el punto azul de la flecha seleccionada cambia
+    su recorrido (e.via); fuera de la franja entre extremos hace un rodeo.
+    "Recorrido automatico" lo quita. El PPTX NO usa e.via (conector recto).
+  Verificado en navegador: modo basico con una transcripcion de prueba da
+  "Llenar formulario reclamo", "Generar ticket servicenow", "Validar
+  reclamo", "Aprobar devolucion monto"; linter centra un nodo fuera de vista;
+  0 alertas de actividad sobre 7 grupos; clic real en (+); BPMN bloqueado con
+  2 criticas y PPTX pide confirmar; textos del repositorio y de Nuevo; To-Be
+  "0 pasos" y As-Is vuelve completo; minimapa navega; arrastre de recorrido
+  sin pisar cajas; 5 demos con los mismos cruces que produccion v3.12
+  (Reclamos 1, Venta de Lotes 10: preexistentes); PPTX sin errores.
 - v3.12.0 REPOSITORIO CENTRAL (usuario: "haz la 3, se podria utilizar algo de
   cloudflare"). Cloudflare D1 "processiq-procesos" (id be06ae60-2090-454f-
   a37d-ed9c96d93b64), binding DB en worker/wrangler.toml, esquema en

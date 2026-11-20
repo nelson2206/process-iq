@@ -2618,3 +2618,54 @@ body.en-subproceso #canvasArea { box-shadow: inset 0 0 0 3px rgba(20,122,255,.35
 .repo-borrar:hover { opacity: 1; color: #FF0054; }
 .repo-error { color: #FF0054; }
 .repo-opcion { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; cursor: pointer; }
+
+/* ===== v3.13.0 — segunda revision UX (ING-001..013) ===== */
+/* ING-009: el nombre del proceso nunca se colapsa; los botones ceden su texto */
+.process-meta-inline { min-width: 230px; }
+.process-meta-inline input#processName { min-width: 190px; font-weight: 600; }
+@media (max-width: 1880px) {
+  .header-actions .btn-txt { display: none; }
+  .header-actions #btnRepo, .header-actions #btnNew, .header-actions #btnTransformToBe, .header-actions #btnPresent { padding-left: 9px; padding-right: 9px; }
+}
+@media (max-width: 1380px) { .brand-text { display: none; } }
+/* ING-012: datos del proceso como ventana centrada, sin tapar el diagrama a medias */
+.meta-popover { position: fixed !important; top: 96px !important; left: 50% !important; transform: translateX(-50%); z-index: 1200 !important; width: 380px !important; max-width: calc(100vw - 32px); }
+.meta-popover select { flex: none; width: 100%; min-width: 0; background: var(--white); color: var(--gray-900); border: 1px solid var(--gray-200); border-radius: 8px; padding: 7px 9px; font-size: var(--font-base); font-weight: 500; }
+.meta-popover select option { background: var(--white); color: var(--gray-900); }
+.meta-titulo { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; color: var(--gray-900); }
+.meta-titulo .btn { padding: 5px 12px; }
+body.meta-abierto::before { content: ''; position: fixed; inset: 0; background: rgba(8, 12, 30, .45); z-index: 1150; }
+/* ING-013: indicador To-Be arriba al centro del lienzo, lejos del cajon derecho */
+.tobe-indicator { right: auto !important; left: 50%; transform: translateX(-50%); top: 12px; }
+body.en-subproceso .tobe-indicator { top: 56px; }
+/* ING-008: estado de guardado con significado */
+#statusSaved.pendiente .dot { background: #F59E0B !important; }
+/* ING-003: destello del nodo al llegar desde el linter */
+#nodesLayer > g.nodo-destello > :first-child { animation: nodoDestello 1.5s ease-out; }
+@keyframes nodoDestello { 0%, 40% { filter: drop-shadow(0 0 0 rgba(255,0,84,0)); } 20%, 60% { filter: drop-shadow(0 0 10px rgba(255,0,84,.95)); } 100% { filter: none; } }
+#nodesLayer > g.nodo-grupo-visto > :first-child { filter: drop-shadow(0 0 6px rgba(20,122,255,.9)); }
+/* ING-005: aviso de grupo automatico en Propiedades */
+.prop-grupo-aviso { margin: 0 0 var(--space-3); padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.45; background: rgba(20,122,255,.12); border: 1px solid rgba(20,122,255,.35); color: var(--nexus-text); }
+.prop-grupo-aviso[hidden] { display: none; }
+/* ING-010: minimapa */
+.minimapa { position: absolute; right: 16px; bottom: 52px; z-index: 35; width: 252px; padding: 6px; border-radius: 10px; background: rgba(255,255,255,.96); box-shadow: 0 6px 22px rgba(0,0,0,.22); border: 1px solid #D5DCE8; }
+.minimapa[hidden], .minimapa-mostrar[hidden] { display: none; }
+.minimapa canvas { display: block; width: 240px; height: 120px; cursor: pointer; border-radius: 6px; }
+.mm-cab { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 600; color: #3A4660; padding: 0 2px 4px; text-transform: uppercase; letter-spacing: .04em; }
+.mm-ocultar { border: 0; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; color: #3A4660; padding: 0 4px; }
+.minimapa-mostrar { position: absolute; right: 16px; bottom: 52px; z-index: 35; border: 1px solid #D5DCE8; background: #fff; color: #003478; border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+body.panel-open .minimapa, body.panel-open .minimapa-mostrar { right: 376px; }
+body.present-mode .minimapa { bottom: 16px; }
+/* ING-002: aviso de modo basico */
+.aviso-basico { position: absolute; left: 50%; transform: translateX(-50%); top: 64px; z-index: 36; display: flex; gap: 10px; align-items: center;
+  max-width: min(860px, calc(100% - 300px)); padding: 10px 12px; border-radius: 10px; background: #FFF7E6; color: #5A3B00; border: 1px solid #F2C46D;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18); font-size: 13px; line-height: 1.4; }
+.aviso-basico[hidden] { display: none; }
+.aviso-basico .btn { white-space: nowrap; padding: 6px 10px; }
+.aviso-basico .btn-ghost { color: #5A3B00; border-color: #E6B25A; }
+/* UX-003: punto para arrastrar el recorrido de la flecha */
+.edge-handle { fill: #147AFF; stroke: #fff; stroke-width: 2.5; cursor: move; filter: drop-shadow(0 1px 3px rgba(0,0,0,.35)); }
+.edge-handle:hover { fill: #FF0054; }
+#edgeForm .edge-recorrido-hint { margin: 6px 0 0; }
+#edgeForm .edge-acciones button:disabled { opacity: .45; cursor: not-allowed; }
+body.panel-open .aviso-basico { left: calc(50% - 188px); max-width: calc(100% - 440px); }

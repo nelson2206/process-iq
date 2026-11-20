@@ -12,7 +12,7 @@
   <meta property="og:title" content="ProcessIQ — Diagramador de procesos BPMN" />
   <meta property="og:description" content="Diagramación, diagnóstico y reingeniería de procesos con nomenclatura BPMN 2.0. Analítica 2026 y export a PPTX/BPMN/SVG/Word. MBC Business Consulting Perú." />
   <meta property="og:url" content="https://nelson2206.github.io/process-iq/" />
-  <meta property="og:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.12.0" />
+  <meta property="og:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.13.0" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="ProcessIQ — diagramador de procesos BPMN de MBC" />
@@ -20,11 +20,11 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="ProcessIQ — Diagramador de procesos BPMN" />
   <meta name="twitter:description" content="Diagramación, diagnóstico y reingeniería de procesos con BPMN 2.0. MBC Business Consulting Perú." />
-  <meta name="twitter:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.12.0" />
+  <meta name="twitter:image" content="https://nelson2206.github.io/process-iq/og-image.png?v=3.13.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=3.12.0" />
+  <link rel="stylesheet" href="styles.css?v=3.13.0" />
   <script defer src="https://umami-mbc.vercel.app/script.js" data-website-id="0f3aaa08-7bb8-4aec-b09b-d9c4abf3868c"></script>
 </head>
 <body>
@@ -55,7 +55,8 @@
       <button id="btnMeta" class="meta-btn" title="Industria y macroproceso" aria-expanded="false" aria-controls="metaPopover">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
-      <div id="metaPopover" class="meta-popover" hidden>
+      <div id="metaPopover" class="meta-popover" hidden role="dialog" aria-label="Datos del proceso">
+        <div class="meta-titulo"><b>Datos del proceso</b><button type="button" id="metaCerrar" class="btn btn-primary">Listo</button></div>
         <label>Industria
           <select id="processIndustry">
             <option value="">— Industria —</option>
@@ -81,13 +82,13 @@
       </button>
       <button id="btnTransformToBe" class="btn btn-ghost btn-mini" title="Genera el To-Be aplicando reingeniería por nivel (Operativo/Táctico/Estratégico)">
         <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/><path d="M13 3l2.4 6.1L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"/></svg></span>
-        To-Be IA
+        <span class="btn-txt">To-Be IA</span>
       </button>
       <span class="header-sep" aria-hidden="true"></span>
       <!-- Grupo 3: documento -->
       <button id="btnNew" class="btn btn-ghost" title="Nuevo proceso">
         <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>
-        Nuevo
+        <span class="btn-txt">Nuevo</span>
       </button>
       <button id="btnIngest" class="btn btn-primary" title="Ingestar desde audio, notas o event log">
         <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
@@ -98,12 +99,12 @@
       </button>
       <button id="btnRepo" class="btn btn-ghost" title="Repositorio de procesos del equipo: guardar, buscar y abrir (Ctrl+S guarda)">
         <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.78A6 6 0 0 0 4.5 12.5 3.5 3.5 0 0 0 6 19h11.5z"/></svg></span>
-        Repositorio<span class="repo-punto" id="repoPunto" hidden title="Cambios sin guardar en el repositorio"></span>
+        <span class="btn-txt">Repositorio</span><span class="repo-punto" id="repoPunto" hidden title="Cambios sin guardar en el repositorio"></span>
       </button>
       <button id="btnAiSettings" class="btn btn-ghost btn-icon" title="Ajustes de IA (Claude)">
         <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg></span>
       </button>
-      <button id="btnPresent" class="btn btn-ghost" title="Modo presentación: oculta las barras y maximiza el diagrama (Esc para salir)">⛶ Presentar</button>
+      <button id="btnPresent" class="btn btn-ghost" title="Modo presentación: oculta las barras y maximiza el diagrama (Esc para salir)">⛶ <span class="btn-txt">Presentar</span></button>
       <div class="export-menu">
         <button id="btnExportMenu" class="btn btn-ghost" title="Exportar">
           <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></svg></span>
@@ -427,11 +428,13 @@
               </select>
             </label>
           </div>
+          <p class="prop-hint edge-recorrido-hint">Para cambiar el recorrido, arrastra el <b>punto azul</b> que aparece en la flecha seleccionada.</p>
           <label class="check-line" id="edgeBordeWrap" hidden>
             <input type="checkbox" id="edgeFromBoundary" />
             <span id="edgeBordeTxt">Sale del evento de borde de la actividad</span>
           </label>
           <div class="edge-acciones">
+            <button type="button" class="btn-secondary" id="edgeRecorridoAuto" title="Vuelve al recorrido que calcula la herramienta">↺ Recorrido automático</button>
             <button type="button" class="btn-secondary" id="edgeInvertir" title="Cambia el origen por el destino">⇄ Invertir sentido</button>
             <button type="button" class="btn-secondary" id="edgeEliminar" title="Eliminar esta conexión (Supr)">Eliminar conexión</button>
           </div>
@@ -865,6 +868,6 @@ Cualquier formato funciona: bullets, párrafos, notas mezcladas..."></textarea>
 
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="kpi-library.js?v=1.6.1"></script>
-  <script src="app.js?v=3.12.0"></script>
+  <script src="app.js?v=3.13.0"></script>
 </body>
 </html>

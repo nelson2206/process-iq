@@ -95,6 +95,9 @@
     attachMobileNotice();
     restoreUiState();   // restaura paneles colapsados antes del primer render
     loadFromStorage();
+    // ING-008: el estado de guardado dice donde esta el trabajo; clic = Repositorio
+    setTimeout(pintarEstadoGuardado, 0);
+    if ($('#statusSaved')) { $('#statusSaved').style.cursor = 'pointer'; $('#statusSaved').addEventListener('click', () => abrirRepositorio()); }
     // Si hay nodos pero faltan lanes (versión vieja en localStorage), genera layout
     if (state.nodes.length > 0 && !state._lanes) {
       autoLayout();
@@ -144,8 +147,28 @@
     $('#processIndustry').addEventListener('change', e => { state.meta.industry = e.target.value; persist(); renderKpiLibrary(); });
     $('#processMacro').addEventListener('change', e => { state.meta.macroprocess = e.target.value; persist(); });
 
+    // ING-008: "Nuevo" explica que el actual solo vive en este navegador y
+    // ofrece guardarlo en el repositorio antes de reemplazarlo.
     $('#btnNew').addEventListener('click', () => {
-      if (confirm('¿Crear un nuevo proceso? Se perderá el actual si no fue exportado.')) resetState();
+      if (!state.nodes.length) { resetState(); return; }
+      if (state.meta.repo && state.meta.repo.id && !repoSinGuardar()) {
+        if (confirm('¿Crear un nuevo proceso?\n\n«' + (state.meta.name || 'El proceso actual') + '» ya está guardado en el repositorio (versión ' + state.meta.repo.version + '): podrás volver a abrirlo desde el botón Repositorio.')) resetState();
+        return;
+      }
+      modalRepo('Crear un proceso nuevo',
+        '<p class="panel-hint">El proceso actual <b>solo está guardado en este navegador</b>' + (state.meta.repo && state.meta.repo.id ? ' (tiene cambios que no se subieron al repositorio)' : '') +
+        '. Al crear uno nuevo se reemplaza y ya no podrás recuperarlo.</p>' +
+        '<label class="repo-opcion"><input type="radio" name="nuevoOpc" value="guardar" checked> <span><b>Guardarlo en el repositorio</b> y crear el nuevo (recomendado): podrás abrirlo después desde cualquier computadora.</span></label>' +
+        '<label class="repo-opcion"><input type="radio" name="nuevoOpc" value="json"> <span><b>Descargar una copia</b> (JSON · proyecto) y crear el nuevo.</span></label>' +
+        '<label class="repo-opcion"><input type="radio" name="nuevoOpc" value="descartar"> <span><b>Descartarlo</b> y crear el nuevo.</span></label>',
+        { ok: 'Crear nuevo', cancel: 'Cancelar', onOk: () => {
+          const v = (($('#modalBody input[name="nuevoOpc"]:checked') || {}).value) || 'guardar';
+          setTimeout(async () => {
+            if (v === 'guardar') { const res = await guardarEnRepo(); if (!res) return; }
+            if (v === 'json') exportJson();
+            resetState();
+          }, 0);
+        } });
     });
 
     // View toggle as-is / to-be
@@ -199,6 +222,8 @@
     dd.querySelectorAll('button[data-export]').forEach(b => {
       b.addEventListener('click', () => {
         setDdOpen(false);
+        // ING-007: antes de exportar un entregable se revisan las alertas del linter
+        if (!revisarAntesDeExportar(b.dataset.export)) return;
         switch (b.dataset.export) {
           case 'json': exportJson(); break;
           case 'svg':  exportSvg();  break;
@@ -408,14 +433,10 @@
       aplicarNivel(3);
       state.selectedNodeId = hijos[0]; state.selectedEdgeId = null;
       render();
-      const primero = getNode(hijos[0]), wrap = document.getElementById('canvasWrapper');
-      if (primero && wrap) {
-        const z = state.zoom || 1;
-        wrap.scrollLeft = Math.max(0, primero.x * z - 120);
-        wrap.scrollTop = Math.max(0, primero.y * z - 120);
-        if (typeof updateStickyHeaders === 'function') updateStickyHeaders();
-      }
-      avisoBreve('Vista Detalle: «' + n.label + '» agrupa ' + hijos.length + ' pasos; el primero está seleccionado.');
+      centrarEnNodo(hijos[0], { resaltar: true });
+      // Los pasos del grupo quedan marcados unos segundos para distinguirlos del resto
+      hijos.forEach(h => { const g = [...document.querySelectorAll('#nodesLayer > g')].find(x => x.dataset.id === h); if (g) { g.classList.add('nodo-grupo-visto'); setTimeout(() => g.classList.remove('nodo-grupo-visto'), 4000); } });
+      avisoBreve('Vista Detalle: «' + n.label + '» agrupa ' + hijos.length + ' pasos (resaltados). «Ejecutivo» o «Actividad» abajo para volver a agrupar.');
       return true;
     }
     const nuevo = !(n.sub && Array.isArray(n.sub.nodes) && n.sub.nodes.length);
@@ -809,6 +830,34 @@
       edgesLayer.appendChild(hit);
       edgesLayer.appendChild(path);
 
+      // UX-003: la flecha SELECCIONADA muestra un punto en su tramo central;
+      // arrastrarlo cambia el recorrido sin mover las actividades (e.via).
+      if (e.id === state.selectedEdgeId && state.mode !== 'connect') {
+        let hp = null;
+        try { const largo = path.getTotalLength(); const p = path.getPointAtLength(largo / 2); hp = { x: p.x, y: p.y }; } catch (_) {}
+        if (e.via && hp) {
+          // sobre el tramo que controla el desvio
+          const segs = _segsOfD(path.getAttribute('d'));
+          const s = segs.find(sg => (Math.abs(sg[0].x - e.via.x) < 1 && Math.abs(sg[1].x - e.via.x) < 1) || (Math.abs(sg[0].y - e.via.y) < 1 && Math.abs(sg[1].y - e.via.y) < 1));
+          if (s) hp = { x: (s[0].x + s[1].x) / 2, y: (s[0].y + s[1].y) / 2 };
+        }
+        if (hp) {
+          const nsv = 'http://www.w3.org/2000/svg';
+          const h = document.createElementNS(nsv, 'circle');
+          h.setAttribute('cx', hp.x); h.setAttribute('cy', hp.y); h.setAttribute('r', 7);
+          h.setAttribute('class', 'edge-handle');
+          h.setAttribute('pointer-events', 'all');
+          const tt = document.createElementNS(nsv, 'title');
+          tt.textContent = 'Arrastra para cambiar el recorrido de la flecha';
+          h.appendChild(tt);
+          h.addEventListener('mousedown', ev => {
+            ev.stopPropagation(); ev.preventDefault();
+            iniciarArrastreVia(e, ev);
+          });
+          labelsLayer.appendChild(h);
+        }
+      }
+
       if (e.label) {
         // BPMN-005: la posicion sale del trazado REAL. edgeLabelPoint recalculaba
         // una geometria simple que, con rutas por el pasillo o por A*, caia sobre
@@ -1178,7 +1227,8 @@
         // UX-004: el segundo clic de un doble clic abre el editor sobre la caja.
         // ev.detail es el conteo de clics del navegador; no depende del
         // elemento, que render() reemplaza en cada mousedown.
-        if (ev.detail >= 2) { ev.preventDefault(); state.drag = null; editarEtiquetaEnLinea(n); return; }
+        // ING-004: en un GRUPO de la vista Ejecutivo/Actividad el doble clic baja a sus pasos (su nombre lo pone la herramienta)
+        if (ev.detail >= 2) { ev.preventDefault(); state.drag = null; if (Array.isArray(n._hijos)) entrarSubproceso(n); else editarEtiquetaEnLinea(n); return; }
         state.selectedNodeId = n.id;
         state.selectedEdgeId = null;
         const pt = svgPoint(ev.clientX, ev.clientY);
@@ -1188,6 +1238,7 @@
 
       g.addEventListener('dblclick', ev => { ev.stopPropagation(); });   // lo resuelve el mousedown (ev.detail)
 
+      g.dataset.id = n.id;   // ING-003: para ubicar y resaltar el nodo desde el linter
       nodesLayer.appendChild(g);
     });
 
@@ -1228,6 +1279,32 @@
     renderProperties();
     renderPains();
     runLinter();
+    actualizarMinimapa();   // ING-010
+    actualizarAvisoBasico();   // ING-002
+  }
+
+  // ING-002: un proceso armado en MODO BASICO (sin IA) lo dice en el lienzo
+  // hasta que el usuario lo descarte: los nombres salen tal cual del texto.
+  function actualizarAvisoBasico() {
+    const area = document.getElementById('canvasArea');
+    if (!area) return;
+    let av = document.getElementById('avisoBasico');
+    const mostrar = state.meta && state.meta.origen === 'basico' && !state.meta.avisoBasicoVisto && state.nodes.length > 0;
+    if (!mostrar) { if (av) av.hidden = true; return; }
+    if (!av) {
+      av = document.createElement('div');
+      av.id = 'avisoBasico';
+      av.className = 'aviso-basico';
+      av.setAttribute('role', 'status');
+      av.innerHTML = '<span><b>Generado en modo básico, sin IA.</b> Las actividades se extrajeron por palabras clave: sus nombres salen tal cual del texto y suelen requerir corrección. ' +
+        'Para que la IA interprete el documento completo (roles, decisiones y nombres claros), escribe el código del equipo y vuelve a generar.</span>' +
+        '<button type="button" class="btn btn-primary" id="avisoBasicoIA">Configurar IA</button>' +
+        '<button type="button" class="btn btn-ghost" id="avisoBasicoOk">Entendido</button>';
+      area.appendChild(av);
+      av.querySelector('#avisoBasicoIA').addEventListener('click', () => { if (typeof openAiSettings === 'function') openAiSettings(); });
+      av.querySelector('#avisoBasicoOk').addEventListener('click', () => { state.meta.avisoBasicoVisto = true; persist(); actualizarAvisoBasico(); });
+    }
+    av.hidden = false;
   }
 
   function createShape(n) {
@@ -1635,6 +1712,19 @@
     const q0 = _puertoLado(b, edge.entrada || _ladoHacia(b, p0));
     const p1 = _avanza(p0, p0.dir, borde ? STUB_LADO + 6 : STUB_LADO), q1 = _avanza(q0, q0.dir, STUB_LADO);
     const armar = (medio) => roundedPath(_limpiaPuntos([p0, p1].concat(medio, [q1, q0])), EDGE_RADIUS);
+    // UX-003 (v3.13.0): recorrido elegido a mano arrastrando el punto de la
+    // flecha. e.via fija el tramo central: vertical en x=via.x si la flecha
+    // sale de lado, horizontal en y=via.y si sale por arriba/abajo.
+    // Si el punto se arrastra FUERA de la franja entre ambos extremos, la flecha
+    // da un rodeo por ese lado (p. ej. una recta horizontal arrastrada hacia
+    // abajo pasa por debajo); si queda dentro, se mueve el tramo de cruce.
+    if (edge.via && isFinite(edge.via.x) && isFinite(edge.via.y)) {
+      const v = edge.via, deLado = p0.dir === 'left' || p0.dir === 'right';
+      const fueraY = v.y < Math.min(p1.y, q1.y) - 10 || v.y > Math.max(p1.y, q1.y) + 10;
+      const fueraX = v.x < Math.min(p1.x, q1.x) - 10 || v.x > Math.max(p1.x, q1.x) + 10;
+      const porY = deLado ? fueraY : !fueraX;   // true: tramo horizontal en y=v.y
+      return armar(porY ? [{ x: p1.x, y: v.y }, { x: q1.x, y: v.y }] : [{ x: v.x, y: p1.y }, { x: v.x, y: q1.y }]);
+    }
     const ast = rutaAStar(a, b, p1, q1);
     if (ast && ast.length >= 2) {
       const d = armar(ast.slice(1, -1));
@@ -1649,7 +1739,7 @@
   }
 
   function _calculaEdgePath(a, b, edge) {
-    if (edge && (edge.salida || edge.entrada || salidaDesdeBorde(edge))) {
+    if (edge && (edge.salida || edge.entrada || edge.via || salidaDesdeBorde(edge))) {
       const d = _pathPorLados(a, b, edge);
       _astRegistraPath(d);
       return d;
@@ -2217,6 +2307,30 @@
     persist();
     render();
   }
+  // UX-003: arrastre del punto central de la flecha seleccionada
+  function iniciarArrastreVia(e, ev0) {
+    // La posicion se aplica al instante; solo el repintado espera al cuadro
+    // siguiente. Al soltar se repinta y guarda sin esperar.
+    let pendiente = false;
+    const mover = (ev) => {
+      const pt = svgPoint(ev.clientX, ev.clientY);
+      e.via = { x: Math.round(pt.x), y: Math.round(pt.y) };
+      if (pendiente) return;
+      pendiente = true;
+      requestAnimationFrame(() => { pendiente = false; invalidarRutas(); render(); });
+    };
+    const soltar = () => {
+      window.removeEventListener('mousemove', mover);
+      window.removeEventListener('mouseup', soltar);
+      sincronizaArista(e, ['via']);
+      invalidarRutas();
+      persist();
+      render();
+    };
+    window.addEventListener('mousemove', mover);
+    window.addEventListener('mouseup', soltar);
+    mover(ev0);
+  }
   let _edgePropsListo = false;
   function conectaPanelArista() {
     if (_edgePropsListo || !$('#edgeForm')) return;
@@ -2229,10 +2343,14 @@
     $('#edgeSalida').addEventListener('change', () => cambiaArista(['salida'], e => { e.salida = $('#edgeSalida').value; }));
     $('#edgeEntrada').addEventListener('change', () => cambiaArista(['entrada'], e => { e.entrada = $('#edgeEntrada').value; }));
     $('#edgeFromBoundary').addEventListener('change', () => cambiaArista(['fromBoundary'], e => { e.fromBoundary = $('#edgeFromBoundary').checked; }));
-    $('#edgeInvertir').addEventListener('click', () => cambiaArista(['from', 'to', 'salida', 'entrada', 'fromBoundary'], e => {
+    $('#edgeInvertir').addEventListener('click', () => cambiaArista(['from', 'to', 'salida', 'entrada', 'fromBoundary', 'via'], e => {
       const f = e.from; e.from = e.to; e.to = f;
       const s = e.salida; e.salida = e.entrada; e.entrada = s;
       e.fromBoundary = false;   // el nuevo origen no tiene por que tener evento de borde
+      e.via = null;
+    }));
+    if ($('#edgeRecorridoAuto')) $('#edgeRecorridoAuto').addEventListener('click', () => cambiaArista(['salida', 'entrada', 'via'], e => {
+      e.salida = ''; e.entrada = ''; e.via = null;
     }));
     $('#edgeEliminar').addEventListener('click', () => {
       if (!state.selectedEdgeId) return;
@@ -2267,6 +2385,7 @@
       $('#edgeBordeTxt').textContent = 'Sale del evento de borde (' + (BORDE_TXT[bt] || bt) + ') de «' + a.label + '»';
       $('#edgeFromBoundary').checked = !!e.fromBoundary;
     }
+    if ($('#edgeRecorridoAuto')) $('#edgeRecorridoAuto').disabled = !(e.via || e.salida || e.entrada);
     $('#edgeSalida').disabled = salidaDesdeBorde(e);
     $('#edgeSalida').title = salidaDesdeBorde(e) ? 'Sale del evento de borde' : '';
   }
@@ -2340,6 +2459,22 @@
         $('#propBoundary').value = b ? `${(typeof b === 'string' ? b : b.type)}|${(typeof b === 'object' ? b.interrupting !== false : true)}` : 'none';
       }
     }
+    // ING-005: un grupo de la vista Ejecutivo/Actividad no es una tarea: sin
+    // tipo de ejecucion ni eventos de borde; se explica que es y como verlo.
+    const esGrupo = Array.isArray(n._hijos);
+    const execLbl = $('#propExecType') && $('#propExecType').closest('label');
+    if (execLbl) execLbl.hidden = esGrupo;
+    if (esGrupo) { if ($('#propMarkerWrap')) $('#propMarkerWrap').hidden = true; if ($('#propBoundaryWrap')) $('#propBoundaryWrap').hidden = true; }
+    let avisoGrupo = $('#propGrupoAviso');
+    if (!avisoGrupo) {
+      avisoGrupo = document.createElement('p');
+      avisoGrupo.id = 'propGrupoAviso';
+      avisoGrupo.className = 'prop-grupo-aviso';
+      $('#propsForm').insertBefore(avisoGrupo, $('#propsForm').firstChild);
+    }
+    avisoGrupo.hidden = !esGrupo;
+    if (esGrupo) avisoGrupo.innerHTML = '<b>Agrupación automática</b> de ' + n._hijos.length + ' pasos de la vista ' +
+      ((state.meta.nivelVista || 3) === 1 ? 'Ejecutivo' : 'Actividad') + '. Su nombre, responsable y tipo se definen en cada paso: ábrelo con el botón de abajo o con doble clic en la caja.';
     if ($('#propActivityCode')) $('#propActivityCode').value = n.activityCode || '';
     $('#propLabel').value = n.label || '';
     $('#propExecType').value = n.executionType || '';
@@ -3138,11 +3273,18 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     // Se cierran al hacer clic fuera, con Esc, y el de formas al empezar a arrastrar.
     const flyout = $('#shapesFlyout'), btnShapes = $('#btnShapes');
     const popover = $('#metaPopover'), btnMeta = $('#btnMeta');
+    // ING-012: los datos del proceso se abren como ventana centrada con fondo
+    // atenuado (no como desplegable sobre el diagrama). Se saca de la cabecera:
+    // su backdrop-filter atrapaba los position:fixed dentro de ella.
+    if (popover && popover.parentNode !== document.body) document.body.appendChild(popover);
     const pon = (btn, caja, abierto) => {
       if (!btn || !caja) return;
       caja.hidden = !abierto;
       btn.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+      if (caja === popover) document.body.classList.toggle('meta-abierto', !!abierto);
     };
+    const cerrarMeta = $('#metaCerrar');
+    if (cerrarMeta) cerrarMeta.addEventListener('click', () => pon(btnMeta, popover, false));
     window.cerrarDesplegables = () => { pon(btnShapes, flyout, false); pon(btnMeta, popover, false); };
     onb('btnShapes', () => { const ab = flyout && flyout.hidden; pon(btnMeta, popover, false); pon(btnShapes, flyout, !!ab); });
     onb('btnMeta',   () => { const ab = popover && popover.hidden; pon(btnShapes, flyout, false); pon(btnMeta, popover, !!ab); });
@@ -3315,9 +3457,140 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     const contentW = (bb.x2 - Math.min(bb.x1, 0)) + 60, contentH = (bb.y2 - bb.y1) + 60;
     // Solo encuadra si desborda; procesos pequeños se quedan a 100%
     if (contentW > wrap.clientWidth || contentH > wrap.clientHeight) {
-      zoomToFit();
+      // ING-001: un proceso largo (p. ej. 75 pasos en una banda) encuadrado
+      // entero queda a 30-50 % e ilegible. Por debajo de ZOOM_LEGIBLE se
+      // muestra el INICIO a tamaño legible; el minimapa y "Ajustar" dan la
+      // vista completa. (El lienzo sigue en una banda: decision v3.6.1.)
+      const zFit = Math.min((wrap.clientWidth - 16) / contentW, (wrap.clientHeight - 16) / contentH);
+      if (zFit < ZOOM_LEGIBLE) {
+        setZoom(ZOOM_LEGIBLE_INICIO, { keepScroll: true });
+        wrap.scrollLeft = 0;
+        wrap.scrollTop = Math.max(0, (bb.y1 - 30) * ZOOM_LEGIBLE_INICIO);
+        updateStickyHeaders();
+        if (typeof actualizarMinimapa === 'function') actualizarMinimapa();
+        avisoBreve('Proceso extenso: se muestra el inicio a tamaño legible. Recórrelo con el minimapa (abajo a la derecha) o pulsa «Ajustar» para verlo completo.');
+      } else {
+        zoomToFit();
+      }
     } else {
       setZoom(1, { keepScroll: true });
+    }
+  }
+  const ZOOM_LEGIBLE = 0.6, ZOOM_LEGIBLE_INICIO = 0.8;
+
+  // ============================================================
+  // ING-010: MINIMAPA — vista general del proceso (abajo a la derecha).
+  // Muestra carriles y cajas en miniatura y el rectangulo de lo que se ve.
+  // Clic o arrastre sobre el minimapa lleva la vista a ese punto. Solo
+  // aparece si el diagrama no cabe en pantalla; se puede ocultar (se recuerda).
+  // ============================================================
+  const MINIMAPA_KEY = 'processiq.minimapa';
+  let _mmPendiente = false, _mmGeo = null;
+  function minimapaOculto() { try { return localStorage.getItem(MINIMAPA_KEY) === 'oculto'; } catch (e) { return false; } }
+  function crearMinimapa() {
+    let box = document.getElementById('minimapa');
+    if (box) return box;
+    const area = document.getElementById('canvasArea');
+    if (!area) return null;
+    box = document.createElement('div');
+    box.id = 'minimapa';
+    box.className = 'minimapa';
+    box.innerHTML = '<div class="mm-cab"><span>Vista general</span><button type="button" class="mm-ocultar" title="Ocultar minimapa">–</button></div>' +
+      '<canvas width="240" height="120" aria-label="Minimapa del proceso: clic para ir a esa zona"></canvas>';
+    const reabrir = document.createElement('button');
+    reabrir.id = 'minimapaMostrar'; reabrir.type = 'button'; reabrir.className = 'minimapa-mostrar';
+    reabrir.title = 'Mostrar la vista general (minimapa)'; reabrir.textContent = '▣ Vista general';
+    area.appendChild(box); area.appendChild(reabrir);
+    box.querySelector('.mm-ocultar').addEventListener('click', () => { try { localStorage.setItem(MINIMAPA_KEY, 'oculto'); } catch (e) {} actualizarMinimapa(); });
+    reabrir.addEventListener('click', () => { try { localStorage.removeItem(MINIMAPA_KEY); } catch (e) {} actualizarMinimapa(); });
+    const cv = box.querySelector('canvas');
+    let arrastrando = false;
+    const ir = (ev) => {
+      if (!_mmGeo) return;
+      const r = cv.getBoundingClientRect(), wrap = $('#canvasWrapper'), z = state.zoom || 1;
+      const cx = _mmGeo.x0 + (ev.clientX - r.left - _mmGeo.ox) / _mmGeo.k;
+      const cy = _mmGeo.y0 + (ev.clientY - r.top - _mmGeo.oy) / _mmGeo.k;
+      wrap.scrollLeft = Math.max(0, cx * z - wrap.clientWidth / 2);
+      wrap.scrollTop = Math.max(0, cy * z - wrap.clientHeight / 2);
+      updateStickyHeaders();
+      actualizarMinimapa();
+    };
+    cv.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); arrastrando = true; ir(ev); });
+    window.addEventListener('mousemove', (ev) => { if (arrastrando) ir(ev); });
+    window.addEventListener('mouseup', () => { arrastrando = false; });
+    const wrap = $('#canvasWrapper');
+    if (wrap) wrap.addEventListener('scroll', () => actualizarMinimapa(), { passive: true });
+    window.addEventListener('resize', () => actualizarMinimapa());
+    return box;
+  }
+  function actualizarMinimapa() {
+    if (_mmPendiente) return;
+    _mmPendiente = true;
+    requestAnimationFrame(() => { _mmPendiente = false; pintarMinimapa(); });
+  }
+  function pintarMinimapa() {
+    const box = crearMinimapa(), wrap = $('#canvasWrapper');
+    if (!box || !wrap) return;
+    const reabrir = document.getElementById('minimapaMostrar');
+    const z = state.zoom || 1;
+    if (!state.nodes.length) { box.hidden = true; if (reabrir) reabrir.hidden = true; return; }
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    state.nodes.forEach(n => { x1 = Math.min(x1, n.x); y1 = Math.min(y1, n.y); x2 = Math.max(x2, n.x + n.w); y2 = Math.max(y2, n.y + n.h + 20); });
+    const L = state._lanes;
+    const bandas = [];
+    if (L && L.list && L.list.length && L.laneTops) {
+      x1 = Math.min(x1, 0);
+      // laneTops/laneHs van por INDICE de carril y se miden desde padY (banda 0)
+      L.list.forEach((nom, i) => {
+        const t = (L.padY || 0) + (L.laneTops[i] != null ? L.laneTops[i] : i * (L.laneH || 0));
+        const h = (L.laneHs && L.laneHs[i]) || L.laneH;
+        if (h) { bandas.push([t, h]); y1 = Math.min(y1, t); y2 = Math.max(y2, t + h); }
+      });
+    }
+    const cabe = (x2 - x1) * z <= wrap.clientWidth + 4 && (y2 - y1) * z <= wrap.clientHeight + 4;
+    const oculto = minimapaOculto();
+    box.hidden = cabe || oculto;
+    if (reabrir) reabrir.hidden = cabe || !oculto;
+    if (box.hidden) return;
+    const cv = box.querySelector('canvas'), ctx = cv.getContext('2d');
+    const W = cv.width, H = cv.height, pad = 6;
+    const k = Math.min((W - 2 * pad) / Math.max(1, x2 - x1), (H - 2 * pad) / Math.max(1, y2 - y1));
+    const ox = (W - (x2 - x1) * k) / 2, oy = (H - (y2 - y1) * k) / 2;
+    _mmGeo = { x0: x1, y0: y1, k, ox, oy };
+    const X = (x) => ox + (x - x1) * k, Y = (y) => oy + (y - y1) * k;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#F4F6FA'; ctx.fillRect(0, 0, W, H);
+    bandas.forEach((b, i) => { ctx.fillStyle = i % 2 ? '#E9EEF6' : '#F8FAFD'; ctx.fillRect(X(x1), Y(b[0]), (x2 - x1) * k, b[1] * k); });
+    const color = { start: '#2E7D32', end: '#C62828', intermediate: '#B45309', decision: '#D4A017', document: '#7A93B5', data: '#7A93B5' };
+    state.nodes.forEach(n => {
+      ctx.fillStyle = n.id === state.selectedNodeId ? '#FF0054' : (color[n.type] || '#003478');
+      ctx.fillRect(X(n.x), Y(n.y), Math.max(2, n.w * k), Math.max(2, n.h * k));
+    });
+    // rectangulo de lo visible
+    const vx = wrap.scrollLeft / z, vy = wrap.scrollTop / z, vw = wrap.clientWidth / z, vh = wrap.clientHeight / z;
+    ctx.strokeStyle = '#147AFF'; ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(20,122,255,0.10)';
+    ctx.fillRect(X(vx), Y(vy), vw * k, vh * k);
+    ctx.strokeRect(X(vx), Y(vy), vw * k, vh * k);
+  }
+
+  // ING-003: lleva un nodo al centro del area visible (y lo hace parpadear)
+  function centrarEnNodo(id, opts) {
+    opts = opts || {};
+    const n = getNode(id), wrap = $('#canvasWrapper');
+    if (!n || !wrap) return;
+    let z = state.zoom || 1;
+    if (z < 0.5) { setZoom(0.8, { keepScroll: true }); z = state.zoom || 0.8; }   // a 30 % no se distingue
+    // el cajon derecho tapa parte del lienzo: se centra en la zona libre
+    const tapado = document.body.classList.contains('panel-open') ? (($('#drawer') || {}).offsetWidth || 0) : 0;
+    const anchoLibre = Math.max(200, wrap.clientWidth - tapado);
+    wrap.scrollLeft = Math.max(0, (n.x + n.w / 2) * z - anchoLibre / 2);
+    wrap.scrollTop = Math.max(0, (n.y + n.h / 2) * z - wrap.clientHeight / 2);
+    updateStickyHeaders();
+    if (typeof actualizarMinimapa === 'function') actualizarMinimapa();
+    if (opts.resaltar) {
+      const g = [...document.querySelectorAll('#nodesLayer > g')].find(x => x.dataset && x.dataset.id === id);
+      if (g) { g.classList.remove('nodo-destello'); void g.getBoundingClientRect(); g.classList.add('nodo-destello'); setTimeout(() => g.classList.remove('nodo-destello'), 1600); }
     }
   }
 
@@ -3327,7 +3600,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     document.body.classList.toggle('present-mode', on);
     if (on) { cerrarPanel(); if (window.cerrarDesplegables) window.cerrarDesplegables(); }
     const btn = $('#btnPresent');
-    if (btn) btn.innerHTML = on ? '✕ Salir' : '⛶ Presentar';
+    if (btn) btn.innerHTML = on ? '✕ <span class="btn-txt">Salir</span>' : '⛶ <span class="btn-txt">Presentar</span>';
     // Re-render para recalcular dimensiones del SVG al nuevo viewport
     setTimeout(render, 60);
   }
@@ -3659,7 +3932,8 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     const info = document.getElementById('nivelInfo');
     if (info) {
       const full = state._modeloCompleto;
-      info.textContent = full ? (state.nodes.length + ' de ' + full.nodes.length + ' pasos') : '';
+      // ING-011: sin modelo completo (p. ej. To-Be recien abierto) se muestran los pasos del lienzo, tambien 0
+      info.textContent = full ? (state.nodes.length + ' de ' + full.nodes.length + ' pasos') : (state.nodes.length + (state.nodes.length === 1 ? ' paso' : ' pasos'));
     }
   }
 
@@ -3895,6 +4169,34 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   // =================== PERSISTENCE ===================
   // Feedback visual de auto-save (estado "Guardando" → "Guardado")
   let _saveTimer = null;
+  // ING-008: "Guardado" hacia creer que el trabajo estaba a salvo en algun
+  // servidor. Ahora dice DONDE esta guardado y, si esta en el repositorio,
+  // si tiene cambios sin subir. Clic = abre el repositorio.
+  function pintarEstadoGuardado() {
+    const el = $('#statusSaved');
+    if (!el || el.classList.contains('saving')) return;
+    const r = state.meta && state.meta.repo;
+    let txt, tip;
+    if (r && r.id) {
+      const pendiente = repoSinGuardar();
+      txt = pendiente ? 'Cambios sin subir al repositorio' : 'En el repositorio · v' + r.version;
+      tip = pendiente ? 'Este navegador tiene la última versión, pero el repositorio del equipo no. Guarda con Ctrl+S o con el botón Repositorio.'
+                      : 'Guardado en el repositorio del equipo (versión ' + r.version + ') y en este navegador.';
+      el.classList.toggle('pendiente', pendiente);
+    } else {
+      txt = 'Guardado solo en este navegador';
+      tip = 'Se guarda automáticamente en ESTE navegador y se pierde al crear otro proceso o borrar los datos del navegador. ' +
+            'Para conservarlo y abrirlo desde otra computadora: Repositorio → Guardar (o Exportar → JSON · proyecto).';
+      el.classList.toggle('pendiente', state.nodes.length > 0);
+    }
+    el.innerHTML = '<span class="dot"></span>' + escapeHtml(txt);
+    el.title = tip;
+    // ING-009: el nombre del proceso tambien en la pestaña del navegador y como ayuda del campo
+    const nombre = (state.meta && state.meta.name) || '';
+    document.title = (nombre ? nombre + ' · ' : '') + 'ProcessIQ';
+    if ($('#processName')) $('#processName').title = nombre ? 'Proceso: ' + nombre + ' (clic para cambiar el nombre)' : 'Escribe el nombre del proceso';
+  }
+
   function showSaving() {
     const el = $('#statusSaved');
     if (!el) return;
@@ -3903,7 +4205,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     clearTimeout(_saveTimer);
     _saveTimer = setTimeout(() => {
       el.classList.remove('saving');
-      el.innerHTML = '<span class="dot"></span>Guardado';
+      pintarEstadoGuardado();
     }, 350);
   }
 
@@ -5302,7 +5604,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   async function repoCodigo() {
     let c = aiConfig();
     if (c.modo === 'equipo' && (c.codigo || '').trim()) return c.codigo.trim();
-    const codigo = await pedirCodigoEquipo();
+    const codigo = await pedirCodigoEquipo('repositorio');
     if (!codigo) return null;
     saveAiConfig(Object.assign({}, c, { modo: 'equipo', codigo, proxyUrl: c.proxyUrl || PROXY_POR_DEFECTO, model: c.model || 'claude-opus-5-5' }));
     if (typeof updateAiUi === 'function') updateAiUi();
@@ -5721,8 +6023,11 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
       // R4: actividad sin etiqueta
       if (!label) issues.push({ sev: 'high', title: 'Nodo sin etiqueta', detail: 'Asigna un nombre descriptivo al nodo.', target: n.id });
 
+      // ING-005: un GRUPO de la vista Ejecutivo/Actividad ("11 pasos · Cliente")
+      // no es una actividad: lo crea la herramienta y sus pasos ya se validan
+      // en Detalle. Se le aplican solo las reglas de flujo (entrada/salida).
       // Validaciones específicas a tasks/system
-      if (n.type === 'task' || n.type === 'system') {
+      if ((n.type === 'task' || n.type === 'system') && !Array.isArray(n._hijos)) {
         // R5: verbo prohibido
         if (firstWord && forbidden[firstWord]) {
           issues.push({ sev: 'medium', title: `Verbo prohibido: "${firstWord}"`, detail: forbidden[firstWord], target: n.id });
@@ -5795,6 +6100,35 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     }
 
     return issues;
+  }
+
+  // ING-007: el panel dice "crítico bloquea export" y no se cumplía.
+  //  - BPMN 2.0 (el formato que se abre en Bizagi/Camunda): una alerta CRITICA
+  //    (falta inicio/fin, nodo sin entrada o salida) bloquea: el archivo saldria
+  //    invalido. Las altas/medias se avisan y el usuario decide.
+  //  - PPTX, Word y Ficha (entregables al cliente): se avisa si hay criticas o
+  //    altas y el usuario decide.
+  //  - JSON, SVG y PNG son copias de trabajo: sin control.
+  function revisarAntesDeExportar(formato) {
+    if (!['bpmn', 'pptx', 'word', 'ficha'].includes(formato) || !state.nodes.length) return true;
+    const issues = lintProcess();
+    const c = { critical: 0, high: 0, medium: 0, low: 0 };
+    issues.forEach(i => { c[i.sev] = (c[i.sev] || 0) + 1; });
+    const nombre = { bpmn: 'BPMN 2.0', pptx: 'PowerPoint', word: 'Word', ficha: 'Ficha de proceso' }[formato];
+    const ejemplos = (sev) => issues.filter(i => i.sev === sev).slice(0, 4).map(i => '  • ' + i.title + (i.detail ? ': ' + i.detail.slice(0, 90) : '')).join('\n');
+    if (formato === 'bpmn' && c.critical) {
+      alert('No se puede exportar a BPMN 2.0: hay ' + c.critical + ' alerta(s) crítica(s) que harían el archivo inválido en Bizagi o Camunda.\n\n' +
+        ejemplos('critical') + (c.critical > 4 ? '\n  • …' : '') + '\n\nCorrígelas desde el panel Lint (se abre ahora) y vuelve a exportar.');
+      activateTab('validations');
+      return false;
+    }
+    const graves = formato === 'bpmn' ? c.high + c.medium : c.critical + c.high;
+    if (!graves) return true;
+    const resumen = [c.critical && c.critical + ' crítica(s)', c.high && c.high + ' alta(s)', formato === 'bpmn' && c.medium && c.medium + ' media(s)'].filter(Boolean).join(', ');
+    const sigue = confirm('El proceso tiene alertas de validación pendientes (' + resumen + ').\n\n' +
+      ejemplos(c.critical ? 'critical' : 'high') + '\n\n¿Exportar a ' + nombre + ' de todos modos?\n(Cancelar abre el panel Lint para revisarlas.)');
+    if (!sigue) activateTab('validations');
+    return sigue;
   }
 
   function runLinter() {
@@ -5872,6 +6206,7 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         state.selectedEdgeId = null;
         activateTab('properties');
         render();
+        centrarEnNodo(tid, { resaltar: true });   // ING-003: lo trae al centro de la vista
       });
     });
   }
@@ -5882,6 +6217,11 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   function setView(view) {
     if (view === state.activeView) return;
     salirATodoRaiz();   // As-Is / To-Be son vistas del proceso principal
+    // ING-011: la vista por niveles es del modelo activo. Si se estaba en
+    // Ejecutivo/Actividad se vuelve a Detalle ANTES de guardar la vista (si no,
+    // se guardaria la proyeccion), y el modelo completo y el "75 de 75 pasos"
+    // del As-Is no pasan al To-Be.
+    if ((state.meta.nivelVista || 3) < 3 && state._modeloCompleto) aplicarNivel(3, { silent: true });
     // Snapshot del view activo antes de cambiar
     state._views[state.activeView] = {
       nodes: JSON.parse(JSON.stringify(state.nodes)),
@@ -5898,9 +6238,14 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     }
     state.selectedNodeId = null;
     state.selectedEdgeId = null;
+    state._modeloCompleto = null; state._selloModelo = null; state.meta.nivelVista = 3;
+    state._lanes = null; state._loopSlots = null;
+    invalidarRutas();
+    if (state.nodes.length) autoLayout();   // carriles del modelo que se abre, no los del anterior
     updateViewUi();
     persist();
     render();
+    actualizarSelectorNivel();
   }
 
   function updateViewUi() {
@@ -5912,7 +6257,9 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         ind.id = 'tobeIndicator';
         ind.className = 'tobe-indicator';
         ind.textContent = 'TO-BE · REINGENIERÍA';
-        $('#canvasWrapper').appendChild(ind);
+        // ING-013: va en el area fija del lienzo, arriba al centro; ya no en la
+        // esquina derecha, donde el cajon de propiedades lo tapaba
+        $('#canvasArea').appendChild(ind);
       }
     } else if (ind) ind.remove();
   }
@@ -10420,7 +10767,10 @@ Reglas:
   // Resuelve con el codigo, o con '' si el usuario elige el modo basico (boton,
   // Esc o clic fuera: el MutationObserver cubre los cierres que no pasan por
   // los botones, para que la ingesta nunca se quede esperando).
-  function pedirCodigoEquipo() {
+  function pedirCodigoEquipo(contexto) {
+    // ING-006: el repositorio pide el MISMO codigo, pero con su propio mensaje
+    // (antes mostraba "Interpretar con IA" y un boton "Modo basico" sin sentido ahi)
+    const repo = contexto === 'repositorio';
     return new Promise(resolve => {
       const modal = $('#modal'), ok = $('#modalOk'), cancel = $('#modalCancel');
       const txtOk = ok ? ok.textContent : '', txtCancel = cancel ? cancel.textContent : '';
@@ -10433,16 +10783,23 @@ Reglas:
         if (cancel) cancel.textContent = txtCancel;
         resolve(v);
       };
-      const html =
-        '<p class="panel-hint">ProcessIQ interpreta el documento con <b>IA (Claude)</b> usando la clave del equipo. ' +
-        'Escribe el <b>código de acceso</b> que te dio quien administra la herramienta: se guarda solo en este ' +
-        'navegador y no se te volverá a pedir.</p>' +
-        '<label>Código de acceso del equipo<input type="password" id="ingestCodigo" autocomplete="off" /></label>' +
-        '<p class="ai-hint">Sin código puedes seguir en <b>modo básico</b>: extrae actividades por palabras clave, sin IA.</p>';
-      openModal('Interpretar con IA', html, () => fin((($('#ingestCodigo') || {}).value || '').trim()));
-      if (ok) ok.textContent = 'Usar IA';
+      const html = repo
+        ? '<p class="panel-hint">El <b>repositorio</b> guarda los procesos del equipo MBC en la nube para buscarlos, ' +
+          'abrirlos y continuarlos desde cualquier computadora. Para entrar, escribe el <b>código de acceso del equipo</b> ' +
+          '(el mismo que habilita la IA): se guarda solo en este navegador y no se te volverá a pedir.</p>' +
+          '<label>Código de acceso del equipo<input type="password" id="ingestCodigo" autocomplete="off" /></label>' +
+          '<p class="ai-hint">¿No lo tienes? Pídelo a quien administra ProcessIQ. Mientras tanto, tu trabajo se guarda en este navegador ' +
+          'y puedes conservar una copia con <b>Exportar → JSON · proyecto</b>.</p>'
+        : '<p class="panel-hint">ProcessIQ interpreta el documento con <b>IA (Claude)</b> usando la clave del equipo. ' +
+          'Escribe el <b>código de acceso</b> que te dio quien administra la herramienta: se guarda solo en este ' +
+          'navegador y no se te volverá a pedir.</p>' +
+          '<label>Código de acceso del equipo<input type="password" id="ingestCodigo" autocomplete="off" /></label>' +
+          '<p class="ai-hint">Sin código puedes seguir en <b>modo básico</b>: extrae actividades por palabras clave, sin IA. ' +
+          '<b>Ojo:</b> en modo básico los nombres salen tal cual del texto y suelen requerir corrección manual.</p>';
+      openModal(repo ? 'Acceso al repositorio de procesos' : 'Interpretar con IA', html, () => fin((($('#ingestCodigo') || {}).value || '').trim()));
+      if (ok) ok.textContent = repo ? 'Entrar al repositorio' : 'Usar IA';
       if (cancel) {
-        cancel.textContent = 'Modo básico';
+        cancel.textContent = repo ? 'Cancelar' : 'Modo básico';
         const prev = cancel.onclick;
         cancel.onclick = (e) => { fin(''); if (prev) prev(e); };
       }
@@ -10840,9 +11197,15 @@ Reglas:
       activities = activities.slice(0, MAX_HEUR_NODES);
     }
 
-    state.nodes = [];
-    state.edges = [];
-    state.selectedNodeId = null;
+    // Proceso NUEVO: como la ruta con IA, se limpia lo del anterior (carriles,
+    // modelo por niveles, vinculo al repositorio) pero se respeta el nombre
+    // que el usuario ya hubiera escrito.
+    // (solo si el lienzo estaba vacio: con otro proceso en pantalla, el nombre es de ese)
+    const nombrePrevio = state.nodes.length ? '' : (($('#processName') || {}).value || '').trim();
+    resetState();
+    state.meta.name = nombrePrevio || String(source || 'Proceso').replace(/\.[a-z0-9]{2,5}$/i, '');
+    $('#processName').value = state.meta.name;
+    state.meta.origen = 'basico';   // ING-002: se avisa en el lienzo que no paso por la IA
 
     let x = 80, y = 100;
     const cols = 5;
@@ -10884,6 +11247,9 @@ Reglas:
     ensureDecisionBranches();
     persist();
     autoLayout();  // top-to-bottom MBB
+    state.meta.nivelVista = 3;
+    fijarModeloCompleto();
+    actualizarSelectorNivel();
     render();
     maybeFitOnLoad();   // encuadra el proceso generado desde notas/audio si desborda
     activateTab('copilot');
@@ -11078,7 +11444,7 @@ Reglas:
   }
 
   function parseTextToActivities(text) {
-    const VERBS = ['registr','valid','aprob','revis','verific','captur','envi','reciv','recib','proces','genera','emit','firm','autoriz','rechaz','notific','consult','calcul','asign','clasific','derivar','escalar','conciliar','liquid','pag','cobr','despach','entreg','crear','actualiz','elimin','solicit','complet','llen','document','archiv','digit','escan','impr','contact','llamar','reun','analiz','evalu','diagnostic','transferir','elevar','ingresar','retir','depositar','girar','desembolsar','tramitar','gestionar','atender','resolver','programar','agendar','coordinar','informar','reportar','imprimir','adjunt','remitir','devolver','abrir','identificar','perfilar','navegar','alternar','explicar','simular','ofrecer','presentar','recibir','saludar','preguntar','realizar','iniciar','cerrar','seguir','continuar','proceder'];
+    const VERBS = ['registr','valid','aprob','revis','verific','captur','envi','reciv','recib','proces','genera','emit','firm','autoriz','rechaz','notific','consult','calcul','asign','clasific','derivar','escalar','conciliar','liquid','pag','cobr','despach','entreg','crear','actualiz','elimin','solicit','complet','llen','document','archiv','digit','escan','impr','contact','llamar','reun','analiz','evalu','diagnostic','transferir','elevar','ingresar','retir','depositar','girar','desembolsar','tramitar','gestionar','atender','resolver','programar','agendar','coordinar','informar','reportar','imprimir','adjunt','remitir','devolver','abrir','identificar','perfilar','navegar','alternar','explicar','simular','ofrecer','presentar','recibir','saludar','preguntar','realizar','iniciar','cerrar','seguir','continuar','proceder','aprueb','cierr','atiend','resuelv','devuelv'];
     // Decisiones: requieren marca explícita de condición/pregunta, NO solo "cuando/dependiendo" narrativos
     const DECISION_HINTS = ['¿', 'si es', 'si no', 'sino', 'caso contrario', 'en caso de', 'de no ser'];
     const DECISION_VERBS = ['decide','cumple','aprueba','rechaza','tiene','requiere','necesita','existe','está','es elegible','es aprobado','califica','excede','supera','identifico','encuentro','detecto','identifica','encuentra','detecta','hay'];
@@ -11157,6 +11523,21 @@ Reglas:
           }
           verbInf = cand; verbIdx = i; break;
         }
+        // ING-002: 3a persona de los procedimientos ("el analista valida…",
+        // "el supervisor aprueba…") -> infinitivo. Antes esas frases se perdian.
+        const TERCERA_IRREG = { aprueba: 'Aprobar', cierra: 'Cerrar', atiende: 'Atender', resuelve: 'Resolver', devuelve: 'Devolver', envía: 'Enviar', evalúa: 'Evaluar', actúa: 'Actuar' };
+        let tercera = TERCERA_IRREG[t] || null;
+        if (!tercera && t.length >= 5 && /a$/.test(t) && VERBS.some(v => (t + 'r').startsWith(v) && v.length >= 4)) tercera = t + 'r';
+        if (!tercera && t.length >= 5 && /e$/.test(t)) {
+          const ir = t.slice(0, -1) + 'ir', er = t.slice(0, -1) + 'er';
+          if (VERBS.some(v => ir.startsWith(v) && v.length >= 4)) tercera = ir;
+          else if (VERBS.some(v => er.startsWith(v) && v.length >= 4)) tercera = er;
+        }
+        if (tercera) {
+          const cand = tercera.charAt(0).toUpperCase() + tercera.slice(1);
+          if (PARASITE.has(cand)) { if (!parasiteFallback) { parasiteFallback = cand; parasiteIdx = i; } continue; }
+          verbInf = cand; verbIdx = i; break;
+        }
         // Verbos con pronombres enclíticos (contactarlos → Contactar)
         const stripped = t.replace(/(los|las|le|les|me|te|se|lo|la|nos)$/i, '');
         if (/(ar|er|ir)$/.test(stripped) && stripped.length >= 4 && allowed.some(v => stripped.startsWith(v))) {
@@ -11188,15 +11569,32 @@ Reglas:
       if (!verbInf) return null; // sin verbo → no es actividad
 
       // Toma 1-2 substantivos después del verbo (descarta stopwords y preposiciones)
+      // ING-002: en transcripciones el "objeto" salia de muletillas y verbos
+      // ("Llenar creo justo", "Generar crear ticket", "Tener porque generas").
+      // El objeto ahora tiene que parecer un sustantivo: fuera muletillas,
+      // conjugaciones frecuentes, gerundios, adverbios en -mente y otros verbos.
+      const NO_OBJETO = new Set(['creo','pienso','porque','pues','entonces','bueno','osea','digamos','tengo','tiene','tienen','tenemos',
+        'hay','era','es','son','estoy','esta','estaba','fue','ser','estar','igual','ahi','eh','ok','okay','sea','solo','sólo','vale',
+        'mucho','mucha','muchos','muchas','poco','poca','cosa','cosas','justo','justa','último','ultimo','última','ultima','has','he','ha',
+        'hemos','han','hace','hago','haces','hacen','dice','digo','dices','veo','ves','sé','voy','van','puedo','puedes','quiero',
+        'quieres','necesito','necesitas','generas','tenga','haya','así','asi','bien','mal','ahora','antes','recién','recien','mismo',
+        'misma','otro','otra','otros','otras','tal','tan','tanto','gente','persona','personas','usted','ustedes','nos','nuestro','nuestra',
+        'nuestros','nuestras','suyo','suya','tema','temas','creemos','sabes','sabe','sabemos','mira','oye','claro','exacto','digamos']);
+      const pareceVerbo = (t) => !!FIRST_PERSON[t] || /(ando|iendo|yendo)$/.test(t) || /mente$/.test(t) ||
+        (/a$/.test(t) && t.length >= 5 && VERBS.some(v => v.length >= 4 && (t + 'r').startsWith(v)) && /^(registra|valida|revisa|verifica|solicita|notifica|genera|asigna|deriva|escala|aprueba|envia|envía|consulta|calcula|procesa|actualiza|archiva|contacta|ingresa|cierra|entrega|despacha|liquida|concilia|emite|recibe|atiende|resuelve)$/.test(t)) ||
+        (/(ar|er|ir)$/.test(t) && t.length >= 4 && (allowed.some(v => t.startsWith(v)) || VERBS.some(v => t.startsWith(v))));
       const objs = [];
       for (let i = verbIdx + 1; i < tokens.length && objs.length < 2; i++) {
         const t = tokens[i];
-        if (STOPWORDS.has(t)) continue;
+        if (STOPWORDS.has(t) || NO_OBJETO.has(t)) continue;
         if (t.length < 3) continue;
+        if (pareceVerbo(t)) { if (objs.length) break; continue; }   // otro verbo: el objeto ya termino
         objs.push(t);
       }
+      // Un verbo suelto ("Crear") no dice que se hace: sin objeto no es actividad
+      if (!objs.length) return null;
 
-      let label = (verbInf + (objs.length ? ' ' + objs.join(' ') : '')).trim();
+      let label = (verbInf + ' ' + objs.join(' ')).trim();
       // Cap a 28 chars
       if (label.length > 28) label = label.slice(0, 25) + '…';
       return label;

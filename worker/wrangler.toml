@@ -18,6 +18,10 @@ ALLOWED_ORIGINS = "https://procesos.mbc-latam.com,https://prospectos.mbc-latam.c
 pattern = "api.mbc-latam.com"
 custom_domain = true
 
+# Transcripcion de audio (v3.14.0): Whisper en Workers AI (POST /v1/transcribir)
+[ai]
+binding = "AI"
+
 # Repositorio central de procesos (v3.12.0). Esquema en schema.sql.
 [[d1_databases]]
 binding = "DB"

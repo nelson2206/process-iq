@@ -32,3 +32,7 @@ CREATE TABLE IF NOT EXISTS versiones (
   datos      TEXT NOT NULL,
   PRIMARY KEY (proceso_id, version)
 );
+
+-- Tope diario de costo de la transcripcion de audio (v3.14.0, POST /v1/transcribir).
+-- Una fila por dia UTC (YYYY-MM-DD). El Worker tambien la crea en el primer uso si falta.
+CREATE TABLE IF NOT EXISTS uso_transcripcion (dia TEXT PRIMARY KEY, llamadas INTEGER NOT NULL DEFAULT 0, bytes INTEGER NOT NULL DEFAULT 0);

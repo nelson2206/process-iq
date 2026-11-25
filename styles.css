@@ -2669,3 +2669,9 @@ body.present-mode .minimapa { bottom: 16px; }
 #edgeForm .edge-recorrido-hint { margin: 6px 0 0; }
 #edgeForm .edge-acciones button:disabled { opacity: .45; cursor: not-allowed; }
 body.panel-open .aviso-basico { left: calc(50% - 188px); max-width: calc(100% - 440px); }
+
+/* ===== v3.14.0 — ING-014 (SLA) / ING-017 (iconos de IA) / ING-018 (audio) ===== */
+/* El boton de ajustes de IA conserva su texto "Ajustes IA" (distinto de la pestaña "IA" del copiloto) aunque los demas botones queden en icono */
+.header-actions #btnAiSettings { width: auto; padding: 0 10px; white-space: nowrap; }
+.header-actions #btnAiSettings .btn-txt { display: inline; margin-left: 4px; font-weight: 600; }
+#propSlaHint { margin-bottom: var(--space-3); }

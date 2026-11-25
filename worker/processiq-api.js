@@ -43,6 +43,12 @@ const MAX_TOKENS = 128000;   // v3.9.1: lo que admiten Opus 5.5 y Sonnet 5; cada
 const MAX_BODY = 2 * 1024 * 1024;
 // Las llamadas internas (otros Workers de la cuenta) pueden llevar un PDF en base64 (voz-relevamiento-api: hasta 10 MB de PDF).
 const MAX_BODY_INTERNO = 16 * 1024 * 1024;
+// Transcripcion de audio (v3.14.0): Workers AI (Whisper) cobra por minuto de audio.
+// Topes de costo diarios (UTC), ver reference Cloudflare: al superarlos se responde 429.
+const MAX_AUDIO = 25 * 1024 * 1024;                       // 25 MB por archivo
+const TOPE_TRANSCRIPCION_LLAMADAS_DIA = 60;               // tope de costo, ver reference Cloudflare
+const TOPE_TRANSCRIPCION_BYTES_DIA = 600 * 1024 * 1024;   // tope de costo, ver reference Cloudflare
+const MODELO_WHISPER = '@cf/openai/whisper-large-v3-turbo';
 
 // Lee el stream (ya teeado, no es el que ve el usuario) y saca los tokens
 // reales de la respuesta de Anthropic. Nunca lanza: sin dato, null.
@@ -68,6 +74,53 @@ async function extraerUso(stream, esStreaming) {
     }
     return visto ? { inputTokens, outputTokens } : null;
   } catch (e) { return null; }
+}
+
+// ArrayBuffer -> base64 en trozos (multiplo de 3 bytes: cada trozo codifica sin relleno y se concatenan).
+function aBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  const TROZO = 3 * 8192;
+  const partes = [];
+  for (let i = 0; i < bytes.length; i += TROZO) {
+    partes.push(btoa(String.fromCharCode.apply(null, bytes.subarray(i, i + TROZO))));
+  }
+  return partes.join('');
+}
+
+// POST /v1/transcribir: audio crudo en el cuerpo -> { texto, segundos }.
+// Mismo control de origen y de codigo de equipo que /v1/messages (sin via interna:
+// ningun otro Worker de la cuenta transcribe por aqui).
+async function rutaTranscribir(req, env, cors, origen, CODIGO) {
+  if (!origen) return error('Origen no permitido', 403, cors);
+  if (!CODIGO) return error('El intermediario no tiene configurados sus secretos', 500, cors);
+  if (!igualSeguro(req.headers.get('x-processiq-code') || '', CODIGO)) return error('Codigo de acceso incorrecto', 401, cors);
+  if (!env.AI) return error('La transcripcion no esta configurada en el intermediario (falta el binding AI)', 500, cors);
+  if (!env.DB) return error('El control de uso no esta configurado en el intermediario (falta la base DB)', 500, cors);
+  if (+(req.headers.get('content-length') || 0) > MAX_AUDIO) return error('El audio supera el maximo de 25 MB', 413, cors);
+  const audio = await req.arrayBuffer();
+  if (!audio.byteLength) return error('No llego ningun audio', 400, cors);
+  if (audio.byteLength > MAX_AUDIO) return error('El audio supera el maximo de 25 MB', 413, cors);
+
+  // Tope diario de costo (UTC). La tabla se crea en el primer uso si falta; el uso se reserva
+  // ANTES de transcribir (un intento fallido tambien cuenta: es el lado seguro del costo).
+  const dia = new Date().toISOString().slice(0, 10);
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS uso_transcripcion (dia TEXT PRIMARY KEY, llamadas INTEGER NOT NULL DEFAULT 0, bytes INTEGER NOT NULL DEFAULT 0)').run();
+  const uso = await env.DB.prepare('SELECT llamadas, bytes FROM uso_transcripcion WHERE dia = ?1').bind(dia).first();
+  if (uso && (uso.llamadas >= TOPE_TRANSCRIPCION_LLAMADAS_DIA || uso.bytes + audio.byteLength > TOPE_TRANSCRIPCION_BYTES_DIA)) {
+    return error('Se alcanzó el tope diario de transcripción; intenta mañana', 429, cors);
+  }
+  await env.DB.prepare('INSERT INTO uso_transcripcion (dia, llamadas, bytes) VALUES (?1, 1, ?2) ON CONFLICT(dia) DO UPDATE SET llamadas = llamadas + 1, bytes = bytes + ?2')
+    .bind(dia, audio.byteLength).run();
+
+  let res;
+  try {
+    res = await env.AI.run(MODELO_WHISPER, { audio: aBase64(audio), language: 'es' });
+  } catch (e) {
+    return error('No se pudo transcribir el audio: ' + (e && e.message || e), 502, cors);
+  }
+  const texto = String((res && res.text) || '').trim();
+  const segundos = res && res.transcription_info && res.transcription_info.duration;
+  return responderJson(segundos ? { texto, segundos } : { texto }, 200, cors);
 }
 
 async function registrarGasto(model, uso) {
@@ -249,7 +302,8 @@ export default {
         configurado: !!(CLAVE && CODIGO),
         // Diagnostico que no revela nada: solo si el valor TIENE FORMATO de
         // clave de Anthropic. Delata un pegado fallido (vacio, "^V", recortado).
-        formatoClave: !CLAVE ? 'vacia' : (/^sk-ant-[A-Za-z0-9_-]{80,}$/.test(CLAVE) ? 'ok' : 'sospechoso')
+        formatoClave: !CLAVE ? 'vacia' : (/^sk-ant-[A-Za-z0-9_-]{80,}$/.test(CLAVE) ? 'ok' : 'sospechoso'),
+        transcripcion: !!env.AI
       }, 200, cors);
     }
     if (req.method === 'OPTIONS') return new Response(null, { status: origen ? 204 : 403, headers: cors });
@@ -265,6 +319,11 @@ export default {
       }
       try { return await rutaRepositorio(req, env, url, cors, esInterno); }
       catch (e) { return error('Error del repositorio: ' + (e && e.message || e), 500, cors); }
+    }
+    // Transcripcion de audio (v3.14.0): Whisper en Workers AI
+    if (url.pathname === '/v1/transcribir' && req.method === 'POST') {
+      try { return await rutaTranscribir(req, env, cors, origen, CODIGO); }
+      catch (e) { return error('Error de transcripcion: ' + (e && e.message || e), 500, cors); }
     }
     if (url.pathname !== '/v1/messages' || req.method !== 'POST') return error('Ruta no encontrada', 404, cors);
     // Llamada interna de otro Worker de la cuenta (service binding, p. ej. voz-relevamiento-api):

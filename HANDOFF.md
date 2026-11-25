@@ -1,7 +1,7 @@
 # ProcessIQ — Documento de traspaso
 
 > Contexto completo para retomar el proyecto en una sesión nueva sin perder nada.
-> **Última actualización:** v3.13.0 — segunda revisión UX (ProcessIQ_UX (1).docx, ING-001..013) + arrastre del recorrido de flechas (UX-003)
+> **Última actualización:** v3.14.0 — revisión UX ING-014 (SLA número + unidad), ING-016 (solicitar acceso), ING-017 (íconos de IA) e ING-018 (cargar audio y transcribir con Whisper)
 
 ---
 
@@ -480,6 +480,43 @@
     la tarea, no nodo. Requiere edge.fromBoundary, ruta saliendo del reloj,
     sourceRef "<id>_be" en XML y ajuste en PPTX. M.
   -> Los tres quedaron hechos en v3.11.0 (abajo).
+- v3.14.0 REVISION UX, 4 mejoras (ING-014, 016, 017, 018). Sin commit ni deploy
+  todavia: el Worker necesita `wrangler deploy` (binding [ai] nuevo) y la
+  tabla se crea sola en el primer uso o con schema.sql.
+  ING-014 SLA con formato valido: #propSla pasa a numero (min 0, step any) +
+    #propSlaUnidad (minutos, horas, dias habiles, dias calendario). n.sla SIGUE
+    siendo texto canonico ("2 h", "30 min", "3 días hábiles", "5 días", "1 día
+    hábil") para no romper proyectos guardados. Helpers parseSla / formatSla /
+    normalizarSla (antes de attachPropertyListeners). Un SLA heredado que no
+    parsea ("abc123") NO se borra: se muestra el aviso #propSlaHint hasta que el
+    usuario escriba uno valido; uno que parsea ("≤ 2h") llena los campos pero
+    n.sla no cambia hasta editar (al guardar se pierde el "≤"). Linter: regla
+    "SLA sin formato válido", severidad low (no bloquea exportes). La IA
+    (buildProcessFromAiSpec) normaliza t.sla si viene; el prompt de la IA NO
+    pide SLA, y el BPMN/PPTX/Word/ficha no leen n.sla (no habia uso que migrar).
+  ING-016 Solicitar acceso: CONTACTO_ACCESO (vacio = solo copiar) junto a
+    AUTOR_KEY; solicitarAcceso() abre mailto o copia la solicitud al
+    portapapeles + toast. pedirCodigoEquipo (ramas repositorio e IA) agrega la
+    linea "Sin código: ... Con código: ..." y el boton. [A VALIDAR] correo del
+    administrador: nadie lo ha puesto.
+  ING-017 iconos de IA: el destello queda solo en acciones que ejecutan IA
+    (pestaña Copiloto, "Generar proceso"/Interpretar con IA, To-Be IA).
+    #btnAiSettings pasa a sliders + texto "Ajustes IA" (visible siempre, CSS v3.14) con
+    title/aria-label "Ajustes de IA: modelo, código de equipo o clave propia".
+    Los mensajes "Ajustes de IA (✨)" ahora dicen "botón «Ajustes IA» de la barra superior" (texto distinto de la pestaña «IA» del copiloto).
+  ING-018 Cargar audio: boton #btnAudioFile + #audioFileInput en Audio /
+    Transcripcion; transcribirAudioArchivo() hace POST crudo a
+    {proxy}/v1/transcribir (x-processiq-code, mismo codigo y URL que el
+    repositorio via repoCodigo('audio')) y AGREGA el texto a #audioTranscript.
+    Worker: ruta POST /v1/transcribir (origen + codigo de equipo, sin via
+    interna), 25 MB (413), tope diario UTC 60 llamadas / 600 MB en la tabla
+    uso_transcripcion (429; se crea con CREATE TABLE IF NOT EXISTS en el primer
+    uso y esta en schema.sql), Whisper @cf/openai/whisper-large-v3-turbo
+    language es, base64 por trozos. wrangler.toml: [ai] binding = "AI".
+    /health agrega transcripcion: !!env.AI. NO se llamo a registrarGasto: su
+    formato es {inputTokens, outputTokens} por tokens de Anthropic y Whisper
+    cobra por minuto de audio; forzarlo falsearia los reportes de Pulse.
+    Sin respaldo a workers.dev en la app (no existe para la ingesta con IA).
 - v3.13.0 SEGUNDA REVISION UX (Downloads\ProcessIQ_UX (1).docx). Los 17
   primeros puntos son los mismos del documento anterior (mismas capturas;
   ya resueltos en v3.10/v3.11). Nuevos ING-001..013, probados sobre v3.12:

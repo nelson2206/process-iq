@@ -2023,6 +2023,78 @@
     if (cierra) cierra.addEventListener('click', () => cerrarPanel());
   }
 
+  // =================== SLA (v3.14.0, ING-014) ===================
+  // El usuario ingresa numero + unidad; n.sla sigue guardandose como TEXTO canonico
+  // ("2 h", "30 min", "3 días hábiles", "5 días") para no romper exportes ni proyectos guardados.
+  const SLA_UNIDADES = {
+    min: { sing: 'min', plur: 'min' },
+    h:   { sing: 'h', plur: 'h' },
+    dh:  { sing: 'día hábil', plur: 'días hábiles' },
+    dc:  { sing: 'día', plur: 'días' }
+  };
+  function formatSla(valor, unidad) {
+    const u = SLA_UNIDADES[unidad], v = Number(valor);
+    if (!u || valor === '' || valor == null || !isFinite(v) || v < 0) return '';
+    return String(+v.toFixed(4)) + ' ' + (v === 1 ? u.sing : u.plur);
+  }
+  // Entiende el formato canonico y valores heredados ("≤ 2h", "24 horas", "2 hrs", "1 dia", "2,5 h").
+  // Devuelve { valor, unidad } (unidad: min | h | dh | dc) o null si no es "numero + unidad".
+  function parseSla(texto) {
+    let t = String(texto == null ? '' : texto).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    t = t.replace(/^(?:[<>≤≥=~]+\s*|(?:menos de|maximo|max\.?|hasta)\s+)/, '');
+    const m = t.match(/^(\d+(?:[.,]\d+)?)\s*([a-z.]+(?:\s+[a-z]+)?)$/);
+    if (!m) return null;
+    const valor = parseFloat(m[1].replace(',', '.'));
+    const u = m[2].replace(/\./g, '').trim();
+    let unidad = null;
+    if (/^(min|mins|minuto|minutos)$/.test(u)) unidad = 'min';
+    else if (/^(h|hr|hrs|hora|horas)$/.test(u)) unidad = 'h';
+    else if (/^(d|dia|dias)\s+(habil|habiles)$/.test(u) || u === 'dh') unidad = 'dh';
+    else if (/^(d|dia|dias)(\s+(calendario|corrido|corridos))?$/.test(u)) unidad = 'dc';
+    return (unidad && isFinite(valor)) ? { valor, unidad } : null;
+  }
+  // Para lo que trae la IA o un importador: normaliza si se puede; si no, conserva el texto (lo marcara el linter).
+  function normalizarSla(texto) {
+    const p = parseSla(texto);
+    return p ? formatSla(p.valor, p.unidad) : String(texto == null ? '' : texto).trim();
+  }
+  function mostrarAvisoSla(texto) {
+    const h = $('#propSlaHint');
+    if (!h) return;
+    h.hidden = !texto;
+    h.textContent = texto || '';
+  }
+  function cargarSlaEnCampos(n) {
+    const v = $('#propSla'), u = $('#propSlaUnidad');
+    if (!v || !u) return;
+    const crudo = (n.sla || '').trim();
+    const p = crudo ? parseSla(crudo) : null;
+    v.value = p ? String(p.valor) : '';
+    u.value = p ? p.unidad : '';
+    // Si no parsea, n.sla queda intacto hasta que el usuario escriba uno valido
+    mostrarAvisoSla(crudo && !p ? 'SLA sin formato válido: «' + crudo + '». Ingresa un número y una unidad.' : '');
+  }
+  function guardarSlaDesdeCampos() {
+    const n = getNode(state.selectedNodeId);
+    const v = $('#propSla'), u = $('#propSlaUnidad');
+    if (!n || !v || !u) return;
+    const crudo = v.value.trim();
+    if (v.validity && v.validity.badInput) { mostrarAvisoSla('El valor del SLA debe ser un número (por ejemplo 2 o 2.5).'); return; }
+    if (crudo === '') {
+      // Sin numero: se borra el SLA, salvo que haya un texto heredado invalido y el usuario solo haya tocado la unidad
+      if (u.value && n.sla && !parseSla(n.sla)) return;
+      n.sla = ''; mostrarAvisoSla('');
+    } else {
+      const num = Number(crudo);
+      if (!isFinite(num) || num < 0) { mostrarAvisoSla('El SLA debe ser un número mayor o igual a 0.'); return; }
+      if (!u.value) { mostrarAvisoSla('Elige la unidad del SLA: minutos, horas, días hábiles o días calendario.'); return; }
+      n.sla = formatSla(num, u.value); mostrarAvisoSla('');
+    }
+    persist();
+    render();
+    runLinter();
+  }
+
   // =================== PROPERTIES PANEL ===================
   function attachPropertyListeners() {
     const fields = [
@@ -2033,7 +2105,6 @@
       ['Time', 'time'],
       ['Volume', 'volume'],
       ['VA', 'va'],
-      ['Sla', 'sla'],
       ['DocsIn', 'docsIn'],
       ['DocsOut', 'docsOut'],
       ['Rules', 'rules'],
@@ -2063,6 +2134,10 @@
         runLinter();
       });
     });
+    // ING-014: SLA = numero + unidad (n.sla guarda el texto canonico, ver parseSla/formatSla)
+    const slaVal = $('#propSla'), slaUni = $('#propSlaUnidad');
+    if (slaVal) slaVal.addEventListener('input', guardarSlaDesdeCampos);
+    if (slaUni) slaUni.addEventListener('change', guardarSlaDesdeCampos);
     // UX-002: al confirmar el responsable (Enter o salir del campo) la
     // actividad pasa a su carril sin pulsar "Ordenar". No va en 'input' porque
     // crearia un carril por cada tecla ("A", "An", "Ana"...).
@@ -2483,7 +2558,7 @@
     $('#propTime').value = n.time || '';
     $('#propVolume').value = n.volume || '';
     $('#propVA').value = n.va || '';
-    $('#propSla').value = n.sla || '';
+    cargarSlaEnCampos(n);
     $('#propDocsIn').value = n.docsIn || '';
     $('#propDocsOut').value = n.docsOut || '';
     $('#propRules').value = n.rules || '';
@@ -5587,6 +5662,8 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
   // en el historial, nada se pierde).
   // ============================================================
   const AUTOR_KEY = 'processiq.autor';
+  // ING-016 (v3.14.0): correo del administrador; vacio = solo copiar solicitud
+  const CONTACTO_ACCESO = '';
   // Punto en el boton Repositorio: proceso vinculado con cambios sin subir
   let _tPuntoRepo = null;
   function programarPuntoRepo() {
@@ -5597,14 +5674,37 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
     }, 800);
   }
   function repoAutor() { try { return localStorage.getItem(AUTOR_KEY) || ''; } catch (e) { return ''; } }
+  // Pide el codigo de equipo: abre el correo al administrador (si hay CONTACTO_ACCESO) o copia la solicitud
+  function solicitarAcceso() {
+    const asunto = 'Solicitud de acceso al repositorio de ProcessIQ';
+    const cuerpo = 'Hola,\n\nSolicito el código de acceso del equipo para usar el repositorio y la IA de ProcessIQ.\n\n' +
+      'Nombre: ' + (repoAutor() || '[completar]') + '\nMotivo: [completar]\n\nGracias.';
+    if (CONTACTO_ACCESO) {
+      window.location.href = 'mailto:' + CONTACTO_ACCESO + '?subject=' + encodeURIComponent(asunto) + '&body=' + encodeURIComponent(cuerpo);
+      return;
+    }
+    const texto = asunto + '\n\n' + cuerpo;
+    const listo = () => avisoBreve('Solicitud copiada: envíala a quien administra ProcessIQ');
+    const respaldo = () => {
+      const ta = document.createElement('textarea');
+      ta.value = texto; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      if (ok) listo(); else alert('No se pudo copiar automáticamente. Envía este texto a quien administra ProcessIQ:\n\n' + texto);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(texto).then(listo, respaldo);
+    else respaldo();
+  }
   function repoBase() {
     const c = aiConfig();
     return (c.proxyUrl || PROXY_POR_DEFECTO).replace(/\/+$/, '') + '/v1/procesos';
   }
-  async function repoCodigo() {
+  async function repoCodigo(contexto) {
     let c = aiConfig();
     if (c.modo === 'equipo' && (c.codigo || '').trim()) return c.codigo.trim();
-    const codigo = await pedirCodigoEquipo('repositorio');
+    const codigo = await pedirCodigoEquipo(contexto || 'repositorio');
     if (!codigo) return null;
     saveAiConfig(Object.assign({}, c, { modo: 'equipo', codigo, proxyUrl: c.proxyUrl || PROXY_POR_DEFECTO, model: c.model || 'claude-opus-5-5' }));
     if (typeof updateAiUi === 'function') updateAiUi();
@@ -6064,6 +6164,11 @@ Validar hallazgos con sponsor, priorizar oportunidades en matriz impacto-esfuerz
         if (label && !label.startsWith('¿') && !label.endsWith('?')) {
           issues.push({ sev: 'medium', title: 'Gateway sin pregunta', detail: `"${label}" debe formularse como pregunta cerrada (¿Sí/No?) o ramificación (¿Qué tipo?).`, target: n.id });
         }
+      }
+
+      // ING-014: SLA con texto que no es "numero + unidad" (aviso, no bloquea exportes)
+      if ((n.sla || '').trim() && !parseSla(n.sla)) {
+        issues.push({ sev: 'low', title: 'SLA sin formato válido', detail: `"${label || n.id}" tiene SLA «${n.sla}». Usa número y unidad (p. ej. 2 h, 30 min, 3 días hábiles).`, target: n.id });
       }
 
       // R13: actividad huérfana
@@ -9428,6 +9533,16 @@ ${diNivel(n.sub.nodes, n.sub.edges || [])}    </bpmndi:BPMNPlane>
     // Audio
     $('#btnRecStart').addEventListener('click', startSpeechRecognition);
     $('#btnRecStop').addEventListener('click', stopSpeechRecognition);
+    // ING-018: audio ya grabado -> transcripcion en el intermediario (Whisper)
+    const btnAudioFile = $('#btnAudioFile'), audioFileInput = $('#audioFileInput');
+    if (btnAudioFile && audioFileInput) {
+      btnAudioFile.addEventListener('click', () => audioFileInput.click());
+      audioFileInput.addEventListener('change', () => {
+        const f = audioFileInput.files && audioFileInput.files[0];
+        audioFileInput.value = '';   // permite volver a elegir el mismo archivo
+        if (f) transcribirAudioArchivo(f);
+      });
+    }
     $('#btnIngestAudio').addEventListener('click', () => {
       const txt = $('#audioTranscript').value.trim();
       if (!txt) { alert('No hay transcripción.'); return; }
@@ -9519,6 +9634,46 @@ ${diNivel(n.sub.nodes, n.sub.edges || [])}    </bpmndi:BPMNPlane>
     $('#recStatus').classList.add('recording');
     $('#btnRecStart').disabled = true;
     $('#btnRecStop').disabled = false;
+  }
+
+  // ING-018 (v3.14.0): sube el archivo crudo a {intermediario}/v1/transcribir y AGREGA el texto a la transcripcion
+  const MAX_AUDIO_MB = 25;
+  async function transcribirAudioArchivo(file) {
+    const st = $('#recStatus'), btn = $('#btnAudioFile'), ta = $('#audioTranscript');
+    if (file.size > MAX_AUDIO_MB * 1024 * 1024) {
+      st.textContent = '«' + file.name + '» pesa ' + (file.size / 1048576).toFixed(1) + ' MB y el máximo es ' + MAX_AUDIO_MB + ' MB. Comprímelo (p. ej. a MP3) o córtalo en partes.';
+      return;
+    }
+    const codigo = await repoCodigo('audio');
+    if (!codigo) { st.textContent = 'La transcripción necesita el código de acceso del equipo.'; return; }
+    const base = (aiConfig().proxyUrl || PROXY_POR_DEFECTO).replace(/\/+$/, '');
+    btn.disabled = true;
+    st.classList.remove('recording');
+    st.textContent = 'Transcribiendo «' + file.name + '»… puede tardar 1–2 min';
+    try {
+      let res;
+      try {
+        res = await fetch(base + '/v1/transcribir', {
+          method: 'POST',
+          headers: { 'content-type': file.type || 'application/octet-stream', 'x-processiq-code': codigo },
+          body: file
+        });
+      } catch (e) {
+        throw new Error('No se pudo conectar con el intermediario (' + base + '). Revisa tu conexión; desde la red de Indra este dominio puede estar bloqueado por Netskope.');
+      }
+      let j = null;
+      try { j = await res.json(); } catch (_) {}
+      if (!res.ok) throw new Error((j && j.error && j.error.message) || ('Error ' + res.status));
+      const texto = String((j && j.texto) || '').trim();
+      if (!texto) throw new Error('No se detectó voz en el audio.');
+      const previo = ta.value.replace(/\s+$/, '');
+      ta.value = previo ? previo + '\n\n— Transcripción de «' + file.name + '» —\n' + texto : texto;
+      st.textContent = 'listo · «' + file.name + '» transcrito' + (j.segundos ? ' (' + Math.round(j.segundos) + ' s de audio)' : '');
+    } catch (e) {
+      st.textContent = 'Error: ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   function stopSpeechRecognition() {
@@ -9763,7 +9918,7 @@ ${diNivel(n.sub.nodes, n.sub.edges || [])}    </bpmndi:BPMNPlane>
         // Que nunca se confunda con una interpretacion por IA
         copilotPost('ai', '**Proceso generado en modo básico (sin IA)** desde ' + escapeHtml(label) +
           '. Las actividades se extrajeron por palabras clave: revisa roles y decisiones. ' +
-          'Para interpretarlo con Claude, pon el código del equipo en Ajustes de IA (✨) y vuelve a generar.');
+          'Para interpretarlo con Claude, pon el código del equipo en Ajustes de IA (botón «Ajustes IA» de la barra superior) y vuelve a generar.');
       }
       console.info('[ProcessIQ] ingesta OK en', ((Date.now() - t0) / 1000).toFixed(1) + 's');
     } catch (err) {
@@ -10161,8 +10316,8 @@ ${diNivel(n.sub.nodes, n.sub.edges || [])}    </bpmndi:BPMNPlane>
     const cfg = aiConfig();
     const equipo = cfg.modo === 'equipo';
     const key = (cfg.key || '').trim(), codigo = (cfg.codigo || '').trim();
-    if (equipo && !codigo) throw new Error('Falta el código de acceso del equipo. Configúralo en Ajustes de IA (✨).');
-    if (!equipo && !key) throw new Error('Falta la API key. Configúrala en Ajustes de IA (✨).');
+    if (equipo && !codigo) throw new Error('Falta el código de acceso del equipo. Configúralo en Ajustes de IA (botón «Ajustes IA» de la barra superior).');
+    if (!equipo && !key) throw new Error('Falta la API key. Configúrala en Ajustes de IA (botón «Ajustes IA» de la barra superior).');
     // Modo equipo: la clave NO sale del intermediario; aqui solo viaja el codigo.
     const destino = equipo
       ? (cfg.proxyUrl || PROXY_POR_DEFECTO).replace(/\/+$/, '') + '/v1/messages'
@@ -10771,6 +10926,12 @@ Reglas:
     // ING-006: el repositorio pide el MISMO codigo, pero con su propio mensaje
     // (antes mostraba "Interpretar con IA" y un boton "Modo basico" sin sentido ahi)
     const repo = contexto === 'repositorio';
+    const audio = contexto === 'audio';   // ING-018: la transcripcion tambien necesita el codigo
+    // ING-016: diferencia local vs nube y ofrece pedir el codigo
+    const lineaNube = '<p class="ai-hint"><b>Sin código:</b> tus procesos se guardan solo en este navegador. ' +
+      '<b>Con código:</b> se guardan en el repositorio del equipo en la nube.</p>';
+    const botonAcceso = '<p><button type="button" class="btn btn-ghost btn-mini" id="btnSolicitarAcceso" ' +
+      'title="Abre un correo con la solicitud (o la copia al portapapeles) para pedir el código a quien administra ProcessIQ">Solicitar acceso</button></p>';
     return new Promise(resolve => {
       const modal = $('#modal'), ok = $('#modalOk'), cancel = $('#modalCancel');
       const txtOk = ok ? ok.textContent : '', txtCancel = cancel ? cancel.textContent : '';
@@ -10789,17 +10950,23 @@ Reglas:
           '(el mismo que habilita la IA): se guarda solo en este navegador y no se te volverá a pedir.</p>' +
           '<label>Código de acceso del equipo<input type="password" id="ingestCodigo" autocomplete="off" /></label>' +
           '<p class="ai-hint">¿No lo tienes? Pídelo a quien administra ProcessIQ. Mientras tanto, tu trabajo se guarda en este navegador ' +
-          'y puedes conservar una copia con <b>Exportar → JSON · proyecto</b>.</p>'
+          'y puedes conservar una copia con <b>Exportar → JSON · proyecto</b>.</p>' + lineaNube + botonAcceso
+        : audio
+        ? '<p class="panel-hint">Transcribir un audio necesita el <b>código de acceso del equipo</b>. El audio se envía a Cloudflare Workers AI (Whisper) ' +
+          'solo para convertirlo en texto y no se guarda. El código se guarda solo en este navegador.</p>' +
+          '<label>Código de acceso del equipo<input type="password" id="ingestCodigo" autocomplete="off" /></label>' + botonAcceso
         : '<p class="panel-hint">ProcessIQ interpreta el documento con <b>IA (Claude)</b> usando la clave del equipo. ' +
           'Escribe el <b>código de acceso</b> que te dio quien administra la herramienta: se guarda solo en este ' +
           'navegador y no se te volverá a pedir.</p>' +
           '<label>Código de acceso del equipo<input type="password" id="ingestCodigo" autocomplete="off" /></label>' +
           '<p class="ai-hint">Sin código puedes seguir en <b>modo básico</b>: extrae actividades por palabras clave, sin IA. ' +
-          '<b>Ojo:</b> en modo básico los nombres salen tal cual del texto y suelen requerir corrección manual.</p>';
-      openModal(repo ? 'Acceso al repositorio de procesos' : 'Interpretar con IA', html, () => fin((($('#ingestCodigo') || {}).value || '').trim()));
-      if (ok) ok.textContent = repo ? 'Entrar al repositorio' : 'Usar IA';
+          '<b>Ojo:</b> en modo básico los nombres salen tal cual del texto y suelen requerir corrección manual.</p>' + lineaNube + botonAcceso;
+      openModal(repo ? 'Acceso al repositorio de procesos' : (audio ? 'Transcribir audio' : 'Interpretar con IA'), html, () => fin((($('#ingestCodigo') || {}).value || '').trim()));
+      const bAcceso = $('#btnSolicitarAcceso');
+      if (bAcceso) bAcceso.addEventListener('click', solicitarAcceso);
+      if (ok) ok.textContent = repo ? 'Entrar al repositorio' : (audio ? 'Usar código' : 'Usar IA');
       if (cancel) {
-        cancel.textContent = repo ? 'Cancelar' : 'Modo básico';
+        cancel.textContent = (repo || audio) ? 'Cancelar' : 'Modo básico';
         const prev = cancel.onclick;
         cancel.onclick = (e) => { fin(''); if (prev) prev(e); };
       }
@@ -11023,7 +11190,7 @@ Reglas:
         label: t.label || '(sin título)', executionType: t.exec || (type === 'task' ? 'manual' : ''),
         gatewayType: (type === 'decision' ? (t.gateway || 'exclusive') : undefined),
         activityCode: '', owner: t.owner || '', system: t.system || '',
-        time: '', volume: '', va: '', sla: '', docsIn: '', docsOut: '', rules: '', notes: t.notes || '', pains: [],
+        time: '', volume: '', va: '', sla: t.sla ? normalizarSla(t.sla) : '', docsIn: '', docsOut: '', rules: '', notes: t.notes || '', pains: [],
         nivel: (t.nivel >= 1 && t.nivel <= 3) ? +t.nivel : undefined, _padreK: t.padre || null
       };
       idMap[t.k] = node.id;

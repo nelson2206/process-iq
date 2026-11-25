@@ -90,7 +90,7 @@ function aBase64(buf) {
 // POST /v1/transcribir: audio crudo en el cuerpo -> { texto, segundos }.
 // Mismo control de origen y de codigo de equipo que /v1/messages (sin via interna:
 // ningun otro Worker de la cuenta transcribe por aqui).
-async function rutaTranscribir(req, env, cors, origen, CODIGO) {
+async function rutaTranscribir(req, env, cors, origen, CODIGO, ctx) {
   if (!origen) return error('Origen no permitido', 403, cors);
   if (!CODIGO) return error('El intermediario no tiene configurados sus secretos', 500, cors);
   if (!igualSeguro(req.headers.get('x-processiq-code') || '', CODIGO)) return error('Codigo de acceso incorrecto', 401, cors);
@@ -120,6 +120,8 @@ async function rutaTranscribir(req, env, cors, origen, CODIGO) {
   }
   const texto = String((res && res.text) || '').trim();
   const segundos = res && res.transcription_info && res.transcription_info.duration;
+  // Gasto en Pulse (Whisper cobra por minuto de audio); en segundo plano, nunca bloquea al usuario
+  if (segundos && ctx) ctx.waitUntil(registrarGastoAudio(segundos));
   return responderJson(segundos ? { texto, segundos } : { texto }, 200, cors);
 }
 
@@ -132,6 +134,17 @@ async function registrarGasto(model, uso) {
       body: JSON.stringify({ tool: 'processiq', provider: 'anthropic', model, inputTokens: uso.inputTokens, outputTokens: uso.outputTokens })
     });
   } catch (e) { /* el registro de gasto nunca debe afectar la respuesta al usuario */ }
+}
+
+// Transcripcion (v3.14.1): Pulse calcula el costo con su tarifa por minuto (PRECIOS_AUDIO).
+async function registrarGastoAudio(segundos) {
+  try {
+    await fetch(PULSE_INGEST, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tool: 'processiq', provider: 'cloudflare', model: 'whisper-large-v3-turbo', inputTokens: 0, outputTokens: 0, audioSeconds: segundos })
+    });
+  } catch (e) { /* idem: nunca afecta la respuesta */ }
 }
 
 // ============================================================
@@ -322,7 +335,7 @@ export default {
     }
     // Transcripcion de audio (v3.14.0): Whisper en Workers AI
     if (url.pathname === '/v1/transcribir' && req.method === 'POST') {
-      try { return await rutaTranscribir(req, env, cors, origen, CODIGO); }
+      try { return await rutaTranscribir(req, env, cors, origen, CODIGO, ctx); }
       catch (e) { return error('Error de transcripcion: ' + (e && e.message || e), 500, cors); }
     }
     if (url.pathname !== '/v1/messages' || req.method !== 'POST') return error('Ruta no encontrada', 404, cors);
